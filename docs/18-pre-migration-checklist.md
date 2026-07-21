@@ -92,7 +92,7 @@
 - [ ] รัน `npx @better-auth/cli generate` → **เปรียบเทียบ**กับ `schema.prisma` (ไม่ใช่ให้ CLI จัดการ migration)
 - [ ] Reconcile ตาราง Auth (`User`/`Session`/`Account`/`Verification`) ให้ตรง v1.6.23
 - [ ] ตัดสินตาราง 2FA / lockout ตามที่ v1.6.23 ต้องการ
-- [ ] **RBAC ใช้ `UserRole` + `UserCommunityScope` ของระบบเอง** — ไม่ใช้ Admin Plugin เป็น RBAC หลัก
+- [x] **RBAC ใช้ `UserRole` + `UserCommunityScope` ของระบบเอง** — ไม่ใช้ Admin Plugin เป็น RBAC หลัก ✅ ทำแล้ว 2026-07-22 (`lib/authz` — ไม่แก้ schema; ดู `docs/23`)
 - [ ] **Prisma Migration เป็นผู้จัดการ Migration จริง** (ไม่ใช่ Better Auth CLI)
 
 ---

@@ -166,7 +166,7 @@ scripts/create-dev-user.ts         # สร้าง Development Test User (Opti
 
 ## 12. งานถัดไปที่แนะนำ
 
-1. ผูก RBAC (`UserRole` + Community Scope) ตรวจฝั่ง server
+1. ✅ ~~ผูก RBAC (`UserRole` + Community Scope) ตรวจฝั่ง server~~ — ทำแล้ว 2026-07-22 (ดู `docs/23-rbac-community-scope-foundation.md`)
 2. อัปเดต `lastLoginAt` + Audit log การ login
 3. เพิ่ม jsdom + component tests เมื่อ UI ซับซ้อนขึ้น
 4. Custom SQL formalize ที่เหลือ (GIST/GIN 0005, views 0006)

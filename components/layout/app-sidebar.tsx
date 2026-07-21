@@ -5,32 +5,22 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { APP_NAME } from "@/lib/app-config";
 
-type MenuItem = {
+// รายการเมนูถูกกรองตาม permission จากฝั่ง Server (lib/navigation.ts) แล้ว
+// Component นี้เป็นแค่ตัวแสดงผล — ไม่ใช่ Authorization
+export type SidebarItem = {
   label: string;
   href: string;
-  enabled: boolean;
+  implemented: boolean;
 };
 
-// เปิดใช้งานจริงเฉพาะ "ภาพรวม" — เมนูอื่นรอโมดูลจริง (ไม่สร้างหน้าปลอม)
-// ยังไม่ผูก role permission — รอ audit RBAC flow ก่อน
-const MENU_ITEMS: MenuItem[] = [
-  { label: "ภาพรวม", href: "/dashboard", enabled: true },
-  { label: "ชุมชน", href: "/communities", enabled: false },
-  { label: "ครัวเรือน", href: "/households", enabled: false },
-  { label: "แบบสอบถาม", href: "/surveys", enabled: false },
-  { label: "การตรวจสอบข้อมูล", href: "/verification", enabled: false },
-  { label: "รายงาน", href: "/reports", enabled: false },
-  { label: "ตั้งค่าระบบ", href: "/settings", enabled: false },
-];
-
-export function AppSidebar() {
+export function AppSidebar({ items }: { items: SidebarItem[] }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const nav = (
     <nav className="flex-1 space-y-1 px-3 py-4">
-      {MENU_ITEMS.map((item) =>
-        item.enabled ? (
+      {items.map((item) =>
+        item.implemented ? (
           <Link
             key={item.href}
             href={item.href}

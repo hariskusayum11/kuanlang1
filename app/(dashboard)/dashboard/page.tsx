@@ -1,11 +1,21 @@
-import { fetchDashboardCounts, toStatCards } from "@/lib/dashboard/stats";
+import { redirect } from "next/navigation";
+import { toStatCards } from "@/lib/dashboard/stats";
+import { fetchScopedDashboardCounts } from "@/lib/dashboard/get-dashboard-stats";
+import { getAuthorizationContext } from "@/lib/authz/context";
 import { APPLIED_MIGRATION_COUNT } from "@/lib/app-config";
 
 export const metadata = { title: "ภาพรวม" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const counts = await fetchDashboardCounts();
+  // Layout ตรวจ dashboard.view แล้ว — โหลด ctx ซ้ำเพื่อใช้ scope (ห้ามเชื่อ client)
+  const ctx = await getAuthorizationContext();
+  if (!ctx) redirect("/login");
+
+  const counts = await fetchScopedDashboardCounts({
+    isGlobalScope: ctx.isGlobalScope,
+    communityIds: ctx.communityIds,
+  });
   const cards = toStatCards(counts);
 
   return (
@@ -33,7 +43,10 @@ export default async function DashboardPage() {
           ))}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          ข้อมูลจากฐานข้อมูล Development · ระบบแบบสอบถามและข้อมูลครัวเรือนอยู่ระหว่างการพัฒนา
+          {ctx.isGlobalScope
+            ? "แสดงข้อมูลทั้งระบบ"
+            : `แสดงเฉพาะชุมชนในสิทธิ์ของคุณ (${ctx.communityIds.length} ชุมชน)`}
+          {" · ระบบแบบสอบถามและข้อมูลครัวเรือนอยู่ระหว่างการพัฒนา"}
         </p>
       </section>
 
