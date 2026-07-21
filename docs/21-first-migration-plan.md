@@ -151,3 +151,4 @@ docker compose down -v    # ⚠️ ลบ Development Database ทั้งห�
 | Drift | ไม่มี — `migrate status` "up to date" · `db pull --print` เตือนเฉพาะ 3 geography Unsupported ที่คาดไว้ |
 | Phase 2 Models (ยังไม่เปิด) | `EvacuationSite` (ตารางสร้าง แต่ไม่มี Seed/UI/API/Business Logic) |
 | Production | **ไม่ถูกแตะ** — ดำเนินการบน local Docker dev เท่านั้น · ไม่ commit/push |
+| **Auth Foundation (2026-07-21)** | ✅ ทำต่อจาก migration ชุดนี้ **โดยไม่แตะ schema/migrations** — Better Auth 1.6.23 ใช้ตาราง Auth เดิมได้ตรง ๆ · tests รวมเพิ่มเป็น 57/57 · รายละเอียดดู `docs/22` |

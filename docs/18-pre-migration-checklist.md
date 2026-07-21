@@ -219,3 +219,4 @@
 - 🔴 **ไม่แตะ Production** · ไม่ `db push` / `migrate deploy` / `migrate reset` · ไม่ลบ volume · ไม่ commit/push
 - 🔴 **ยังไม่ทำ:** Custom SQL (trigger/GIST/GIN/view) formalize (0002–0006), UI/API/Server Actions, Risk logic, Encryption
 - 📌 Better Auth `1.6.23` ติดตั้งแล้ว (dependency) — reconcile ตาราง Auth (Gate D) ยังเป็นงานถัดไป
+- 🟢 **อัปเดต 2026-07-21 (รอบ Auth Foundation):** Gate D ผ่านแล้ว — Better Auth 1.6.23 ใช้งานจริงกับตาราง `user`/`session`/`account`/`verification` เดิมได้โดย **ไม่แก้ schema** (prismaAdapter + additionalFields ตรงกับ schema) · Login/Session/Protected Layout ทำงานบน Dev แล้ว (ดู `docs/22`)

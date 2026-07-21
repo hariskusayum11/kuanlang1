@@ -9,7 +9,7 @@
 
 ## 1. สรุปหนึ่งบรรทัด
 
-**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A + B + D แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) · **Migration แรก `20260721153936_init_schema_v1` Apply แล้วบน Development DB (local Docker `postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)** — 56 ตาราง (app) + 21 enum, ไม่มี drift, seed master+dev สำเร็จ · **Migration 2 `20260721231914_br44_check_different_entry_person` Apply แล้ว (BR-44 trigger)** · **Migration 3 `20260721234500_add_community_primary_tambon_partial_unique` Apply แล้ว (`ux_community_primary_tambon`)** — integration tests 15 ผ่าน, todo เหลือ 0, **constraints ชุดแรกครบแล้ว** · **Production ไม่ถูกแตะ**
+**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A + B + D แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) · **Migration แรก `20260721153936_init_schema_v1` Apply แล้วบน Development DB (local Docker `postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)** — 56 ตาราง (app) + 21 enum, ไม่มี drift, seed master+dev สำเร็จ · **Migration 2 `20260721231914_br44_check_different_entry_person` Apply แล้ว (BR-44 trigger)** · **Migration 3 `20260721234500_add_community_primary_tambon_partial_unique` Apply แล้ว (`ux_community_primary_tambon`)** — integration tests 15 ผ่าน, todo เหลือ 0, **constraints ชุดแรกครบแล้ว** · **Authentication Foundation + UI Shell เสร็จ (2026-07-21)** — Next.js 16.2.11 + Better Auth 1.6.23 + Tailwind 4.3.3, Login/Protected Layout/Dashboard ภาพรวม, Dev Test User (`dev-admin@test.invalid`), tests รวม **57/57 ผ่าน**, `next build` ผ่าน (ดู `docs/22` — ยังไม่มี RBAC, ยังไม่ commit) · **Production ไม่ถูกแตะ**
 
 ---
 
@@ -20,9 +20,9 @@
 | `schema.prisma` v3.1 | 🟢 แก้เสร็จ | 1578 บรรทัด, commit `b62957a` |
 | `prisma validate` | 🟢 ผ่าน | รันด้วย dummy `DATABASE_URL` (validate ไม่ต่อ DB) |
 | Coverage Pure Function | 🟢 สร้างแล้ว | `domain/coverage/coverage.ts` (ตามคำตัดสิน #1, #2) |
-| Unit tests | 🟢 29/29 ผ่าน | `tests/unit/coverage.test.ts` (7) + `schema-structure.test.ts` (22 — รวม Conflict A/B/D) |
+| Unit tests | 🟢 57/57 ผ่าน (รวม integration) | coverage (7) + schema-structure (22) + db integration (15) + auth-ui (7) + auth integration (6) |
 | TypeScript strict check | 🟢 ผ่าน | `npx tsc --noEmit` ไม่มี error |
-| Package ติดตั้ง | 🟢 แล้ว | `prisma 5.22.0`, `@prisma/client 5.22.0`, `better-auth 1.6.23`, `vitest 2.1.8`, `tsx 4.19.2` |
+| Package ติดตั้ง | 🟢 แล้ว | `prisma 5.22.0`, `@prisma/client 5.22.0`, `better-auth 1.6.23`, `vitest 2.1.8`, `tsx 4.19.2` · **เพิ่ม 2026-07-21:** `next 16.2.11`, `react/react-dom 19.2.8`, `zod 4.4.3`, `tailwindcss 4.3.3` (ดู `docs/22`) |
 | SQL Drafts | 🟢 เขียนครบ 6 กลุ่ม | `database/migrations-draft/00→50`, `prisma/migrations-draft/0001` |
 
 ### รายละเอียด Schema v3.1 ที่ยืนยันแล้ว
@@ -115,7 +115,9 @@
 5. ✅ ~~แก้ integration tests ที่ skip เสมอ (`skipIf` timing)~~ — **ทำแล้ว** (`describe.skipIf(!isLocalDevDb)`, `npm run test:integration`)
 6. ✅ ~~Formalize BR-44 trigger เป็น migration~~ — **ทำแล้ว** (`20260721231914_br44_check_different_entry_person` applied บน Dev · 4 tests BR-44 รันจริง+ผ่าน)
 7. ✅ ~~Formalize `ux_community_primary_tambon` partial unique~~ — **ทำแล้ว** (`20260721234500_add_community_primary_tambon_partial_unique` applied บน Dev · 7 tests รันจริง+ผ่าน · รวม integration = 15 ผ่าน, todo เหลือ 0 · **งาน database constraints ชุดแรกครบแล้ว**)
-8. Formalize Custom SQL ที่เหลือทีละ migration (location/batch/audit triggers → CHECK constraints อื่น → GIST/GIN 0005 → views 0006)
-9. รัน migration 2 ครั้งติดกัน + ตรวจ idempotency
+8. ✅ ~~Authentication Foundation + UI Shell~~ — **ทำแล้ว 2026-07-21** (Next.js 16.2.11 App Router + Better Auth 1.6.23 · Login/Logout/Protected Layout/Dashboard · Dev Test User Option B · tests 57/57 · build ผ่าน · ดู `docs/22` — ยังไม่ commit)
+9. ผูก RBAC (`UserRole` + Community Scope) ตรวจฝั่ง server
+10. Formalize Custom SQL ที่เหลือทีละ migration (location/batch/audit triggers → CHECK constraints อื่น → GIST/GIN 0005 → views 0006)
+11. รัน migration 2 ครั้งติดกัน + ตรวจ idempotency
 
 > **ยังห้าม:** Apply Production · `prisma db push` / `migrate deploy` / `migrate reset` · ลบ volume · Commit/Push · Risk Final logic · Encryption · แก้รหัสพื้นที่โดยเดา
