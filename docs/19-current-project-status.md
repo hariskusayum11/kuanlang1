@@ -1,7 +1,7 @@
 # 19 — Current Project Status (สถานะจริงจาก Repository)
 
 > **วัตถุประสงค์:** สรุป **สถานะจริง** ของโปรเจกต์ที่อ่านจากไฟล์ใน Repository โดยตรง (ไม่พึ่งเอกสารเก่าที่อาจล้าสมัย)
-> **อัปเดต:** 2026-07-21 (รอบ Conflict A/B/D — ดู `docs/20`)
+> **อัปเดต:** 2026-07-21 (รอบ Conflict A/B/D + **Apply Migration แรก** `init_schema_v1` บน Development DB — ดู `docs/20`, `docs/21`)
 > **ที่มา:** อ่านจาก `schema.prisma` (v3.1), `package.json`, `domain/`, `tests/`, `prisma/migrations-draft/`, `database/migrations-draft/`, และผลรัน `npm test` / `tsc` / `prisma validate`
 > **⚠️ หมายเหตุความล้าสมัย:** `docs/16`, `docs/17`, `docs/18` (เวอร์ชันเดิม) เขียนว่า "รอบนี้ยังไม่แก้ schema" — **ไม่ตรงกับความจริง** เพราะ schema v3.1 ถูกแก้และ commit แล้ว ไฟล์นี้คือสถานะจริงที่ยึดถือได้
 
@@ -9,7 +9,7 @@
 
 ## 1. สรุปหนึ่งบรรทัด
 
-**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A (PostGIS Unsupported) + B (pg_trgm) + D (EvacuationSiteType) แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) แต่ **ยังไม่มี real migration / ไม่มี `.env` / ไม่มี Database** — พร้อมสร้าง DDL Migration แต่ยังไม่ได้ทำ
+**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A + B + D แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) · **Migration แรก `20260721153936_init_schema_v1` Apply แล้วบน Development DB (local Docker `postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)** — 56 ตาราง (app) + 21 enum, ไม่มี drift, seed master+dev สำเร็จ · **Production ไม่ถูกแตะ**
 
 ---
 
@@ -39,10 +39,12 @@
 
 | หัวข้อ | สถานะ | บล็อกโดย |
 |---|---|---|
-| Real `prisma/migrations/` | 🔴 ยังไม่มี | มีแค่ draft (ยังไม่ formalize) |
-| `.env` / `DATABASE_URL` จริง | 🔴 ยังไม่มี | ต้องมี Development DB ก่อน |
-| Development Database (PG16+PostGIS) | 🔴 ยังไม่ตั้ง | Docker Compose ยังไม่รัน |
-| Apply Migration | 🔴 ยังไม่ทำ | ตามคำสั่ง — ห้าม apply Production |
+| Real `prisma/migrations/` | ✅ **สร้างแล้ว** | `20260721153936_init_schema_v1` (56 ตาราง, 21 enum, ไม่มี destructive SQL) |
+| `.env` / `DATABASE_URL` จริง | ✅ **สร้างแล้ว** | local dev เท่านั้น (`localhost:5432/kuanlang_dev`) · `.env.example` committable, `.env` gitignored |
+| Development Database (PG16+PostGIS) | ✅ **ตั้งแล้ว** | Docker `postgis/postgis:16-3.4` (port 5432) · PostGIS 3.4.3 · pg_trgm 1.6 |
+| Apply Migration | ✅ **Apply แล้ว (Dev เท่านั้น)** | `migrate dev` → "up to date", ไม่มี drift · **Production ไม่ถูกแตะ** |
+| Integration tests (DB) | ✅ **รันจริง + ผ่าน** | 4 tests ผ่าน + 2 `it.todo` (รอ custom SQL 0003/0004) · แก้บั๊ก `skipIf` แล้ว → `describe.skipIf(!isLocalDevDb)` |
+| Custom SQL formalize (0002–0006) | 🔴 ยังไม่ทำ | trigger/GIST/GIN/view ยังเป็น draft (Conflict E/F) |
 | `EvacuationSiteType` enum (FIX-45) | ✅ **แก้แล้ว** (Conflict D ปิด 2026-07-21) | เจ้าของยืนยัน 6 ค่า, ไม่มี `UNKNOWN`, `EvacuationSite.type` nullable, Phase 2 Module (ดู `docs/20`) |
 | PostGIS columns ใน schema | ✅ **แก้แล้ว** (Conflict A) | ประกาศ `Unsupported("geography(...)")` แล้ว — ไม่ drift (ดู `docs/20`) |
 | `pg_trgm` ใน datasource | ✅ **แก้แล้ว** (Conflict B) | `extensions = [postgis, pg_trgm]` — validate ผ่าน (ดู `docs/20`) |
@@ -106,9 +108,10 @@
 
 1. ✅ ~~เพิ่ม `pg_trgm` + `Unsupported("geography(...)")`~~ — **ทำแล้ว** (Conflict A, B — ดู `docs/20`)
 2. ✅ ~~`EvacuationSiteType` (FIX-45)~~ — **ทำแล้ว** (Conflict D ปิด 2026-07-21 — enum 6 ค่า, Phase 2 Module; `docs/20`)
-3. ตั้ง Development DB (Docker Compose) + `.env` (`DATABASE_URL`)
-4. `prisma migrate dev --create-only` เพื่อสร้าง migration แรก แล้วแทรก custom SQL ตามลำดับ 0002–0006
-5. รัน migration 2 ครั้งติดกัน → ต้องไม่ error (Idempotent)
-6. ตรวจ drift ด้วย `prisma migrate dev` → ต้องไม่มี drift
+3. ✅ ~~ตั้ง Development DB (Docker Compose) + `.env`~~ — **ทำแล้ว** (`postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)
+4. ✅ ~~สร้าง + Apply Migration แรก~~ — **ทำแล้ว** (`20260721153936_init_schema_v1` — 56 ตาราง, 21 enum, ไม่มี drift)
+5. ✅ ~~แก้ integration tests ที่ skip เสมอ (`skipIf` timing)~~ — **ทำแล้ว** (`describe.skipIf(!isLocalDevDb)`, 4 tests รันจริง+ผ่าน, +2 todo; `npm run test:integration`)
+6. Formalize Custom SQL (trigger/GIST spatial/GIN trigram/view) เป็น migration 0002–0006 (Conflict E/F) → แล้วเปิด 2 `it.todo` (trigger BR-44, partial-unique) ให้รันจริง
+7. รัน migration 2 ครั้งติดกัน + ตรวจ idempotency
 
-> **ยังห้าม:** Apply Production · `prisma db push` · Risk Final logic · Encryption · แก้รหัสพื้นที่โดยเดา
+> **ยังห้าม:** Apply Production · `prisma db push` / `migrate deploy` / `migrate reset` · ลบ volume · Commit/Push · Risk Final logic · Encryption · แก้รหัสพื้นที่โดยเดา

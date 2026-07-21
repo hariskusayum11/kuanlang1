@@ -8,7 +8,10 @@
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run tests/integration",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:dev": "tsx prisma/seed.dev.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

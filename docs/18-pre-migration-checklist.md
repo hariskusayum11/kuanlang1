@@ -3,7 +3,9 @@
 > **วัตถุประสงค์:** ระบุ **ทุกเงื่อนไข** ที่ต้องผ่านก่อนสร้าง/รัน Migration แรก และก่อน Seed / เก็บข้อมูลจริง
 > **ฐานอ้างอิง:** [16-owner-decisions.md](16-owner-decisions.md) (รอบ 1 #1..16 + รอบ 2 R2-#1..9), [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md), [14-open-questions.md](14-open-questions.md)
 > **🟢 สถานะจริง (อัปเดต 2026-07-21):** `schema.prisma` **v3.1 แก้แล้ว** (Gate B) · `prisma validate` **ผ่าน** · Unit tests **29/29 ผ่าน** · `tsc --noEmit` **ผ่าน** · Package ติดตั้งแล้ว (`better-auth 1.6.23`, `prisma 5.22.0`) · **Conflict A+B+D แก้แล้ว** (`EvacuationSiteType` สร้างแล้ว — Phase 2 Module; ดู `docs/20`)
-> **🔴 ยังค้าง:** ยังไม่มี real `prisma/migrations/` (มีแค่ draft) · ยังไม่มี `.env` / Development Database · ยังไม่ Apply Migration
+> **🟢 Migration แรก Apply แล้ว (2026-07-21):** Docker `postgis/postgis:16-3.4` (port `5432`) · PostgreSQL 16 · PostGIS **3.4.3** · pg_trgm **1.6** · Migration `20260721153936_init_schema_v1` · **56 ตาราง (app) + 21 enum** · Dev DB "up to date" ไม่มี drift · Seed (master + dev) สำเร็จ · **Production ไม่ถูกแตะ** (local dev เท่านั้น)
+> **🟢 Integration tests แก้แล้ว (2026-07-21):** ปิดบั๊ก `skipIf(!dbReady)` → ใช้ `describe.skipIf(!isLocalDevDb)` (รู้ค่าตอน collection) + `beforeAll` `$connect()` throw เมื่อต่อไม่ได้ + `afterAll` `$disconnect()` · **4 integration tests รันจริง + ผ่านทั้งหมด** (+2 `it.todo` รอ custom SQL 0003/0004)
+> **🔴 ยังค้าง:** Custom SQL (trigger/spatial GIST/trigram GIN/view) draft — ยังไม่ formalize เป็น migration 0002–0006
 > **📌 หมายเหตุ:** ข้อความ "รอบนี้ยังไม่แก้ schema" ในเวอร์ชันเดิมของไฟล์นี้ **ล้าสมัย** — ดูสถานะจริงฉบับเต็มที่ [19-current-project-status.md](19-current-project-status.md)
 
 ---
@@ -73,7 +75,7 @@
 - [ ] **ห้าม** เปิด Retention DELETE (รอ PDPA)
 - [ ] `database/drafts/00_postgis_extensions.sql` ทำเครื่องหมาย "ห้ามรันมือ" (เก็บอ้างอิง)
 - [ ] รัน Migration **2 ครั้งติดกัน** → ไม่ Error
-- [ ] `prisma migrate dev` หลัง migrate → **ไม่มี Drift**
+- [x] `prisma migrate dev` หลัง migrate → **ไม่มี Drift** *(migrate status: "Database schema is up to date!"; `db pull --print` เตือนเฉพาะ 3 geography Unsupported ที่คาดไว้)*
 
 ---
 
@@ -93,12 +95,12 @@
 
 ## Gate E — Seed: Master Data + ชุมชน (บางส่วนพร้อม)
 
-- [ ] แยก `seeds/production/` + `seeds/development/` + Guard `NODE_ENV`
-- [ ] **รหัสชุมชน:** `TK01`(ท่าเคียน), `PM01`(ประสานมิตร), `KS01`(ควนสันติ), `PW01`(ปลักหว้า), `NK01`(หน้าควน)
-- [ ] ลบชุมชนตัวอย่าง `KL01/KL02/KL03/HY01/HY02` (เพิ่มขั้นตอนลบ — upsert ไม่ลบให้)
-- [ ] `CommunityTambon`: ควนสันติ = 2 แถว (ควนลัง + หาดใหญ่), `isPrimary = false` ทั้งคู่
-- [ ] `totalHouseholds = null` ทั้ง 5 ชุมชน (ห้าม 600, ห้าม 0)
-- [ ] `targetCoveragePercent = 60`
+- [x] แยก `prisma/seed.ts` (production master) + `prisma/seed.dev.ts` (dev) + Guard `NODE_ENV` *(dev seed มี guard กัน production)*
+- [x] **รหัสชุมชน:** `TK01`(ท่าเคียน), `PM01`(ประสานมิตร), `KS01`(ควนสันติ), `PW01`(ปลักหว้า), `NK01`(หน้าควน) *(seed แล้ว — 5 ชุมชนใน DB)*
+- [x] ลบชุมชนตัวอย่าง `KL01/KL02/KL03/HY01/HY02` (เพิ่มขั้นตอนลบ — upsert ไม่ลบให้) *(ยืนยัน: KL01/HY01 = 0 แถว)*
+- [x] `CommunityTambon`: ควนสันติ = 2 แถว (ควนลัง + หาดใหญ่), `isPrimary = false` ทั้งคู่ *(ยืนยันใน DB: KS01 = 2 tambon, isPrimary=false ทั้งคู่)*
+- [x] `totalHouseholds = null` ทั้ง 5 ชุมชน (ห้าม 600, ห้าม 0)
+- [x] `targetCoveragePercent = 60`
 - [ ] `exportWarningCoveragePercent = 80` ใน `SystemSetting` (Config แยก)
 - [ ] Master Data 7 ชุด ตรงกระดาษ + แก้ Comment "9 ประเภทอาสา" → 8
 - [ ] ลบ `HAT_YAI_*` bbox → `COORD_BOUNDS_COUNTRY`
@@ -164,6 +166,8 @@
 
 ## Gate J — Verification Tests (หลัง Migration)
 
+> **หมายเหตุ (2026-07-21 — อัปเดตหลังแก้ integration tests):** Unit tests 29/29 ผ่าน · **Integration tests (`tests/integration/db.test.ts`) รันจริงแล้ว: 4 ผ่าน + 2 `it.todo`** (todo = trigger BR-44 รอ SQL 0003, partial-unique รอ SQL 0004) · บั๊กเดิม `it.skipIf(!dbReady)` (ประเมินก่อน `beforeAll`) แก้แล้วด้วย `describe.skipIf(!isLocalDevDb)` จาก `DATABASE_URL` · Invariant ที่ตรวจอัตโนมัติแล้ว: 5 ชุมชนครบ, ไม่มี KL01/HY01, KS01 2 ตำบล isPrimary=false, household=0 (ไม่มีข้อมูลบุคคล), evacuation_site=0 (Phase 2 ไม่ seed)
+
 - [ ] Migration idempotency (รัน 2 ครั้ง)
 - [ ] `rawScore = 115` บันทึกได้ (ck ไม่ปฏิเสธ) — RISK-01
 - [ ] `memberCount = 500` บันทึกได้ (โรงเรียน) — SQL-12
@@ -173,8 +177,8 @@
 - [ ] เกณฑ์ผ่าน Coverage `> 60` (60 พอดี = ไม่ผ่าน)
 - [ ] Seed idempotency (รัน 3 ครั้ง ผลเหมือนเดิม)
 - [ ] ไม่มี `RESCUE_VOLUNTEER` / `targetHouseholds` / 600 / 3,000 เหลือ
-- [ ] ควนสันติ 2 แถว `CommunityTambon`, `isPrimary` false ทั้งคู่
-- [ ] รหัสชุมชน = TK01/PM01/KS01/PW01/NK01
+- [x] ควนสันติ 2 แถว `CommunityTambon`, `isPrimary` false ทั้งคู่ *(ยืนยันด้วยมือใน DB)*
+- [x] รหัสชุมชน = TK01/PM01/KS01/PW01/NK01 *(ยืนยันด้วยมือใน DB)*
 
 ---
 
@@ -204,8 +208,10 @@
 
 ---
 
-## ยืนยันขอบเขตรอบนี้
+## ยืนยันขอบเขต (ปรับปรุง 2026-07-21 — หลัง Apply Migration แรก)
 
-- 🔴 **ไม่แก้** `schema.prisma`, `seed.ts`, `00_postgis_extensions.sql`
-- 🔴 **ไม่สร้าง** Migration
-- 🔴 **ไม่ติดตั้ง** Package (เวอร์ชัน Better Auth `1.6.23` บันทึกไว้เพื่อดำเนินการภายหลัง)
+- 🟢 **สร้าง + Apply** Migration `20260721153936_init_schema_v1` บน **Development DB (local Docker) เท่านั้น**
+- 🟢 Seed master + dev บน Development DB (ข้อมูลสังเคราะห์/master ขั้นต่ำ — ไม่มีข้อมูลบุคคลจริง)
+- 🔴 **ไม่แตะ Production** · ไม่ `db push` / `migrate deploy` / `migrate reset` · ไม่ลบ volume · ไม่ commit/push
+- 🔴 **ยังไม่ทำ:** Custom SQL (trigger/GIST/GIN/view) formalize (0002–0006), UI/API/Server Actions, Risk logic, Encryption
+- 📌 Better Auth `1.6.23` ติดตั้งแล้ว (dependency) — reconcile ตาราง Auth (Gate D) ยังเป็นงานถัดไป

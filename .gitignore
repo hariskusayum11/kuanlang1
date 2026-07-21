@@ -16,9 +16,6 @@ out/
 dist/
 build/
 
-# Prisma
-prisma/migrations/**/migration_lock.toml
-
 # Logs
 *.log
 npm-debug.log*
