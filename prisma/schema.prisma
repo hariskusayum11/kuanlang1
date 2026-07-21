@@ -32,7 +32,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [postgis]
+  extensions = [postgis, pg_trgm]
 }
 
 // =============================================================================
@@ -501,16 +501,16 @@ model CommunityTambon {
 /// ⭐ ใหม่ (STRUCTURE_ONLY) — ขอบเขตชุมชนเชิงภูมิศาสตร์ (MultiPolygon + version)
 /// คอลัมน์ geom = geography(MultiPolygon,4326) เพิ่มผ่าน Custom SQL (Unsupported)
 model CommunityBoundary {
-  id            String    @id @default(cuid())
+  id            String                                        @id @default(cuid())
   communityId   String
-  version       Int       @default(1)
-  // geom — geography(MultiPolygon, 4326) ผ่าน Custom SQL
+  version       Int                                           @default(1)
+  geom          Unsupported("geography(MultiPolygon, 4326)")? /// ขอบเขต (Prisma รับรู้เพื่อกัน Drift; ชื่อคอลัมน์ "geom")
   source        String? /// "เทศบาลนครหาดใหญ่" / "วาดโดยชุมชน"
   accuracyNote  String?
-  isApproved    Boolean   @default(false)
+  isApproved    Boolean                                       @default(false)
   approvedById  String?
   approvedAt    DateTime?
-  effectiveFrom DateTime  @default(now())
+  effectiveFrom DateTime                                      @default(now())
   effectiveTo   DateTime? /// null = ใช้อยู่ปัจจุบัน
 
   createdAt DateTime @default(now())
@@ -855,9 +855,9 @@ model Household {
 
   // --- พิกัด GPS (📋 คีย์จากกระดาษ — เก็บดิบ + Derived) ---
   coordinateRawText String? /// 📋 พิกัดตามตัวอักษรบนกระดาษ (ช่องเดียว) — Double-entry เทียบที่นี่ (QM-04/R2 #12)
-  latitude          Decimal? @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText (parse App-layer)
-  longitude         Decimal? @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText
-  // location = geography(Point,4326) เพิ่มผ่าน Custom SQL (Unsupported) + Trigger จาก lat/lng
+  latitude          Decimal?                               @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText (parse App-layer)
+  longitude         Decimal?                               @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText
+  location          Unsupported("geography(Point, 4326)")? /// 🔒 (L3) — Derived จาก lat/lng ผ่าน Trigger (Prisma รับรู้เพื่อกัน Drift; @map ตรงชื่อคอลัมน์ "location")
 
   // --- ส่วนที่ 1 ข้อ 4: ผู้อยู่อาศัย ---
   memberCount     Int? /// จำนวนสมาชิกในครัวเรือน/หน่วยงาน (CHECK 0-5000 ใน SQL — SQL-12)
@@ -1223,23 +1223,23 @@ model VolunteerInterest {
 
 /// จุดอพยพหลัก (ข้อมูลจากเทศบาล/ชุมชน ไม่ใช่จากแบบสอบถาม)
 model EvacuationSite {
-  id                      String              @id @default(cuid())
+  id                      String                                 @id @default(cuid())
   communityId             String
   name                    String /// ชื่อจุดอพยพ เช่น "โรงเรียนควนลังวิทยา"
   type                    NearestEvacSiteType
   address                 String?
-  latitude                Decimal             @db.Decimal(10, 7)
-  longitude               Decimal             @db.Decimal(10, 7)
-  // location           — geography(Point, 4326) ผ่าน raw SQL
+  latitude                Decimal                                @db.Decimal(10, 7)
+  longitude               Decimal                                @db.Decimal(10, 7)
+  location                Unsupported("geography(Point, 4326)")? /// Derived จาก lat/lng ผ่าน Trigger (Prisma รับรู้เพื่อกัน Drift; ชื่อคอลัมน์ "location")
   capacity                Int? /// ความจุ (คน)
-  hasToilet               Boolean             @default(false)
-  hasKitchen              Boolean             @default(false)
-  hasPowerBackup          Boolean             @default(false)
-  hasMedicalPoint         Boolean             @default(false)
-  isAccessibleForDisabled Boolean             @default(false)
+  hasToilet               Boolean                                @default(false)
+  hasKitchen              Boolean                                @default(false)
+  hasPowerBackup          Boolean                                @default(false)
+  hasMedicalPoint         Boolean                                @default(false)
+  isAccessibleForDisabled Boolean                                @default(false)
   contactName             String? /// ผู้ประสานงาน
   contactPhone            String? /// เบอร์
-  isActive                Boolean             @default(true)
+  isActive                Boolean                                @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

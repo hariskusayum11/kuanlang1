@@ -11,6 +11,9 @@ const fieldNames = (n: string) => model(n).fields.map((f) => f.name);
 const sqlDir = join(process.cwd(), "database", "migrations-draft");
 const sql = (f: string) => readFileSync(join(sqlDir, f), "utf8");
 
+// Unsupported() fields ไม่ปรากฏใน DMMF → ต้องตรวจจาก schema text ตรง ๆ
+const schemaText = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
+
 describe("Schema structure (DMMF — ไม่ต้องมี DB)", () => {
   // ข้อ 1: Community หนึ่งแห่งมีหลายตำบล
   it("ข้อ1: Community–Tambon เป็น M:N ผ่าน CommunityTambon", () => {
@@ -111,5 +114,39 @@ describe("Schema structure (DMMF — ไม่ต้องมี DB)", () => {
     // ควนสันติมี 2 tambons (khuanLang + hatyaiTambon), isPrimary:false ทั้งคู่
     expect(ksBlock).toMatch(/khuanLang\.id, isPrimary: false/);
     expect(ksBlock).toMatch(/hatyaiTambon\.id, isPrimary: false/);
+  });
+});
+
+// Conflict A + B (docs/20) — ตรวจจาก schema text (Unsupported ไม่อยู่ใน DMMF)
+describe("Conflict A/B resolution (schema text)", () => {
+  // Conflict B: pg_trgm ประกาศใน datasource ตรงกับ 00_extensions.sql
+  it("Conflict B: datasource ประกาศ extensions [postgis, pg_trgm]", () => {
+    expect(schemaText).toMatch(/extensions\s*=\s*\[\s*postgis\s*,\s*pg_trgm\s*\]/);
+  });
+
+  // Conflict A: PostGIS columns ประกาศด้วย Unsupported() ชนิดตรงกับ 10_postgis_columns.sql
+  it("Conflict A: Household.location = Unsupported geography(Point,4326) (optional)", () => {
+    expect(schemaText).toMatch(/location\s+Unsupported\("geography\(Point, 4326\)"\)\?/);
+  });
+
+  it("Conflict A: CommunityBoundary.geom = Unsupported geography(MultiPolygon,4326) (optional)", () => {
+    expect(schemaText).toMatch(/geom\s+Unsupported\("geography\(MultiPolygon, 4326\)"\)\?/);
+  });
+
+  it("Conflict A: มี Unsupported geography(Point,4326) 2 จุด (household + evacuation_site)", () => {
+    const matches = schemaText.match(/Unsupported\("geography\(Point, 4326\)"\)\?/g) ?? [];
+    expect(matches.length).toBe(2);
+  });
+
+  // ชนิดต้องตรง SQL draft จริง — เป็น geography (ไม่ใช่ geometry) ทั้งหมด
+  it("Conflict A: ไม่ใช้ geometry(...) (SQL draft ใช้ geography)", () => {
+    expect(schemaText).not.toMatch(/Unsupported\("geometry\(/);
+  });
+
+  // Conflict D: HALT — ยังไม่สร้าง EvacuationSiteType (รอค่า enum จากเจ้าของ)
+  it("Conflict D (halt): ยังไม่มี enum EvacuationSiteType; EvacuationSite.type ยังใช้ NearestEvacSiteType", () => {
+    expect(schemaText).not.toMatch(/enum\s+EvacuationSiteType/);
+    const ev = model("EvacuationSite").fields.find((f) => f.name === "type")!;
+    expect(ev.type).toBe("NearestEvacSiteType");
   });
 });

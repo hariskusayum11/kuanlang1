@@ -1,7 +1,7 @@
 # 19 — Current Project Status (สถานะจริงจาก Repository)
 
 > **วัตถุประสงค์:** สรุป **สถานะจริง** ของโปรเจกต์ที่อ่านจากไฟล์ใน Repository โดยตรง (ไม่พึ่งเอกสารเก่าที่อาจล้าสมัย)
-> **อัปเดต:** 2026-07-21
+> **อัปเดต:** 2026-07-21 (รอบ Conflict A/B/D — ดู `docs/20`)
 > **ที่มา:** อ่านจาก `schema.prisma` (v3.1), `package.json`, `domain/`, `tests/`, `prisma/migrations-draft/`, `database/migrations-draft/`, และผลรัน `npm test` / `tsc` / `prisma validate`
 > **⚠️ หมายเหตุความล้าสมัย:** `docs/16`, `docs/17`, `docs/18` (เวอร์ชันเดิม) เขียนว่า "รอบนี้ยังไม่แก้ schema" — **ไม่ตรงกับความจริง** เพราะ schema v3.1 ถูกแก้และ commit แล้ว ไฟล์นี้คือสถานะจริงที่ยึดถือได้
 
@@ -9,7 +9,7 @@
 
 ## 1. สรุปหนึ่งบรรทัด
 
-**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 17/17 ผ่าน + tsc ผ่าน** แต่ **ยังไม่มี real migration / ไม่มี `.env` / ไม่มี Database** — พร้อมสร้าง DDL Migration แต่ยังไม่ได้ทำ
+**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 23/23 ผ่าน + tsc ผ่าน** · **Conflict A (PostGIS Unsupported) + B (pg_trgm) แก้แล้ว** · **Conflict D (EvacuationSiteType) HALT — รอค่า enum** แต่ **ยังไม่มี real migration / ไม่มี `.env` / ไม่มี Database** — พร้อมสร้าง DDL Migration แต่ยังไม่ได้ทำ
 
 ---
 
@@ -43,9 +43,9 @@
 | `.env` / `DATABASE_URL` จริง | 🔴 ยังไม่มี | ต้องมี Development DB ก่อน |
 | Development Database (PG16+PostGIS) | 🔴 ยังไม่ตั้ง | Docker Compose ยังไม่รัน |
 | Apply Migration | 🔴 ยังไม่ทำ | ตามคำสั่ง — ห้าม apply Production |
-| `EvacuationSiteType` enum (FIX-45) | 🔴 ยังไม่ทำ | `EvacuationSite.type` ยังใช้ `NearestEvacSiteType` |
-| PostGIS columns ใน schema | 🟡 อยู่ใน custom SQL เท่านั้น | ไม่มี `Unsupported()` → drift risk (ดู §5) |
-| `pg_trgm` ใน datasource | 🟡 ไม่ประกาศ | สร้างผ่าน custom SQL เท่านั้น (ดู §5) |
+| `EvacuationSiteType` enum (FIX-45) | 🔴 **HALT** (Conflict D) | อนุมัติให้สร้าง แต่**ไม่มีเอกสารระบุค่า enum** → ห้ามเดา (ดู `docs/20`) |
+| PostGIS columns ใน schema | ✅ **แก้แล้ว** (Conflict A) | ประกาศ `Unsupported("geography(...)")` แล้ว — ไม่ drift (ดู `docs/20`) |
+| `pg_trgm` ใน datasource | ✅ **แก้แล้ว** (Conflict B) | `extensions = [postgis, pg_trgm]` — validate ผ่าน (ดู `docs/20`) |
 | Risk Final formula/leveling | 🔴 รอ Business Rule (Q-03) | **ห้าม implement** |
 | Encryption (AES-256-GCM/Blind Index) | 🔴 รอ Legal/PDPA (Q-04) | **ห้าม implement** |
 | รหัสพื้นที่จริง (Hat Yai) | 🔴 UNVERIFIED (Q-24) | 9001 น่าจะผิด — บล็อก Seed Production |
@@ -61,7 +61,7 @@
 | ไฟล์ | เนื้อหา | Extension ที่ต้องมีก่อน |
 |---|---|---|
 | `00_extensions.sql` | `CREATE EXTENSION IF NOT EXISTS postgis; pg_trgm;` | — |
-| `10_postgis_columns.sql` | ADD COLUMN location/geom (geography) บน household/evacuation_site/community_boundary | postgis |
+| `10_postgis_columns.sql` | ADD COLUMN location/geom (geography) บน household/evacuation_site/community_boundary — **หมายเหตุ: หลังแก้ Conflict A คอลัมน์เหล่านี้ประกาศใน schema แล้ว → Prisma จัดการเอง; ไฟล์นี้เป็น fallback idempotent** | postgis |
 | `20_functions_triggers.sql` | 6 ฟังก์ชัน/trigger: update_household_location, update_evac_site_location, `check_different_entry_person` (BR-44), update_batch_counts, release_expired_locks, prevent_audit_modification (`RETURN OLD`) | — |
 | `30_constraints.sql` | CHECK ทั้งหมดห่อ `DO $$ IF NOT EXISTS` + `ux_community_primary_tambon` partial unique (WHERE isPrimary=true) | — |
 | `40_indexes.sql` | GIST spatial partial + GIN trigram บน respondentName/placeName/fullName | pg_trgm |
@@ -75,10 +75,10 @@
 
 | # | ประเด็น | รายละเอียด | ผลกระทบ |
 |---|---|---|---|
-| **A** | location/geom ไม่อยู่ใน schema.prisma | คอลัมน์ geography อยู่ใน `10_postgis_columns.sql` เท่านั้น ไม่มี `Unsupported("geography(...)")` ใน schema | 🔴 **Prisma drift** — `migrate dev` จะเห็นคอลัมน์ที่ schema ไม่รู้จัก (Gate C กำหนดให้ใช้ `Unsupported()`) |
-| **B** | `pg_trgm` ไม่ประกาศใน datasource | `datasource` มีแค่ `extensions = [postgis]`; `pg_trgm` สร้างผ่าน `00_extensions.sql` เท่านั้น แต่ index ใน `40` ต้องใช้ | 🟡 ถ้ารัน `40` โดยยังไม่รัน `00` → error; และ Prisma ไม่จัดการ extension นี้ |
+| **A** | ~~location/geom ไม่อยู่ใน schema.prisma~~ ✅ **แก้แล้ว** | ประกาศ `Unsupported("geography(Point, 4326)")` (household+evacuation_site) และ `Unsupported("geography(MultiPolygon, 4326)")` (community_boundary) ใน schema แล้ว | ✅ Prisma รับรู้ → ไม่ drift · `10_postgis_columns.sql` เป็น fallback idempotent |
+| **B** | ~~`pg_trgm` ไม่ประกาศใน datasource~~ ✅ **แก้แล้ว** | `extensions = [postgis, pg_trgm]` (Prisma 5.22.0 + `postgresqlExtensions` preview) | ✅ validate ผ่าน · Prisma จัดการ extension ให้ |
 | **C** | postgis extension สร้าง 2 ที่ | `0001_init` บรรทัด 1 + `00_extensions.sql` | 🟢 Idempotent (`IF NOT EXISTS`) — ซ้ำซ้อนแต่ไม่อันตราย |
-| **D** | `EvacuationSiteType` ไม่ถูกสร้าง | FIX-45 ยังไม่ทำ; `EvacuationSite.type` ใช้ `NearestEvacSiteType` | 🟡 ชื่อ enum ไม่ตรงเจตนา — ต้องตัดสินใจก่อน migration |
+| **D** | `EvacuationSiteType` ไม่ถูกสร้าง | 🔴 **HALT** — FIX-45/doc17 อนุมัติให้สร้าง แต่**ไม่มีเอกสารใดระบุค่า enum**; instruction ห้ามเดา | 🔴 รอเจ้าของยืนยันค่า enum (ดู `docs/20` §6) — `EvacuationSite.type` คง `NearestEvacSiteType` ไว้ก่อน |
 | **E** | ไม่มี real `prisma/migrations/` + เลขไม่ตรงกัน | draft 2 โฟลเดอร์ใช้เลขคนละแบบ (prisma: `0001`; database: `00/10/20/30/40/50`) ยังไม่ merge เป็น layout เป้าหมาย `0001–0006` | 🔴 ต้อง formalize ก่อน apply |
 | **F** | prisma draft เป็น `.sql` หลวม | ไม่ใช่ Prisma migration folder จริง (ขาด `migration.sql` + `migration_lock.toml`) | 🔴 รัน `prisma migrate` ไม่ได้ตรง ๆ |
 
@@ -104,8 +104,8 @@
 
 ## 7. ขั้นต่อไปที่แนะนำ (เมื่อได้รับอนุญาต)
 
-1. เพิ่ม `pg_trgm` ใน `datasource extensions` และ `Unsupported("geography(...)")` ใน schema (แก้ conflict A, B)
-2. ตัดสินใจ `EvacuationSiteType` (FIX-45) — แก้หรือคงไว้ (conflict D)
+1. ✅ ~~เพิ่ม `pg_trgm` + `Unsupported("geography(...)")`~~ — **ทำแล้ว** (Conflict A, B — ดู `docs/20`)
+2. 🔴 `EvacuationSiteType` (FIX-45) — **HALT** รอเจ้าของยืนยันค่า enum (Conflict D — `docs/20` §6)
 3. ตั้ง Development DB (Docker Compose) + `.env` (`DATABASE_URL`)
 4. `prisma migrate dev --create-only` เพื่อสร้าง migration แรก แล้วแทรก custom SQL ตามลำดับ 0002–0006
 5. รัน migration 2 ครั้งติดกัน → ต้องไม่ error (Idempotent)
