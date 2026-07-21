@@ -1,0 +1,1578 @@
+// =============================================================================
+// ระบบสารสนเทศการจัดการภัยพิบัติโดยชุมชนเป็นฐาน
+// เครือข่าย "สองคลองควนลัง" (SKL-FRIS)
+// Prisma Schema v3.1 — Paper-first, Back-office Entry Model
+// =============================================================================
+// เทคโนโลยี: PostgreSQL 16 + PostGIS 3.4
+// Auth: Better Auth 1.6.23 (Prisma Adapter) — RBAC ใช้ UserRole/UserCommunityScope ของระบบเอง
+// หมายเหตุ:
+//   🔒 = ข้อมูลอ่อนไหว รอ Encryption (ยังไม่ implement — รอ Key Management + PDPA / R2-#5)
+//   ⭐ = ฟิลด์ Double-entry (ต้องคีย์ 2 ครั้งเพื่อยืนยัน)
+//   📋 = ค่ามาจากกระดาษ (ห้าม default = ค่าปัจจุบัน)
+// -----------------------------------------------------------------------------
+// v3.1 (รอบ Implementation — เฉพาะ APPROVED_TO_IMPLEMENT + STRUCTURE_ONLY):
+//   - RESCUE_VOLUNTEER → VOLUNTEER
+//   - Community–Tambon เป็น M:N ผ่าน CommunityTambon (ควนสันติ 2 ตำบล)
+//   - ลบ targetHouseholds → Coverage Model (totalHouseholds Int? NULL, targetCoveragePercent)
+//   - เก็บดิบจากกระดาษ: communityNameOnPaper, coordinateRawText, floodDepth*, pregnancy*,
+//     hasNoResources, volunteerNotAvailable, assistanceTotalPersonCount, SurveyorRiskLevel
+//   - Risk: rawScore/maximumPossibleScore/normalizedScore (STRUCTURE_ONLY — ห้าม logic จัดระดับ)
+//   - Model โครงสร้าง: CommunityTambon, CommunityBoundary, EmergencyContact,
+//     VolunteerProfile(+Skill), CriticalFieldConfig, IncidentCommunity
+//   - ลบ @@unique([houseNo,mooId,tambonId]) → @@index; Cascade → Restrict (Soft Delete)
+//   ⚠️ ยังไม่ทำ (ตามคำตัดสิน): Encryption Extension, Risk Formula/Level, Consent policy,
+//      Better Auth model changes (รอ Gate เปรียบเทียบ 1.6.23), RiskWeightVersion/HardRule
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 1: Enums
+// =============================================================================
+
+/// สถานะของใบกระดาษในกระบวนการคีย์
+enum SheetStatus {
+  PENDING // รอคีย์
+  LOCKED // มีคนหยิบไปคีย์อยู่ (Lock 10 นาที)
+  ENTERED_1 // คีย์ครั้งที่ 1 แล้ว รอ Entry 2
+  ENTERED_2 // คีย์ครั้งที่ 2 แล้ว รอเทียบ
+  DISCREPANCY // Entry 1 ≠ Entry 2 รอตัดสิน
+  NEEDS_FIELD_QUERY // อ่านไม่ออก/ข้อมูลขาด รอถามกลับสนาม
+  VERIFIED // ยืนยันแล้ว → คำนวณ Risk/Triage ได้
+  UNRESOLVABLE // แก้ไม่ได้ (ติดต่อไม่ได้/กระดาษเสียหาย)
+  SHEET_LOST // กระดาษหาย
+  MERGED_INTO // ถูก Merge เข้าใบอื่น (ใบซ้ำ)
+}
+
+/// สถานะของ Batch กระดาษ
+enum BatchStatus {
+  RECEIVED // รับปึกแล้ว ยังไม่พร้อมคีย์
+  READY_FOR_ENTRY // พร้อมให้คีย์ (ติดเลขใบแล้ว)
+  IN_PROGRESS // กำลังคีย์อยู่
+  CLOSED // ปิดแล้ว (คีย์ครบ + ยืนยันหมด)
+}
+
+/// สถานะรายฟิลด์ — แยก 4 สถานะให้ชัด (BR-42, BR-43)
+enum FieldStatusEnum {
+  HAS_VALUE // มีค่าจริงจากกระดาษ
+  EXPLICIT_NONE // ผู้สำรวจติ๊ก "ไม่มี" จริง
+  BLANK_IN_PAPER // กระดาษเว้นว่าง (ไม่รู้ว่าไม่มีหรือลืมถาม)
+  ILLEGIBLE // มีเขียนแต่อ่านไม่ออก
+}
+
+/// ผลการตัดสิน Discrepancy
+enum DiscrepancyResolution {
+  CHOSE_ENTRY_1 // เลือกค่าจาก Entry 1
+  CHOSE_ENTRY_2 // เลือกค่าจาก Entry 2
+  CHOSE_OTHER // ใส่ค่าที่ 3 (ผิดทั้งคู่)
+  MARKED_ILLEGIBLE // อ่านไม่ออกจริงๆ
+  UNRESOLVABLE // แก้ไม่ได้
+}
+
+/// สถานะคำถามกลับสนาม
+enum FieldQueryStatus {
+  PENDING // ยังไม่ส่ง
+  SENT // ส่งแล้ว
+  ANSWERED // ได้คำตอบแล้ว
+  UNRESOLVABLE // ติดต่อไม่ได้/แก้ไม่ได้
+}
+
+/// สถานะ Consent (PDPA)
+enum ConsentStatus {
+  GIVEN // ยินยอมแล้ว (มีใบเซ็น)
+  NOT_GIVEN // ไม่ยินยอม
+  UNKNOWN // ไม่มีข้อมูล (กระดาษรุ่นเก่าที่ไม่มีช่อง)
+  LEGAL_BASIS // ใช้ฐานทางกฎหมายอื่นแทน Consent (ต้องระบุ)
+}
+
+/// ระดับพื้นบ้านเทียบถนน (ส่วนที่ 3 ข้อ 1)
+enum FloorLevel {
+  BELOW_ROAD // ต่ำกว่าถนน
+  EQUAL_ROAD // เท่าถนน
+  ABOVE_ROAD // สูงกว่าถนน
+}
+
+/// ที่อพยพครั้งล่าสุด (ส่วนที่ 3 ข้อ 7)
+enum LastEvacuationPlace {
+  UPPER_FLOOR // อาศัยชั้น 2/ชั้น 3
+  ROOF // อาศัยบนหลังคา
+  NEAREST_SITE // ไปยังจุดอพยพใกล้ที่สุด
+  OTHER // อื่นๆ
+}
+
+/// ประเภทจุดอพยพใกล้สุด (ส่วนที่ 3 ข้อ 8)
+enum NearestEvacSiteType {
+  RELATIVE_HOUSE // บ้านญาติ
+  SCHOOL // โรงเรียน
+  TEMPLE_MOSQUE // วัด/มัสยิด
+  COMMUNITY_CENTER // ศูนย์ชุมชน
+  MUNICIPALITY // พื้นที่เทศบาล
+  UNKNOWN // ไม่ทราบ
+  OTHER // อื่นๆ
+}
+
+/// ประเภทยานพาหนะอพยพ (ส่วนที่ 3 ข้อ 9)
+enum VehicleType {
+  CAR // รถยนต์
+  MOTORCYCLE // มอเตอร์ไซค์
+  BOAT // เรือ
+  OTHER // อื่นๆ
+}
+
+/// ระดับความเสี่ยง
+enum RiskLevel {
+  LOW // ต่ำ (0-25)
+  MEDIUM // ปานกลาง (26-50)
+  HIGH // สูง (51-75)
+  CRITICAL // สูงมาก (76-100)
+}
+
+/// ลำดับความเร่งด่วน กลุ่มเปราะบาง
+enum TriageLevel {
+  P1 // วิกฤต — ตอบสนอง ≤30 นาที
+  P2 // เร่งด่วน — ตอบสนอง ≤2 ชม.
+  P3 // เฝ้าระวัง — ตอบสนอง ≤6 ชม.
+}
+
+/// ประเภท Audit Action
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  EXPORT
+  LOGIN
+  LOGOUT
+  LOCK
+  UNLOCK
+  VERIFY
+  RESOLVE
+  MERGE
+  APPROVE
+  REJECT
+}
+
+/// บทบาทผู้ใช้ (RBAC)
+enum UserRoleEnum {
+  ADMIN // ผู้ดูแลระบบ — สิทธิ์เต็ม
+  EXECUTIVE // ผู้บริหาร — อ่านอย่างเดียว + สถิติ
+  OFFICER // เจ้าหน้าที่ — จัดการชุมชนที่รับผิดชอบ
+  COORDINATOR // ผู้ประสาน — จัดการ Batch + Throughput
+  VERIFIER // ผู้ตรวจสอบ — ตัดสิน Discrepancy
+  VOLUNTEER // อาสาสมัครชุมชน — เห็น Aggregate + รับงาน Incident (v3.0 BR-25)
+  DATA_ENTRY // เจ้าหน้าที่คีย์ข้อมูล — เห็นทีละใบ ห้าม Query (v3.0)
+  RESEARCHER // นักวิจัย — ข้อมูล Anonymized
+  FIELD_SURVEYOR // ผู้สำรวจ — ตอบคำถามกลับเท่านั้น
+}
+
+/// ระดับความเสี่ยงที่ผู้สำรวจประเมิน (ท้ายเล่ม) — กระดาษมี 3 ตัวเลือก (AMB-05)
+/// แยกจาก RiskLevel (4 ระดับ) ที่ระบบคำนวณ — เก็บ checkbox ตามกระดาษ ไม่ใช่สูตร
+enum SurveyorRiskLevel {
+  LOW // ต่ำ
+  MEDIUM // ปานกลาง
+  HIGH // สูง
+}
+
+/// หน่วยอายุครรภ์ตามที่เขียนบนกระดาษ (กระดาษไม่ระบุหน่วย — QM-06)
+enum PregnancyUnit {
+  WEEKS // สัปดาห์
+  MONTHS // เดือน
+  UNKNOWN // ไม่ระบุ/อ่านไม่ออก — ห้ามเดา
+}
+
+/// สถานะการอนุมัติอาสาสมัคร (BR-68 — ต้องอนุมัติก่อน Login)
+enum VolunteerApprovalStatus {
+  PENDING // รออนุมัติ
+  APPROVED // อนุมัติแล้ว
+  REJECTED // ปฏิเสธ
+  SUSPENDED // ระงับ
+}
+
+/// วิธีเปรียบเทียบ Critical Field ใน Double-entry (FR-VER-01)
+enum CompareMode {
+  EXACT // เทียบตรงตัว
+  NORMALIZED_PHONE // ลบ -, เว้นวรรค, +66 → 0
+  NORMALIZED_TEXT // trim, ยุบช่องว่าง, ตัดคำนำหน้า
+  NUMERIC_TOLERANCE // เทียบตัวเลขด้วย tolerance
+  SET_EQUALITY // เทียบเซ็ต (เช่น ประเภทความเปราะบาง)
+}
+
+/// สถานะเหตุการณ์ภัยพิบัติ
+enum IncidentStatus {
+  ACTIVE // กำลังเกิดเหตุ
+  CLOSED // ปิดเหตุแล้ว
+}
+
+/// สถานะงานช่วยเหลือ
+enum TaskStatus {
+  PENDING // รอมอบหมาย
+  ASSIGNED // มอบหมายแล้ว
+  IN_PROGRESS // กำลังดำเนินการ
+  COMPLETED // สำเร็จ
+  UNREACHABLE // ติดต่อไม่ได้
+  CANCELLED // ยกเลิก
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 2: Better Auth — ตาราง Auth ที่ Better Auth จัดการ
+// =============================================================================
+// Better Auth จะสร้างตารางเหล่านี้เอง แต่เราเขียน Schema ไว้เพื่อให้ Prisma
+// สร้าง Type และ Relation ได้
+
+/// ผู้ใช้ระบบ (จัดการโดย Better Auth)
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String /// ชื่อ-นามสกุล
+  phone         String? /// เบอร์โทรศัพท์
+  emailVerified Boolean   @default(false)
+  image         String? /// URL รูปโปรไฟล์
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations — Better Auth
+  sessions Session[]
+  accounts Account[]
+
+  // Relations — RBAC
+  userRoles       UserRole[]
+  communityScopes UserCommunityScope[]
+
+  // Relations — Data Entry
+  confidentialityAgreement ConfidentialityAgreement?
+  lockedSheets             PaperSheet[]              @relation("sheetLockedBy")
+  entryAttempts            EntryAttempt[]
+  resolvedDiscrepancies    Discrepancy[]             @relation("resolvedBy")
+  answeredQueries          FieldQuery[]              @relation("answeredBy")
+
+  // Relations — Household
+  enteredHouseholds  Household[] @relation("enteredBy")
+  verifiedHouseholds Household[] @relation("verifiedBy")
+  surveyedHouseholds Household[] @relation("surveyorUser") // FK ที่ขาด (SCH-20)
+
+  // Relations — Batch
+  receivedBatches PaperBatch[] @relation("receivedBy")
+  closedBatches   PaperBatch[] @relation("closedBy")
+
+  // Relations — Incident
+  assignedTasks RescueTask[] @relation("assignedTo")
+  taskUpdates   TaskUpdate[]
+
+  // Relations — Volunteer (v3.1 STRUCTURE_ONLY)
+  volunteerProfile VolunteerProfile?
+
+  // Relations — System
+  auditLogs  AuditLog[]
+  exportJobs ExportJob[]
+  entryStats EntryStats[] // FK ที่ขาด (SCH-20)
+
+  @@map("user")
+}
+
+/// Session ผู้ใช้ (Better Auth)
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+/// บัญชี OAuth / Credential (Better Auth)
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String /// ID จาก Provider
+  providerId            String /// เช่น "credential", "line"
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String? /// Hash (Argon2) — เฉพาะ credential
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+/// Token ยืนยันตัวตน (Better Auth)
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String /// email หรือ phone
+  value      String /// token value
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 3: RBAC — สิทธิ์และบทบาท
+// =============================================================================
+
+/// บทบาทที่ผู้ใช้ได้รับ (M:N User ↔ Role)
+model UserRole {
+  id         String       @id @default(cuid())
+  userId     String
+  role       UserRoleEnum
+  assignedBy String? /// ใครมอบหมาย
+  assignedAt DateTime     @default(now())
+  isActive   Boolean      @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@map("user_role")
+}
+
+/// ขอบเขตชุมชนที่ผู้ใช้เข้าถึงได้ (สำหรับ Officer/Coordinator)
+model UserCommunityScope {
+  id          String  @id @default(cuid())
+  userId      String
+  communityId String
+  canEdit     Boolean @default(true) /// false = อ่านอย่างเดียว
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@unique([userId, communityId])
+  @@map("user_community_scope")
+}
+
+/// ข้อตกลงรักษาความลับ (อาสาสมัครต้องลงนามก่อนคีย์ใบแรก — BR-59)
+model ConfidentialityAgreement {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  version   String /// เวอร์ชันข้อตกลง เช่น "1.0"
+  agreedAt  DateTime @default(now())
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("confidentiality_agreement")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 4: Master Data — ข้อมูลหลัก (ไม่ Hardcode)
+// =============================================================================
+
+/// จังหวัด
+model Province {
+  id     String  @id @default(cuid())
+  code   String  @unique /// รหัสจังหวัด เช่น "90"
+  nameTh String /// ชื่อไทย เช่น "สงขลา"
+  nameEn String? /// ชื่ออังกฤษ
+
+  districts District[]
+
+  @@map("province")
+}
+
+/// อำเภอ
+model District {
+  id         String  @id @default(cuid())
+  provinceId String
+  code       String  @unique /// รหัสอำเภอ
+  nameTh     String /// เช่น "หาดใหญ่"
+  nameEn     String?
+
+  province Province @relation(fields: [provinceId], references: [id])
+  tambons  Tambon[]
+
+  @@map("district")
+}
+
+/// ตำบล (ควนลัง / หาดใหญ่ — BR-04)
+model Tambon {
+  id         String  @id @default(cuid())
+  districtId String
+  code       String  @unique /// รหัสตำบล
+  nameTh     String /// เช่น "ควนลัง"
+  nameEn     String?
+
+  district         District          @relation(fields: [districtId], references: [id])
+  moos             Moo[]
+  communityTambons CommunityTambon[] // M:N — แทน communities เดิม (ควนสันติ 2 ตำบล)
+  households       Household[]
+
+  @@index([districtId])
+  @@map("tambon")
+}
+
+/// หมู่ที่
+model Moo {
+  id       String @id @default(cuid())
+  tambonId String
+  number   Int /// หมู่ที่ 1, 2, 3...
+
+  tambon     Tambon      @relation(fields: [tambonId], references: [id])
+  households Household[]
+
+  @@unique([tambonId, number])
+  @@map("moo")
+}
+
+/// ชุมชน (หน่วยหลักในการจัดการ)
+/// v3.1: Community–Tambon เป็น M:N ผ่าน CommunityTambon (ชุมชนอาจครอบคลุมหลายตำบล)
+model Community {
+  id     String  @id @default(cuid())
+  code   String  @unique /// รหัสชุมชน — ไม่ผูกตำบล เช่น "TK01","KS01" (R2-#2)
+  nameTh String /// ชื่อชุมชน
+  nameEn String?
+
+  // --- Coverage Model (R2-#1..4) ---
+  totalHouseholds         Int? /// จำนวนครัวเรือนทั้งหมด — Nullable (ยังไม่ทราบ, ห้ามใช้ 0)
+  targetCoveragePercent   Float     @default(60) /// เกณฑ์ผ่าน = coveragePercent > ค่านี้ (strict)
+  lastPopulationUpdatedAt DateTime? /// วันที่อัปเดต totalHouseholds ล่าสุด
+  populationDataSource    String? /// แหล่งที่มา เช่น "ทะเบียนราษฎร์ 2567"
+  populationDataNote      String? /// หมายเหตุ เช่น "ประมาณการจากผู้นำชุมชน"
+  populationUpdatedById   String? /// ใครอัปเดตล่าสุด (Audit)
+
+  leaderName  String? /// ชื่อประธานชุมชน
+  leaderPhone String? /// เบอร์โทรประธาน 🔒 (L3)
+  // boundary จัดการผ่าน CommunityBoundary (MultiPolygon) + raw SQL
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime? /// Soft Delete (BR-29)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  communityTambons    CommunityTambon[] // M:N → Tambon
+  boundaries          CommunityBoundary[] // ขอบเขต GIS (มีประวัติ)
+  incidentCommunities IncidentCommunity[]
+  batches             PaperBatch[]
+  households          Household[]
+  evacuationSites     EvacuationSite[]
+  userScopes          UserCommunityScope[]
+  VolunteerProfile    VolunteerProfile[]
+
+  @@index([isActive])
+  @@map("community")
+}
+
+/// ⭐ ใหม่ — ตารางเชื่อม Community ↔ Tambon (M:N) — ควนสันติครอบคลุม 2 ตำบล
+/// Partial Unique Index (isPrimary=true ≤1 ต่อชุมชน, อนุญาต 0) อยู่ใน Custom SQL
+model CommunityTambon {
+  id          String  @id @default(cuid())
+  communityId String
+  tambonId    String
+  isPrimary   Boolean @default(false) /// ตำบลหลัก — รองรับกรณีไม่มีตำบลหลัก (R2 คำตัดสิน #8)
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  tambon    Tambon    @relation(fields: [tambonId], references: [id], onDelete: Restrict)
+
+  @@unique([communityId, tambonId])
+  @@index([tambonId])
+  @@index([communityId, isPrimary])
+  @@map("community_tambon")
+}
+
+/// ⭐ ใหม่ (STRUCTURE_ONLY) — ขอบเขตชุมชนเชิงภูมิศาสตร์ (MultiPolygon + version)
+/// คอลัมน์ geom = geography(MultiPolygon,4326) เพิ่มผ่าน Custom SQL (Unsupported)
+model CommunityBoundary {
+  id            String    @id @default(cuid())
+  communityId   String
+  version       Int       @default(1)
+  // geom — geography(MultiPolygon, 4326) ผ่าน Custom SQL
+  source        String? /// "เทศบาลนครหาดใหญ่" / "วาดโดยชุมชน"
+  accuracyNote  String?
+  isApproved    Boolean   @default(false)
+  approvedById  String?
+  approvedAt    DateTime?
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime? /// null = ใช้อยู่ปัจจุบัน
+
+  createdAt DateTime @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+
+  @@unique([communityId, version])
+  @@index([communityId, effectiveTo])
+  @@map("community_boundary")
+}
+
+/// ประเภทสิ่งปลูกสร้าง (ส่วนที่ 1 ข้อ 1)
+model BuildingType {
+  id        String  @id @default(cuid())
+  code      String  @unique /// เช่น "HOUSE", "APARTMENT"
+  nameTh    String /// เช่น "บ้านพักอาศัยทั่วไป"
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  households Household[]
+
+  @@map("building_type")
+}
+
+/// ประเภทกรรมสิทธิ์ (ส่วนที่ 1 ข้อ 4)
+model OwnershipType {
+  id        String  @id @default(cuid())
+  code      String  @unique /// เช่น "OWNED", "RENTED"
+  nameTh    String /// เช่น "ของตนเอง (เอกชน)"
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  households Household[]
+
+  @@map("ownership_type")
+}
+
+/// ประเภทความเปราะบาง 9 ประเภท (ส่วนที่ 2)
+model VulnerabilityType {
+  id             String      @id @default(cuid())
+  code           String      @unique
+  /// เช่น "ELDERLY_DEPENDENT", "BEDRIDDEN", "CHILD_UNDER_5",
+  ///      "PREGNANT", "POSTPARTUM", "REGULAR_MEDICATION",
+  ///      "DIALYSIS", "PSYCHIATRIC", "OTHER"
+  nameTh         String /// เช่น "ผู้สูงอายุ 60 ปีขึ้นไป ที่ต้องมีผู้ดูแล"
+  basePriority   TriageLevel /// P1/P2/P3 เริ่มต้น
+  requiresDetail Boolean     @default(false) /// ต้องระบุรายละเอียดเพิ่ม?
+  detailLabel    String? /// Label สำหรับช่อง Detail เช่น "ระบุอายุครรภ์ (สัปดาห์)"
+  sortOrder      Int         @default(0)
+  isActive       Boolean     @default(true)
+
+  personVulnerabilities PersonVulnerability[]
+
+  @@map("vulnerability_type")
+}
+
+/// ประเภทความต้องการช่วยเหลือ (ส่วนที่ 2 ข้อ 3)
+model AssistanceNeedType {
+  id             String  @id @default(cuid())
+  code           String  @unique /// เช่น "VEHICLE_EVAC", "MANPOWER", "MEDICAL_EQUIP"
+  nameTh         String /// เช่น "ต้องใช้รถ/เรือช่วยอพยพ"
+  requiresCount  Boolean @default(true) /// ต้องระบุจำนวนคน?
+  requiresDetail Boolean @default(false) /// ต้องระบุรายละเอียด?
+  sortOrder      Int     @default(0)
+  isActive       Boolean @default(true)
+
+  assistanceNeeds AssistanceNeed[]
+
+  @@map("assistance_need_type")
+}
+
+/// ประเภททรัพยากรชุมชน (ส่วนที่ 3 ข้อ 11)
+model ResourceType {
+  id        String  @id @default(cuid())
+  code      String  @unique /// เช่น "BOAT", "GENERATOR", "LIFE_JACKET"
+  nameTh    String /// เช่น "เรือ"
+  icon      String? /// ชื่อ icon
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  householdResources HouseholdResource[]
+
+  @@map("resource_type")
+}
+
+/// ช่องทางรับข่าวเตือนภัย (ส่วนที่ 4 ข้อ 1)
+model AlertChannel {
+  id        String  @id @default(cuid())
+  code      String  @unique /// เช่น "LINE", "FACEBOOK", "SMS", "TV"
+  nameTh    String /// เช่น "LINE"
+  isDigital Boolean @default(true)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  alertPrefs AlertChannelPref[]
+
+  @@map("alert_channel")
+}
+
+/// ประเภทอาสาสมัคร (ส่วนที่ 4 ข้อ 4)
+model VolunteerSkillType {
+  id            String  @id @default(cuid())
+  code          String  @unique /// เช่น "EARLY_WARNING", "RESCUE", "KITCHEN"
+  nameTh        String /// เช่น "เตือนภัย"
+  skillCategory String? /// หมวดทักษะ
+  sortOrder     Int     @default(0)
+  isActive      Boolean @default(true)
+
+  volunteerInterests     VolunteerInterest[]
+  volunteerProfileSkills VolunteerProfileSkill[]
+
+  @@map("volunteer_skill_type")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 5: Paper & Batch Management — การจัดการกระดาษ
+// =============================================================================
+
+/// ปึกกระดาษแบบสอบถามที่รับมา (1 ปึก = 1 ชุมชน โดยปกติ)
+model PaperBatch {
+  id            String @id @default(cuid())
+  code          String @unique /// เช่น "BATCH-KL01-001"
+  communityId   String /// ชุมชนที่สำรวจ
+  expectedCount Int /// จำนวนใบที่นับได้ตอนรับ
+  receivedCount Int    @default(0) /// จำนวนใบที่คีย์ได้จริง (อาจ ≠ expected ถ้าหาย)
+  enteredCount  Int    @default(0) /// จำนวนใบที่คีย์ Entry 1 แล้ว
+  verifiedCount Int    @default(0) /// จำนวนใบที่ VERIFIED แล้ว
+
+  handedOverBy    String? /// ชื่อผู้ส่งมอบปึก (ผู้สำรวจ/ผู้ประสาน)
+  receivedAt      DateTime /// วันที่รับปึก
+  receivedById    String /// ใครรับ (User)
+  storageLocation String? /// ตำแหน่งจัดเก็บ เช่น "ตู้ A ช่อง 3"
+  scanPdfUrl      String? /// URL ไฟล์สแกนทั้งปึก (MinIO) 🔒
+
+  status     BatchStatus @default(RECEIVED)
+  closedAt   DateTime? /// วันที่ปิด Batch
+  closedById String? /// ใครปิด
+  note       String? /// หมายเหตุ
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  community  Community    @relation(fields: [communityId], references: [id])
+  receivedBy User         @relation("receivedBy", fields: [receivedById], references: [id])
+  closedBy   User?        @relation("closedBy", fields: [closedById], references: [id])
+  sheets     PaperSheet[]
+
+  @@index([communityId, status])
+  @@index([status])
+  @@map("paper_batch")
+}
+
+/// กระดาษแบบสอบถาม 1 ใบ (1 ใบ = 1 ครัวเรือน)
+model PaperSheet {
+  id       String @id @default(cuid())
+  batchId  String /// อยู่ใน Batch ไหน
+  sheetNo  String @unique /// เลขประจำใบ เช่น "SHEET-KL01-001-024" (BR-40)
+  sequence Int /// ลำดับในปึก (1, 2, 3...)
+
+  status SheetStatus @default(PENDING)
+
+  // --- Lock Management ---
+  lockedById    String? /// ใครหยิบไปคีย์อยู่
+  lockedAt      DateTime? /// เวลาที่ Lock
+  lockExpiresAt DateTime? /// หมดอายุ Lock (lockedAt + 10 นาที)
+
+  // --- Storage ---
+  storageSlot  String? /// ตำแหน่งจัดเก็บในตู้ เช่น "A3-24"
+  scanImageUrl String? /// URL ภาพสแกนกระดาษใบนี้ 🔒 (L3/L4)
+
+  // --- Merge ---
+  mergedIntoSheetId String? /// ถ้าถูก Merge → ชี้ไปใบหลัก
+  mergedIntoSheet   PaperSheet?  @relation("mergedSheets", fields: [mergedIntoSheetId], references: [id])
+  mergedFromSheets  PaperSheet[] @relation("mergedSheets")
+
+  // --- Loss ---
+  lostReason String? /// เหตุผลที่หาย (ถ้า status = SHEET_LOST)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batch    PaperBatch @relation(fields: [batchId], references: [id])
+  lockedBy User?      @relation("sheetLockedBy", fields: [lockedById], references: [id])
+
+  // Relations
+  household     Household? /// 1:1 — สร้างเมื่อคีย์ Entry 1 เสร็จ
+  entryAttempts EntryAttempt[]
+  fieldStatuses FieldStatus[]
+  discrepancies Discrepancy[]
+  fieldQueries  FieldQuery[]
+
+  // ⭐ Index สำหรับหยิบงาน (Query นี้ถูกเรียก 6,000+ ครั้ง)
+  @@index([status, batchId, sequence], name: "ix_sheet_pickup")
+  // ⭐ Index สำหรับปลด Lock ค้าง (Cron ทุก 1 นาที)
+  @@index([lockExpiresAt], name: "ix_sheet_lock_expiry")
+  @@index([batchId, sequence])
+  @@map("paper_sheet")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 6: Data Entry & Verification — การคีย์และตรวจสอบ
+// =============================================================================
+
+/// การคีย์ 1 ครั้ง (Entry 1 หรือ Entry 2)
+model EntryAttempt {
+  id              String    @id @default(cuid())
+  sheetId         String /// ใบที่คีย์
+  attemptNo       Int /// 1 = Entry แรก, 2 = Entry ยืนยัน
+  enteredById     String /// ใครคีย์
+  startedAt       DateTime /// เวลาเริ่มคีย์ (จับเวลาที่ Client)
+  submittedAt     DateTime? /// เวลาส่ง
+  durationSeconds Int? /// ใช้เวลากี่วินาที
+
+  /// ค่าที่คีย์ทั้งหมด เก็บเป็น JSONB ทั้งก้อน (T19)
+  /// ทำให้เทียบ Discrepancy + ย้อนดูได้ + ไม่ต้อง normalize
+  payload Json /// 🔒 เข้ารหัสก่อนเก็บ
+
+  isBlind Boolean @default(false) /// true = Entry 2 ที่ไม่เห็นค่า Entry 1
+
+  createdAt DateTime @default(now())
+
+  sheet         PaperSheet    @relation(fields: [sheetId], references: [id])
+  enteredBy     User          @relation(fields: [enteredById], references: [id])
+  fieldStatuses FieldStatus[]
+
+  // ⭐ ห้ามคนเดียวกันคีย์ทั้ง Entry 1 และ 2 (BR-44)
+  @@unique([sheetId, attemptNo])
+  @@index([sheetId, enteredById], name: "ix_entry_attempt_user")
+  @@index([enteredById, submittedAt], name: "ix_entry_throughput")
+  @@map("entry_attempt")
+}
+
+/// สถานะรายฟิลด์ — บันทึกว่าช่องไหน อ่านไม่ออก/ว่าง/มีค่า
+model FieldStatus {
+  id             String          @id @default(cuid())
+  sheetId        String /// ใบ
+  entryAttemptId String? /// จาก Entry ครั้งไหน (null = ตั้งหลัง Verify)
+  fieldPath      String /// path ในฟอร์ม เช่น "respondentPhone", "vulnerable[0].phone"
+  status         FieldStatusEnum /// HAS_VALUE / EXPLICIT_NONE / BLANK_IN_PAPER / ILLEGIBLE
+  note           String? /// หมายเหตุ เช่น "ตัวเลขเบลอ อาจเป็น 6 หรือ 8"
+
+  createdAt DateTime @default(now())
+
+  sheet        PaperSheet    @relation(fields: [sheetId], references: [id])
+  entryAttempt EntryAttempt? @relation(fields: [entryAttemptId], references: [id])
+
+  @@index([sheetId, fieldPath])
+  @@map("field_status")
+}
+
+/// จุดที่ Entry 1 ≠ Entry 2
+model Discrepancy {
+  id            String                 @id @default(cuid())
+  sheetId       String /// ใบ
+  fieldPath     String /// ฟิลด์ที่ไม่ตรง เช่น "respondentPhone"
+  value1        String? /// ค่าจาก Entry 1 🔒
+  value2        String? /// ค่าจาก Entry 2 🔒
+  resolvedValue String? /// ค่าที่ตัดสินแล้ว 🔒
+  resolution    DiscrepancyResolution? /// ผลการตัดสิน
+  resolvedById  String? /// ใครตัดสิน
+  resolvedAt    DateTime? /// เมื่อไหร่
+  note          String? /// หมายเหตุ
+
+  createdAt DateTime @default(now())
+
+  sheet      PaperSheet @relation(fields: [sheetId], references: [id])
+  resolvedBy User?      @relation("resolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([sheetId], name: "ix_discrepancy_sheet")
+  @@index([resolution]) /// คิว Verifier (resolution IS NULL = ยังไม่ตัดสิน)
+  @@map("discrepancy")
+}
+
+/// คำถามกลับสนาม (ส่งกลับให้ผู้สำรวจถาม)
+model FieldQuery {
+  id           String  @id @default(cuid())
+  sheetId      String /// ใบ
+  fieldPath    String /// ฟิลด์ที่ถาม
+  question     String /// คำถาม เช่น "เบอร์โทรอ่านไม่ออก เป็น 081-2345678 หรือ 081-2345670?"
+  surveyorName String? /// ชื่อผู้สำรวจ (จากกระดาษ)
+
+  status       FieldQueryStatus @default(PENDING)
+  sentAt       DateTime? /// วันที่ส่งคำถาม
+  answeredAt   DateTime? /// วันที่ได้คำตอบ
+  answer       String? /// คำตอบ 🔒
+  answeredById String? /// ใครบันทึกคำตอบ
+  pdfUrl       String? /// URL ไฟล์ PDF ใบคำถาม
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sheet      PaperSheet @relation(fields: [sheetId], references: [id])
+  answeredBy User?      @relation("answeredBy", fields: [answeredById], references: [id])
+
+  @@index([sheetId])
+  @@index([status])
+  @@map("field_query")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 7: Household — ครัวเรือน/สถานประกอบการ (Entity หลัก)
+// =============================================================================
+
+/// ครัวเรือน/สถานประกอบการ — 1 record = 1 ใบกระดาษที่คีย์แล้ว
+model Household {
+  id String @id @default(cuid())
+
+  // --- ความเชื่อมโยงกับกระดาษ ---
+  sheetId     String @unique /// 1:1 กับ PaperSheet
+  batchId     String /// มาจาก Batch ไหน (denormalize เพื่อ query เร็ว)
+  communityId String /// ชุมชน
+
+  // --- ส่วนที่ 0: ข้อมูลสำหรับการสำรวจ (📋 คีย์จากกระดาษ) ---
+  surveyNo             String? /// 📋 แบบสอบถามลำดับที่
+  communityNameOnPaper String? /// 📋 ชื่อชุมชนที่ผู้สำรวจเขียน (ดิบ) — Map เป็น communityId (QM-01/R2 #11)
+  surveyorNameOnPaper  String? /// 📋 ชื่อผู้สำรวจที่เขียนในกระดาษ (ไม่ใช่ auto จาก session!)
+  surveyorPhoneOnPaper String? /// 📋 เบอร์ผู้สำรวจในกระดาษ
+  surveyedAt           DateTime? /// 📋 วันที่สำรวจ (จากกระดาษ!) ⚠️ ห้าม default = now() (BR-47)
+  surveyorUserId       String? /// FK ไปยัง User ถ้าจับคู่ผู้สำรวจได้
+
+  // --- ข้อมูลการคีย์ (ระบบบันทึกอัตโนมัติ) ---
+  enteredById  String /// ใครคีย์ Entry 1
+  enteredAt    DateTime  @default(now()) /// วันที่คีย์เข้าระบบ
+  verifiedById String? /// ใครยืนยัน (Verifier)
+  verifiedAt   DateTime? /// วันที่ยืนยัน
+
+  // --- ส่วนที่ 1 ข้อ 1: ประเภทสิ่งปลูกสร้าง ---
+  buildingTypeId    String? /// FK ประเภทอาคาร
+  buildingTypeOther String? /// ระบุ ถ้าเลือก "อื่นๆ"
+
+  // --- ส่วนที่ 1 ข้อ 2: ข้อมูลทั่วไป ---
+  placeName       String? /// ชื่อสถานที่/ชื่อร้าน (ถ้ามี)
+  respondentName  String? /// ชื่อ-นามสกุลผู้ให้ข้อมูล 🔒
+  respondentPhone String? /// เบอร์โทรศัพท์ 🔒 ⭐ double-entry
+
+  // --- ส่วนที่ 1 ข้อ 3: ที่ตั้ง ---
+  houseNo  String? /// บ้านเลขที่ ⭐ double-entry
+  mooId    String? /// FK หมู่ที่ ⭐ double-entry
+  soi      String? /// ซอย
+  road     String? /// ถนน
+  tambonId String? /// FK ตำบล (ควนลัง/หาดใหญ่)
+
+  // --- พิกัด GPS (📋 คีย์จากกระดาษ — เก็บดิบ + Derived) ---
+  coordinateRawText String? /// 📋 พิกัดตามตัวอักษรบนกระดาษ (ช่องเดียว) — Double-entry เทียบที่นี่ (QM-04/R2 #12)
+  latitude          Decimal? @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText (parse App-layer)
+  longitude         Decimal? @db.Decimal(10, 7) /// 🔒 (L3) ⭐ — Derived จาก coordinateRawText
+  // location = geography(Point,4326) เพิ่มผ่าน Custom SQL (Unsupported) + Trigger จาก lat/lng
+
+  // --- ส่วนที่ 1 ข้อ 4: ผู้อยู่อาศัย ---
+  memberCount     Int? /// จำนวนสมาชิกในครัวเรือน/หน่วยงาน (CHECK 0-5000 ใน SQL — SQL-12)
+  ownershipTypeId String? /// FK กรรมสิทธิ์
+  ownershipOther  String? /// ระบุ ถ้าเลือก "อื่นๆ"
+
+  // --- ส่วนที่ 2: กลุ่มเปราะบาง ---
+  hasVulnerable Boolean? /// true = มี, false = ติ๊ก "ไม่มี" (EXPLICIT_NONE)
+  /// ⚠️ null = ไม่ได้ติ๊ก (BLANK_IN_PAPER) — ต่างจาก false!
+
+  // --- ส่วนที่ 2 ข้อ 3: จำนวนคนที่ต้องการช่วยเหลือ (ระดับครัวเรือน) ---
+  assistanceTotalPersonCount Int? /// 📋 "โปรดระบุจำนวน ...คน" — Cross-check กับผลรวมรายข้อ (QM-07)
+
+  // --- ส่วนที่ 3 ข้อ 11: ไม่มีทรัพยากร (EXPLICIT_NONE) ---
+  hasNoResources Boolean? /// 📋 true = ติ๊ก "ไม่มี", null = ไม่ได้ติ๊ก (QM-09)
+
+  // --- ส่วนที่ 4 ข้อ 4: ไม่สะดวกเป็นอาสาสมัคร (EXPLICIT_NONE) ---
+  volunteerNotAvailable Boolean? /// 📋 true = ติ๊ก "ไม่สะดวก", null = ไม่ได้ติ๊ก (QM-12)
+
+  // --- ส่วนที่ 4 ข้อ 5: เยียวยาจิตใจ ---
+  mentalHealthSupport Boolean? /// 🔒 (L4) ต้องการเยียวยาจิตใจ
+
+  // --- ส่วนที่ 4 ข้อ 6: ข้อเสนอแนะ ---
+  suggestion String? /// ข้อเสนอแนะเพิ่มเติมจากชาวบ้าน
+
+  // --- ท้ายเล่ม: หมายเหตุผู้สำรวจ ---
+  surveyorNote String? /// หมายเหตุที่ผู้สำรวจเขียน
+
+  // --- ส่วนที่ 5: โครงการแก้จน ---
+  povertyProgramInterest Boolean? /// สนใจ/ไม่สนใจ
+
+  // --- Consent (PDPA) ---
+  consentStatus ConsentStatus @default(UNKNOWN) /// สถานะใบยินยอม
+  consentNote   String? /// หมายเหตุ Consent เช่น "ใช้ฐาน ม.24(2)"
+
+  // --- Data Quality ---
+  completenessScore Float? /// % ฟิลด์ที่มีค่าจริง (0.0-1.0)
+  illegibleCount    Int     @default(0) /// จำนวนฟิลด์ที่ ILLEGIBLE
+  blankCount        Int     @default(0) /// จำนวนฟิลด์ที่ BLANK_IN_PAPER
+  hasDuplicateFlag  Boolean @default(false) /// Flag ว่าเป็นใบซ้ำ
+
+  // --- Soft Delete ---
+  deletedAt DateTime? /// null = ยังอยู่ (BR-29)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sheet         PaperSheet     @relation(fields: [sheetId], references: [id])
+  community     Community      @relation(fields: [communityId], references: [id])
+  buildingType  BuildingType?  @relation(fields: [buildingTypeId], references: [id])
+  moo           Moo?           @relation(fields: [mooId], references: [id])
+  tambon        Tambon?        @relation(fields: [tambonId], references: [id])
+  ownershipType OwnershipType? @relation(fields: [ownershipTypeId], references: [id])
+  enteredBy     User           @relation("enteredBy", fields: [enteredById], references: [id])
+  verifiedBy    User?          @relation("verifiedBy", fields: [verifiedById], references: [id])
+  surveyorUser  User?          @relation("surveyorUser", fields: [surveyorUserId], references: [id])
+
+  // 1:N Relations
+  vulnerablePersons  VulnerablePerson[]
+  assistanceNeeds    AssistanceNeed[]
+  floodRiskProfile   FloodRiskProfile? /// 1:1
+  householdResources HouseholdResource[]
+  evacuationVehicles EvacuationVehicle[]
+  alertChannelPrefs  AlertChannelPref[]
+  digitalReadiness   DigitalReadiness? /// 1:1
+  volunteerInterests VolunteerInterest[]
+  consentRecords     ConsentRecord[]
+  householdVersions  HouseholdVersion[]
+
+  // Incident
+  rescueTasks RescueTask[]
+
+  // v3.1: ลบ @@unique([houseNo,mooId,tambonId]) → @@index (QM-03)
+  //   เหตุ: (ก) NULL≠NULL กันซ้ำไม่ได้จริง (ข) บล็อกอพาร์ทเมนต์ (ค) ไม่รู้จัก Soft Delete
+  //   → ตรวจซ้ำที่ Application (Soft Check) + hasDuplicateFlag + M07 Merge (FR-ENT-16)
+  @@index([houseNo, mooId, tambonId], name: "ix_household_address_dup")
+  @@index([communityId])
+  @@index([communityId, deletedAt])
+  @@index([batchId])
+  @@index([deletedAt])
+  @@index([surveyedAt])
+  @@index([hasDuplicateFlag])
+  // ⭐ ตรวจพิกัดซ้ำเป๊ะ (FR-GIS-15)
+  @@index([latitude, longitude], name: "ix_household_exact_coord")
+  @@map("household")
+}
+
+/// ประวัติการแก้ไข Household (Version History)
+model HouseholdVersion {
+  id           String   @id @default(cuid())
+  householdId  String
+  versionNo    Int /// ลำดับเวอร์ชัน
+  snapshot     Json /// ข้อมูลทั้ง record ณ ตอนนั้น 🔒
+  changedById  String /// ใครแก้
+  changedAt    DateTime @default(now())
+  changeReason String? /// เหตุผลที่แก้
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  @@index([householdId, versionNo])
+  @@map("household_version")
+}
+
+/// บันทึกความยินยอม PDPA
+model ConsentRecord {
+  id             String    @id @default(cuid())
+  householdId    String
+  consentGivenBy String? /// ชื่อผู้ยินยอม 🔒
+  relationship   String? /// ความสัมพันธ์กับครัวเรือน
+  consentedAt    DateTime? /// วันที่ยินยอม
+  consentVersion String? /// เวอร์ชันใบยินยอม
+  consentType    String? /// "ASSISTANCE" / "RESEARCH" / "BOTH"
+  scanUrl        String? /// URL สแกนใบยินยอม 🔒
+  withdrawnAt    DateTime? /// วันที่ถอนความยินยอม (ถ้ามี)
+
+  createdAt DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  @@index([householdId])
+  @@map("consent_record")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 8: Vulnerable Persons — กลุ่มเปราะบาง (ส่วนที่ 2)
+// =============================================================================
+
+/// บุคคลกลุ่มเปราะบาง (1 แถวในตาราง ส่วนที่ 2)
+model VulnerablePerson {
+  id          String @id @default(cuid())
+  householdId String /// อยู่ครัวเรือนไหน
+  seq         Int /// ลำดับในตาราง (1, 2, 3...)
+
+  // --- ข้อมูลบุคคล ---
+  fullName       String? /// ชื่อ-นามสกุล 🔒 ⭐ double-entry
+  fullNameStatus FieldStatusEnum @default(HAS_VALUE) /// สถานะฟิลด์
+  age            Int? /// อายุ (ปี) (BR-06: 0-120)
+  ageStatus      FieldStatusEnum @default(HAS_VALUE)
+  phone          String? /// เบอร์โทรศัพท์ (ถ้ามี) 🔒 ⭐ double-entry
+  phoneStatus    FieldStatusEnum @default(HAS_VALUE)
+
+  // --- Triage ---
+  triageLevel       TriageLevel? /// P1/P2/P3 (คำนวณอัตโนมัติ)
+  triageComputedAt  DateTime? /// คำนวณเมื่อไหร่
+  /// ⭐ ใช้ surveyedAt จาก Household ในการคำนวณ ไม่ใช่ now() (BR-48, BR-57)
+  triageBasedOnDate DateTime? /// = household.surveyedAt
+  triageStale       Boolean      @default(false) /// true = ข้อมูลเก่าเกินจนไม่น่าเชื่อถือ
+
+  // --- สถานะ ---
+  isActive          Boolean   @default(true)
+  deactivatedAt     DateTime? /// วันที่ Deactivate
+  deactivatedReason String? /// เช่น "ย้ายออก", "เสียชีวิต"
+  notes             String? /// หมายเหตุเพิ่มเติม
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  household       Household             @relation(fields: [householdId], references: [id])
+  vulnerabilities PersonVulnerability[]
+  rescueTasks     RescueTask[]
+
+  @@unique([householdId, seq]) /// กันลำดับซ้ำในใบเดียวกัน (SCH-22)
+  @@index([householdId])
+  @@index([triageLevel], name: "ix_vulnerable_triage")
+  @@map("vulnerable_person")
+}
+
+/// ลักษณะความเปราะบาง (M:N Person ↔ VulnerabilityType)
+/// 1 คนเลือกได้หลายประเภท (ตามแบบสอบถาม)
+model PersonVulnerability {
+  id                  String @id @default(cuid())
+  personId            String
+  vulnerabilityTypeId String
+
+  /// รายละเอียดเพิ่มเติม 🔒 (L4)
+  detail           String? /// เช่น "ยาลิ่มเลือด", "โรคความดันสูง"
+  // --- อายุครรภ์ (📋 เก็บดิบ — กระดาษไม่ระบุหน่วย QM-06) ---
+  pregnancyRawText String? /// 📋 ค่าที่เขียนบนกระดาษตามตัวอักษร
+  pregnancyUnit    PregnancyUnit? /// หน่วยที่ตีความได้ (WEEKS/MONTHS/UNKNOWN)
+  pregnancyValue   Int? /// ตัวเลขที่เขียน (ยังไม่แปลง)
+  pregnancyWeeks   Int? /// 🔒 (L4) Derived (สัปดาห์) — conversion App-layer (รอ Q-14)
+  postpartumMonths Int? /// อายุเด็กหลังคลอด (เดือน) 🔒 (L4) — เฉพาะ POSTPARTUM
+
+  /// ⭐ วันที่อ้างอิง = วันที่สำรวจ (จากกระดาษ) ไม่ใช่วันที่คีย์ (BR-48)
+  referenceDate DateTime? /// = household.surveyedAt
+  /// คำนวณอายุครรภ์ปัจจุบัน = pregnancyWeeks + (now() - referenceDate) / 7
+  /// ถ้าเกิน 42 สัปดาห์ → คลอดแล้ว → Flag stale
+
+  createdAt DateTime @default(now())
+
+  person            VulnerablePerson  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  vulnerabilityType VulnerabilityType @relation(fields: [vulnerabilityTypeId], references: [id])
+
+  @@unique([personId, vulnerabilityTypeId])
+  @@map("person_vulnerability")
+}
+
+/// ความต้องการช่วยเหลือเมื่อเกิดน้ำท่วม (ส่วนที่ 2 ข้อ 3)
+/// ระดับครัวเรือน ไม่ใช่รายบุคคล
+model AssistanceNeed {
+  id          String  @id @default(cuid())
+  householdId String
+  needTypeId  String /// FK ประเภทความต้องการ
+  personCount Int? /// จำนวนคน
+  detail      String? /// รายละเอียด 🔒 เช่น "ยาลิ่มเลือด warfarin 5mg"
+
+  // v3.1: Cascade → Restrict (ป้องกันลบข้ามกับ Soft Delete — SCH-02)
+  household Household          @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  needType  AssistanceNeedType @relation(fields: [needTypeId], references: [id])
+
+  @@index([householdId])
+  @@map("assistance_need")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 9: Flood Risk — ความเสี่ยงอุทกภัย (ส่วนที่ 3)
+// =============================================================================
+
+/// ข้อมูลความเสี่ยงต่อครัวเรือน (1:1 กับ Household)
+model FloodRiskProfile {
+  id          String @id @default(cuid())
+  householdId String @unique
+
+  // --- ส่วนที่ 3 ข้อ 1: ระดับพื้น ---
+  floorLevelVsRoad FloorLevel? /// ต่ำกว่า/เท่า/สูงกว่าถนน
+
+  // --- ส่วนที่ 3 ข้อ 2-4: ประวัติน้ำท่วม ---
+  hasFloodedBefore      Boolean? /// เคยน้ำท่วมหรือไม่
+  // ระดับน้ำ (📋 กระดาษมี 2 ช่อง ม.+ซม. — เก็บดิบ QM-08)
+  floodDepthMetersRaw   Int? /// 📋 ช่อง "เมตร" ตามกระดาษ
+  floodDepthCmRaw       Int? /// 📋 ช่อง "เซนติเมตร" ตามกระดาษ
+  maxFloodDepthCm       Int? /// ⭐ Derived = metersRaw*100 + cmRaw — Double-entry เทียบ raw (BR-10 ≤1000)
+  lastFloodDurationDays Int? /// น้ำท่วมนานกี่วัน (BR-12: 1-365)
+  lastFloodYear         Int? /// Reserved — ไม่มีในกระดาษ ห้ามแสดงใน Entry Console (QM-11)
+
+  // --- ส่วนที่ 3 ข้อ 5-6: ที่จอดรถ ---
+  hasSafeParking           Boolean? /// มีที่จอดรถปลอดภัยในสถานที่ไหม
+  hasAlternateParking      Boolean? /// มีที่จอดที่อื่นไหม
+  alternateParkingLocation String? /// สถานที่จอดรถสำรอง
+
+  // --- ส่วนที่ 3 ข้อ 7: ที่อพยพครั้งล่าสุด ---
+  lastEvacuationPlace LastEvacuationPlace?
+  lastEvacuationOther String? /// ระบุ ถ้าเลือก OTHER
+
+  // --- ส่วนที่ 3 ข้อ 8: จุดอพยพใกล้สุด ---
+  nearestEvacSiteType  NearestEvacSiteType?
+  nearestEvacSiteOther String? /// ระบุ ถ้าเลือก OTHER
+
+  // --- ส่วนที่ 3 ข้อ 10: ถุงยังชีพ ---
+  hasSurvivalKit Boolean? /// เตรียม/ไม่ได้เตรียม
+
+  // --- ส่วนที่ 3 ข้อ 12: บ้านพี่เลี้ยง ---
+  canBeHostHouse Boolean? /// สามารถเป็นจุดอพยพย่อยได้ไหม
+
+  // --- Risk Score (STRUCTURE_ONLY — R2 #13/#8: เก็บได้ ห้าม logic คำนวณ/จัดระดับ #14/R2-#9) ---
+  //   ⚠️ ยังไม่ตัดสินสูตร Final — คอลัมน์เป็น NULL จนกว่าได้ Business Rule (WAITING_FOR_BUSINESS_RULE)
+  rawScore             Float? /// Σ(Factor × Weight) — สูงสุด 115
+  maximumPossibleScore Float? /// Σ(Weight ของปัจจัยที่มีข้อมูล)
+  normalizedScore      Float? /// rawScore / maximumPossibleScore × 100
+  computedAt           DateTime? /// วันที่คำนวณ Risk ล่าสุด (เมื่อมีสูตรแล้ว)
+
+  // --- Risk Level จากผู้สำรวจ (ท้ายเล่ม) — เก็บ checkbox ตามกระดาษ 3 ตัวเลือก (AMB-05) ---
+  riskLevelSurveyor SurveyorRiskLevel? /// 📋 คีย์ตามกระดาษ (BR-54) ห้ามให้คนคีย์ประเมินเอง
+
+  // ⚠️ ยังไม่เพิ่ม (WAITING_FOR_BUSINESS_RULE): riskLevelAuto, riskLevelFinal, absoluteScore,
+  //    riskConfidence, Hard Rules, Threshold — รอ BR ยืนยัน (Q-03/26/28/29)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+
+  @@map("flood_risk_profile")
+}
+
+/// ทรัพยากรที่ครัวเรือนมี (ส่วนที่ 3 ข้อ 11) — M:N
+model HouseholdResource {
+  id                      String   @id @default(cuid())
+  householdId             String
+  resourceTypeId          String /// FK ประเภททรัพยากร
+  quantity                Int? /// จำนวน — nullable (กระดาษไม่มีช่องจำนวน ไม่ default เท็จ)
+  detail                  String? /// รายละเอียดเพิ่มเติม
+  isAvailableForCommunity Boolean? /// กระดาษไม่ได้ถาม — nullable (ไม่ default false เท็จ)
+  condition               String? /// สภาพ
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household    Household    @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  resourceType ResourceType @relation(fields: [resourceTypeId], references: [id])
+
+  @@unique([householdId, resourceTypeId])
+  @@index([householdId])
+  @@map("household_resource")
+}
+
+/// ยานพาหนะอพยพที่มี (ส่วนที่ 3 ข้อ 9) — M:N
+model EvacuationVehicle {
+  id          String      @id @default(cuid())
+  householdId String
+  vehicleType VehicleType /// รถ/มอเตอร์ไซค์/เรือ/อื่นๆ
+  detail      String? /// ระบุ ถ้าเลือก OTHER
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+
+  @@index([householdId])
+  @@map("evacuation_vehicle")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 10: Communication & Participation (ส่วนที่ 4)
+// =============================================================================
+
+/// ช่องทางรับข่าวของครัวเรือน (ส่วนที่ 4 ข้อ 1) — M:N
+model AlertChannelPref {
+  id             String @id @default(cuid())
+  householdId    String
+  alertChannelId String
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household    Household    @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  alertChannel AlertChannel @relation(fields: [alertChannelId], references: [id])
+
+  @@unique([householdId, alertChannelId])
+  @@map("alert_channel_pref")
+}
+
+/// ความพร้อมดิจิทัล (ส่วนที่ 4 ข้อ 2-3) — 1:1 กับ Household
+model DigitalReadiness {
+  id             String   @id @default(cuid())
+  householdId    String   @unique
+  usesSmartphone Boolean? /// ใช้สมาร์ทโฟนไหม (ส่วนที่ 4 ข้อ 2)
+  canScanQR      Boolean? /// สแกน QR Code ได้ไหม (ส่วนที่ 4 ข้อ 3)
+  lineUserId     String? /// LINE User ID (ถ้ามี — สำหรับส่งแจ้งเตือน)
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+
+  @@map("digital_readiness")
+}
+
+/// ความสนใจเป็นอาสาสมัคร (ส่วนที่ 4 ข้อ 4) — M:N
+model VolunteerInterest {
+  id                String  @id @default(cuid())
+  householdId       String
+  volunteerTypeId   String /// FK ประเภทอาสา
+  contactPersonName String? /// ชื่อผู้ติดต่อ (ถ้าไม่ใช่เจ้าบ้าน)
+  contactPhone      String? /// เบอร์ 🔒
+  isAvailable       Boolean @default(true)
+
+  // v3.1: Cascade → Restrict (SCH-02)
+  household     Household          @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  volunteerType VolunteerSkillType @relation(fields: [volunteerTypeId], references: [id])
+
+  @@unique([householdId, volunteerTypeId])
+  @@map("volunteer_interest")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 11: Evacuation Planning — การวางแผนอพยพ
+// =============================================================================
+
+/// จุดอพยพหลัก (ข้อมูลจากเทศบาล/ชุมชน ไม่ใช่จากแบบสอบถาม)
+model EvacuationSite {
+  id                      String              @id @default(cuid())
+  communityId             String
+  name                    String /// ชื่อจุดอพยพ เช่น "โรงเรียนควนลังวิทยา"
+  type                    NearestEvacSiteType
+  address                 String?
+  latitude                Decimal             @db.Decimal(10, 7)
+  longitude               Decimal             @db.Decimal(10, 7)
+  // location           — geography(Point, 4326) ผ่าน raw SQL
+  capacity                Int? /// ความจุ (คน)
+  hasToilet               Boolean             @default(false)
+  hasKitchen              Boolean             @default(false)
+  hasPowerBackup          Boolean             @default(false)
+  hasMedicalPoint         Boolean             @default(false)
+  isAccessibleForDisabled Boolean             @default(false)
+  contactName             String? /// ผู้ประสานงาน
+  contactPhone            String? /// เบอร์
+  isActive                Boolean             @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@map("evacuation_site")
+}
+
+/// ค่าน้ำหนักปัจจัยความเสี่ยง (ปรับได้ — FR-RSK-05)
+model RiskWeightConfig {
+  id            String   @id @default(cuid())
+  factorCode    String   @unique /// เช่น "FLOOR_LEVEL", "HAS_FLOODED"
+  factorNameTh  String /// เช่น "ระดับพื้นเทียบถนน"
+  weight        Float /// น้ำหนัก เช่น 20
+  maxScore      Float /// คะแนนเต็ม เช่น 20
+  description   String? /// คำอธิบาย
+  effectiveFrom DateTime @default(now())
+  updatedBy     String? /// ใครปรับล่าสุด
+
+  @@map("risk_weight_config")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 12: Incident Management — การจัดการเหตุการณ์ (Phase 3)
+// =============================================================================
+
+/// เหตุการณ์ภัยพิบัติ
+model Incident {
+  id           String         @id @default(cuid())
+  name         String /// ชื่อเหตุการณ์ เช่น "น้ำท่วมควนลัง 15/11/2568"
+  type         String         @default("FLOOD") /// FLOOD / STORM / OTHER
+  severity     Int            @default(1) /// ระดับ 1-5
+  description  String?
+  // v3.1: affectedCommunities String[] → IncidentCommunity (FK จริง — SCH-21)
+  status       IncidentStatus @default(ACTIVE)
+  declaredById String /// ใครประกาศ
+  startedAt    DateTime       @default(now())
+  endedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks               RescueTask[]
+  affectedCommunities IncidentCommunity[]
+
+  @@map("incident")
+}
+
+/// ⭐ ใหม่ — ตารางเชื่อม Incident ↔ Community (แทน String[] เดิม — SCH-21)
+model IncidentCommunity {
+  id          String @id @default(cuid())
+  incidentId  String
+  communityId String
+
+  incident  Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+
+  @@unique([incidentId, communityId])
+  @@index([communityId])
+  @@map("incident_community")
+}
+
+/// งานช่วยเหลือ (สร้างจากรายชื่อกลุ่มเปราะบาง)
+model RescueTask {
+  id           String      @id @default(cuid())
+  incidentId   String
+  householdId  String
+  personId     String? /// FK กลุ่มเปราะบางที่ต้องช่วย (ถ้าเฉพาะเจาะจง)
+  priority     TriageLevel /// P1/P2/P3
+  status       TaskStatus  @default(PENDING)
+  assignedToId String? /// มอบหมายให้ใคร
+  assignedAt   DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incident   Incident          @relation(fields: [incidentId], references: [id])
+  household  Household         @relation(fields: [householdId], references: [id])
+  person     VulnerablePerson? @relation(fields: [personId], references: [id])
+  assignedTo User?             @relation("assignedTo", fields: [assignedToId], references: [id])
+  updates    TaskUpdate[]
+
+  @@index([incidentId, status, priority], name: "ix_task_incident_status")
+  @@map("rescue_task")
+}
+
+/// บันทึกการอัปเดตงาน
+model TaskUpdate {
+  id        String     @id @default(cuid())
+  taskId    String
+  userId    String /// ใครอัปเดต
+  status    TaskStatus
+  note      String?
+  latitude  Decimal?   @db.Decimal(10, 7)
+  longitude Decimal?   @db.Decimal(10, 7)
+  photoUrl  String?
+
+  createdAt DateTime @default(now())
+
+  task RescueTask @relation(fields: [taskId], references: [id])
+  user User       @relation(fields: [userId], references: [id])
+
+  @@map("task_update")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 13: Notification — การแจ้งเตือน
+// =============================================================================
+
+/// แม่แบบข้อความ
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  code      String   @unique /// เช่น "FLOOD_ALERT", "SURVEY_REMINDER"
+  channel   String /// "LINE" / "SMS" / "IN_APP"
+  subject   String? /// หัวข้อ (สำหรับ email)
+  bodyTh    String /// เนื้อหาภาษาไทย (รองรับ variable เช่น {{name}})
+  variables String[] /// ตัวแปรที่ใช้ได้ เช่น ["name", "community", "date"]
+
+  notifications Notification[]
+
+  @@map("notification_template")
+}
+
+/// ข้อความที่ส่ง
+model Notification {
+  id              String    @id @default(cuid())
+  templateId      String?
+  recipientUserId String? /// FK ถ้าส่งถึง User
+  recipientPhone  String? /// เบอร์โทร (สำหรับ SMS)
+  recipientLineId String? /// LINE User ID
+  channel         String /// "LINE" / "SMS" / "IN_APP"
+  content         String /// เนื้อหาจริงที่ส่ง
+  status          String    @default("QUEUED") /// QUEUED / SENT / FAILED / READ
+  sentAt          DateTime?
+  readAt          DateTime?
+  errorMessage    String?
+  incidentId      String? /// เกี่ยวข้องกับเหตุการณ์ไหน (ถ้ามี)
+
+  createdAt DateTime @default(now())
+
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("notification")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 14: System & Compliance — ระบบและการปฏิบัติตามกฎหมาย
+// =============================================================================
+
+/// Audit Log — บันทึกการกระทำ (Append-only — NFR-S-06, BR-58)
+/// ⚠️ ตาราง Append-only: App User ห้าม UPDATE/DELETE
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String? /// ใครทำ (null = ระบบ)
+  action     AuditAction /// CREATE / READ / UPDATE / DELETE / EXPORT / ...
+  entityType String /// ชื่อ Entity เช่น "Household", "VulnerablePerson"
+  entityId   String? /// ID ของ Entity ที่ถูกกระทำ
+  changes    Json? /// รายละเอียดที่เปลี่ยน (old → new)
+  reason     String? /// เหตุผล (บังคับสำหรับบาง Action)
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now()) /// ⚠️ ห้ามแก้ไข
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, createdAt(sort: Desc)], name: "ix_audit_entity")
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+/// คำขอใช้สิทธิ์ PDPA (BR-28)
+model PdpaRequest {
+  id             String    @id @default(cuid())
+  householdId    String? /// ครัวเรือนที่เกี่ยวข้อง
+  requestType    String /// "ACCESS" / "RECTIFY" / "ERASE" / "OBJECT"
+  requesterName  String /// ชื่อผู้ขอ 🔒
+  requesterPhone String? /// เบอร์ 🔒
+  requestedAt    DateTime  @default(now())
+  status         String    @default("PENDING") /// PENDING / IN_PROGRESS / COMPLETED / REJECTED
+  handledById    String? /// ใครดำเนินการ
+  handledAt      DateTime?
+  response       String? /// ผลการดำเนินการ
+
+  @@map("pdpa_request")
+}
+
+/// งาน Export (Background Job)
+model ExportJob {
+  id              String  @id @default(cuid())
+  userId          String /// ใครขอ
+  type            String /// "EXCEL" / "PDF" / "CSV"
+  filterCriteria  Json? /// เงื่อนไขที่ใช้กรอง
+  status          String  @default("QUEUED") /// QUEUED / PROCESSING / COMPLETED / FAILED
+  fileUrl         String? /// URL ไฟล์ผลลัพธ์
+  rowCount        Int? /// จำนวนแถว
+  isAnonymized    Boolean @default(false) /// ผ่าน Anonymization แล้วหรือไม่
+  coveragePercent Float? /// Coverage % ณ ตอนที่ Export
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  expiresAt   DateTime? /// หมดอายุเมื่อไหร่ (7 วัน)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("export_job")
+}
+
+/// ตั้งค่าระบบ (Key-Value)
+model SystemSetting {
+  id          String  @id @default(cuid())
+  key         String  @unique /// เช่น "RISK_CALCULATION_ENABLED", "LOCK_TIMEOUT_MINUTES"
+  value       Json /// ค่า (เก็บเป็น JSON เพื่อรองรับหลายประเภท)
+  description String? /// คำอธิบาย
+  updatedBy   String? /// ใครแก้ล่าสุด
+
+  updatedAt DateTime @updatedAt
+
+  @@map("system_setting")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 15: Statistics — ตาราง Materialized/Summary
+// =============================================================================
+
+/// สถิติการคีย์รายคนรายวัน (ใช้ Cron คำนวณ หรือ Materialized View)
+model EntryStats {
+  id             String   @id @default(cuid())
+  userId         String /// ใคร
+  date           DateTime @db.Date /// วันที่
+  sheetsEntered  Int      @default(0) /// จำนวนใบที่คีย์ (Entry 1)
+  sheetsVerified Int      @default(0) /// จำนวนใบที่ยืนยัน (Entry 2)
+  avgDurationSec Float? /// เวลาเฉลี่ยต่อใบ (วินาที)
+  errorRate      Float? /// Error rate (0.0-1.0)
+  computedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id]) /// FK ที่ขาด (SCH-20)
+
+  @@unique([userId, date])
+  @@map("entry_stats")
+}
+
+// =============================================================================
+// 🔷 กลุ่ม 16: v3.1 STRUCTURE_ONLY — โครงสร้างใหม่ (ยังไม่เดิน Logic)
+// =============================================================================
+
+/// เบอร์ฉุกเฉิน (FR-PUB-03) — รองรับทั้งเบอร์ระดับชาติและเฉพาะพื้นที่ (ไม่ Hardcode)
+model EmergencyContact {
+  id           String  @id @default(cuid())
+  code         String  @unique /// เช่น "PDMA_1784", "POLICE_191"
+  nameTh       String /// เช่น "สายด่วน ปภ."
+  phone        String /// เบอร์
+  category     String /// "DISASTER"/"POLICE"/"MEDICAL"/"MUNICIPALITY"
+  isNationwide Boolean @default(false) /// true = ระดับชาติ (1784, 191)
+  communityId  String? /// เฉพาะชุมชน (ถ้าไม่ nationwide)
+  provinceId   String? /// เฉพาะจังหวัด
+  sortOrder    Int     @default(0)
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([communityId])
+  @@map("emergency_contact")
+}
+
+/// โปรไฟล์อาสาสมัคร (FR-VOL-01..10) — สมัครผ่านเว็บ ≠ VolunteerInterest (จากกระดาษ)
+/// STRUCTURE_ONLY — Approval workflow logic ทำใน Phase 13 (BR-68)
+model VolunteerProfile {
+  id             String                  @id @default(cuid())
+  userId         String                  @unique
+  communityId    String?
+  status         VolunteerApprovalStatus @default(PENDING) /// รออนุมัติก่อน Login (BR-68)
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  pdpaAcceptedAt DateTime? /// ยอมรับ PDPA (FR-VOL-05)
+  pdpaVersion    String?
+  equipment      String? /// อุปกรณ์ที่มี (FR-VOL-04)
+  deletedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community?              @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  skills    VolunteerProfileSkill[]
+
+  @@index([status])
+  @@index([communityId])
+  @@map("volunteer_profile")
+}
+
+/// ทักษะอาสาสมัคร (M:N VolunteerProfile ↔ VolunteerSkillType) — 8 ด้าน (FR-VOL-03)
+model VolunteerProfileSkill {
+  id                 String @id @default(cuid())
+  volunteerProfileId String
+  skillTypeId        String
+
+  volunteerProfile VolunteerProfile   @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
+  skillType        VolunteerSkillType @relation(fields: [skillTypeId], references: [id])
+
+  @@unique([volunteerProfileId, skillTypeId])
+  @@map("volunteer_profile_skill")
+}
+
+/// การกำหนด Critical Field สำหรับ Double-entry (FR-VER-01 "ตั้งค่าได้")
+/// STRUCTURE_ONLY — seed content (รายการฟิลด์วิกฤต) รอ Q-13
+model CriticalFieldConfig {
+  id            String      @id @default(cuid())
+  fieldPath     String /// เช่น "respondentPhone", "vulnerable[].fullName"
+  labelTh       String
+  section       String /// "0".."5"
+  questionNo    String?
+  isCritical    Boolean     @default(true)
+  compareMode   CompareMode @default(EXACT)
+  tolerance     Float? /// สำหรับ NUMERIC_TOLERANCE
+  isRepeating   Boolean     @default(false) /// อยู่ในตาราง (กลุ่มเปราะบาง)
+  sortOrder     Int         @default(0)
+  version       Int         @default(1)
+  effectiveFrom DateTime    @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fieldPath, version])
+  @@index([isActive, isCritical, sortOrder])
+  @@map("critical_field_config")
+}

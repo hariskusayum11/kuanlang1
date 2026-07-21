@@ -1,0 +1,349 @@
+# 16 — Owner Decisions Record (บันทึกคำตัดสินของเจ้าของระบบ)
+
+> **สถานะ:** เป็นบันทึกอ้างอิงที่มีผลผูกพัน (Authoritative) — ใช้เป็นฐานของ [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md)
+> **รอบนี้:** เตรียม Decision Record + แผนแก้ไข — **ยังไม่แก้ `schema.prisma`, `seed.ts`, SQL และยังไม่สร้าง Migration**
+> **แหล่งคำตัดสิน:** เจ้าของระบบ — **รอบที่ 1 (16 ข้อ)** + **รอบที่ 2 (9 ข้อ)** ดูส่วนที่ 6
+
+---
+
+## 0. สรุปผลของคำตัดสินต่อ Blocker (อัปเดตหลังรอบที่ 2)
+
+| ประเภท | จำนวน | รายการ |
+|---|---|---|
+| ✅ **ปิดแล้วด้วยคำตัดสิน** | 8 | CONF-01, CONF-02/SCH-05, SCH-01, SCH-04/COV-01, RISK-01 (จัดเก็บ), SQL-01/SQL-02, **SEED-01 (รหัสชุมชน — รอบ 2)**, **Q-19 Version (Better Auth 1.6.23 — รอบ 2)** |
+| 🟢 **ปลดล็อกแล้ว — พร้อมแก้ (ไม่ต้องรอคำตัดสิน)** | 4 | SCH-03, QM-03 (การลบ constraint), SQL-03, SQL-04 |
+| 🟡 **ได้แนวทางแล้ว — ยังรอเงื่อนไขก่อน Implement** | 1 | **SCH-08 (Encryption — ได้ design AES-256-GCM/Blind Index; รอ Key Management + PDPA)** |
+| 🔴 **ยังเปิดอยู่ — สงวนให้เจ้าของ/รอ Business Rule/รอกฎหมาย** | 3 | GAP-D01 (BR หาย), GAP-R06 (PDPA/Consent — legal BLOCKER), RISK-02/RISK-07 (สูตร + Versioning) |
+
+> **หลักการที่คำตัดสินสร้างขึ้น:** คำตัดสินชุดนี้ยืนยัน **โครงสร้างการเก็บข้อมูล** ที่ปลอดภัยได้แล้ว แต่**สงวนตรรกะที่กระทบสิทธิเจ้าของข้อมูลและการตัดสินความเสี่ยง** (Consent, Encryption Implementation, สูตร Risk Final) ไว้จนกว่าจะได้คำยืนยัน — สอดคล้องกับ CLAUDE.md ที่ห้ามเดา Requirement และห้าม Comment ว่าเข้ารหัสโดยไม่เข้ารหัสจริง
+>
+> **รอบที่ 2 เพิ่ม:** ปิดรหัสชุมชน (SEED-01) + เวอร์ชัน Better Auth + ให้ **แนวทาง Encryption เบื้องต้น** (ยังไม่ implement) + ยืนยันห้ามเดารหัสพื้นที่ (ใช้ `UNVERIFIED`)
+
+---
+
+## 1. ตารางคำตัดสินทั้ง 16 ข้อ
+
+| # | คำตัดสิน | ประเภท | ปิด/กระทบ | ข้อจำกัดที่เกิดขึ้น |
+|---|---|---|---|---|
+| 1 | `totalHouseholds` ยังไม่ทราบ → ใช้ **NULL** ห้ามใช้ 0 → แสดง "ยังคำนวณไม่ได้" | ✅ Confirmed | ปิด COV-01, SCH-04 บางส่วน; ตอบ Q-01 | ทุก Coverage query ต้อง NULL-aware; ห้าม `default(0)` |
+| 2 | เป้าหมายสำรวจ **> ร้อยละ 60** — `targetCoveragePercent` default 60; ผ่าน = `coveragePercent > targetCoveragePercent` | ✅ Confirmed | ปิด CONF-01, SEED-02; ตอบ Q-02 บางส่วน | ใช้ `>` (strict) ไม่ใช่ `>=`; ต้องมี Unit Test ขอบเขต 60 พอดี |
+| 3 | เกณฑ์เตือน Export **80%** → เก็บเป็น **Config แยก** | ✅ Confirmed | ตอบ Q-02, CONF-03 | ห้าม Hardcode; แยกจาก `targetCoveragePercent` |
+| 4 | **KPI 85% ยังไม่ยืนยัน** — ห้ามใช้ตัดสินสถานะ | ✅ Confirmed | ปิด CONF-03 บางส่วน | ห้ามนำ 85 มาเป็นเกณฑ์ Badge/Pass ในโค้ด |
+| 5 | ใช้ชื่อ Role **`VOLUNTEER`** | ✅ Confirmed | **ปิด CONF-02, SCH-05, RBAC-01**; ตอบ Q-19(1) | เปลี่ยน enum ก่อน Migration แรก |
+| 6 | Community ↔ Tambon = **Many-to-Many ผ่าน `CommunityTambon`** | ✅ Confirmed | **ปิด SCH-01**; ตอบ Q-17 บางส่วน | ลบ `Community.tambonId`; นับครัวเรือน/ตำบลต้องใช้ `Household.tambonId` |
+| 7 | ชุมชนควนสันติครอบคลุม **ควนลัง + หาดใหญ่** | ✅ Confirmed | ปิด SEED-01 บางส่วน | ต้องมี 2 แถวใน `CommunityTambon` |
+| 8 | **ยังไม่กำหนดตำบลหลัก** — `isPrimary` ต้องรองรับกรณี**ไม่มีตำบลหลัก** | ✅ Confirmed | ปิด Q-17 (ในเชิงโครงสร้าง) | Partial Unique Index ต้องอนุญาต 0 หรือ 1 ตำบลหลัก (ไม่ใช่บังคับ 1) |
+| 9 | ชื่อชุมชนเริ่มต้น 5 แห่ง (ท่าเคียน/ประสานมิตร/ควนสันติ/ปลักหว้า/หน้าควน) | ✅ Confirmed | ปิด SEED-01 บางส่วน | Seed ต้องใช้ชื่อจริง; **รหัส (`code`) ยังไม่ตัดสิน → รอ Q-21** |
+| 10 | ลบชุมชนตัวอย่าง **KL01, KL02, KL03, HY01, HY02** | ✅ Confirmed | ปิด SEED-01, SEED-11 | Seed ต้องมีขั้นตอนลบแถวเก่า (upsert ไม่ลบให้) |
+| 11 | เพิ่ม **`communityNameOnPaper`** เก็บข้อความดิบจากกระดาษ | ✅ Confirmed | **ปิด QM-01** | ตั้งค่าจากกระดาษ ห้าม default = ชื่อชุมชนของ Batch |
+| 12 | เพิ่ม **`coordinateRawText`** เก็บพิกัดดิบจากกระดาษ | ✅ Confirmed | **ปิด QM-04 (เชิงจัดเก็บ)** | Double-entry เทียบที่ raw; `lat/lng` เป็น Derived (ตรรกะ parse = รอบรีฟ Q-10 ไม่รวมรอบนี้) |
+| 13 | Risk Score ต้องแยก **`rawScore`, `maximumPossibleScore`, `normalizedScore`** | ✅ Confirmed | **ปิด RISK-01 (เชิงจัดเก็บ)**; ตอบ Q-25(จัดเก็บ) | ลบ `riskScoreAuto`; แก้ CHECK 0-100; **การจัดระดับ/absoluteScore = เลื่อน (ดู #14)** |
+| 14 | **ห้ามสร้างสูตร Risk Final** จนกว่าได้ Business Rule ที่ยืนยัน | 🟡 Deferred | สงวน RISK-02, RISK-03, RISK-05, RISK-06, RISK-09; Q-25(สูตร), Q-26, Q-27, Q-28, Q-29 | ห้ามเขียน: การจัดระดับ, Hard Rules, Threshold, Confidence formula, seed น้ำหนักจริง |
+| 15 | Custom PostGIS SQL ต้องอยู่ใน **ลำดับ Migration ที่ถูกต้อง** | ✅ Confirmed | **ปิด SQL-01, SQL-02 (ทิศทาง)** | ใช้ Prisma Migration + `Unsupported()`; ห้ามไฟล์รันมือ |
+| 16 | **ห้ามตัดสินใจ Consent และ Encryption แทนเจ้าของระบบ** | 🔴 Reserved | สงวน SCH-08, GAP-R06, RBAC-03, RBAC-04; Q-04, Q-20 | ห้าม implement Encryption/Consent logic; คง 🔒 เป็น "รอตัดสิน" |
+
+---
+
+## 2. รายละเอียดคำตัดสินและผลผูกพัน
+
+### กลุ่ม A — Coverage Model (คำตัดสิน 1–4)
+
+**คำตัดสิน 1–2 กำหนดพฤติกรรมบังคับ:**
+
+```
+coverage(count, totalHouseholds, targetCoveragePercent):
+  if totalHouseholds is NULL or <= 0:
+      return "ยังคำนวณไม่ได้"        ← ห้ามคืน 0% (คำตัดสิน 1)
+  percent = count / totalHouseholds * 100
+  meetsTarget = percent > targetCoveragePercent   ← ใช้ > ไม่ใช่ >= (คำตัดสิน 2)
+```
+
+- **คำตัดสิน 1** ปิดช่องโหว่ RK-C1 ที่ร้ายแรงที่สุด: ปัจจุบัน `v_community_summary` มี `ELSE 0` ทำให้ "ไม่ทราบ Denominator" แสดงเป็น "0%" (= บอกผู้บริหารว่ายังไม่ได้สำรวจเลย) → ต้องเปลี่ยนเป็น `NULL`
+- **คำตัดสิน 2** ยืนยันเกณฑ์ผ่านเป็น strict `>` — ครัวเรือน 60% พอดี = **ไม่ผ่าน**
+- **คำตัดสิน 3** แยก `exportWarningCoveragePercent = 80` เป็น Config อิสระ (ไม่ใช่ค่าเดียวกับเกณฑ์ผ่าน)
+- **คำตัดสิน 4** — 85% เป็น "ความมุ่งหมายเชิงโครงการ" เท่านั้น **ห้ามฝังในตรรกะการตัดสินสถานะ** ใดๆ (Badge สี, Pass/Fail, Alert)
+
+> **ผลต่อ Q-01:** เปลี่ยนจาก BLOCKER → **"ดำเนินการได้โดยใช้ NULL"** — จำนวนครัวเรือนจริงยังต้องการภายหลังเพื่อ "ปลดล็อก" การคำนวณ แต่**ไม่บล็อกการพัฒนา** อีกต่อไป
+
+---
+
+### กลุ่ม B — Role (คำตัดสิน 5)
+
+**`VOLUNTEER`** เป็นชื่อที่ยืนยันแล้ว → ปิด CONF-02 / SCH-05 / RBAC-01
+
+- แก้ `UserRoleEnum.RESCUE_VOLUNTEER` → `VOLUNTEER` (schema.prisma:158)
+- ต้องแก้ Comment ที่เกี่ยวข้องที่ยังเป็น v2.0: `DATA_ENTRY` ("อาสาคีย์" → "เจ้าหน้าที่คีย์"), `ConfidentialityAgreement` (schema.prisma:319)
+
+> **ยังเปิด:** Q-19(2) เวอร์ชัน Better Auth และ Q-19(3) admin plugin vs UserRole เอง — **ไม่ใช่ BLOCKER ของ enum** แต่ต้องตัดสินก่อน Phase 3
+
+---
+
+### กลุ่ม C — Community & Area (คำตัดสิน 6–10)
+
+**โครงสร้างที่ยืนยัน:**
+
+```
+Community ──< CommunityTambon >── Tambon
+                (isPrimary: รองรับ 0 หรือ 1 ตำบลหลัก)
+
+ชุมชนควนสันติ:
+  CommunityTambon → ควนลัง  (isPrimary = false)   ← คำตัดสิน 8: ยังไม่มีตำบลหลัก
+  CommunityTambon → หาดใหญ่ (isPrimary = false)
+```
+
+- **คำตัดสิน 8 มีผลต่อ Constraint:** Partial Unique Index `WHERE isPrimary = true` **อนุญาตให้มี 0 แถวได้** (ป้องกันเฉพาะ 2 ตำบลหลัก) → รองรับกรณี "ยังไม่มีตำบลหลัก" โดยไม่ต้องแก้อะไรเพิ่ม ✅
+- **คำตัดสิน 9:** ข้อมูลจริงคือ **4 ชุมชนในควนลัง + 1 ชุมชนคร่อม 2 ตำบล** — ไม่มีชุมชนใดอยู่ในตำบลหาดใหญ่เพียงตำบลเดียว (ต่างจาก Seed เดิมที่สมมติว่ามี 2 ชุมชนในหาดใหญ่)
+- **คำตัดสิน 10:** `upsert({where:{code}})` ไม่ลบแถวที่ถอดออก → ต้องเพิ่มขั้นตอนลบ KL01–HY02 อย่างชัดเจน มิฉะนั้นจะได้ 10 ชุมชน
+
+> **ยังเปิด (รอข้อมูล ไม่ใช่รอตัดสิน):**
+> - **รหัสชุมชน `code`** (Q-21) — เจ้าของให้ชื่อแล้วแต่ยังไม่ให้รหัส → **จำเป็นก่อนพิมพ์สติกเกอร์ 3,000 ใบ** เพราะ `sheetNo` ฝังรหัสนี้
+> - **รหัสอำเภอ/ตำบล** (Q-24) — `9001` น่าจะเป็นเมืองสงขลา ไม่ใช่หาดใหญ่
+> - **จำนวนหมู่จริง** (Q-24)
+
+---
+
+### กลุ่ม D — Paper Capture (คำตัดสิน 11–12)
+
+เจ้าของยืนยันหลักการ **"เก็บข้อความดิบจากกระดาษเสมอ"**:
+
+| ฟิลด์ | เก็บอะไร | ฟิลด์ Derived ที่เดิมมี |
+|---|---|---|
+| `communityNameOnPaper` | ชื่อชุมชนที่ผู้สำรวจเขียน | `communityId` (Map จาก Batch + ชื่อ) |
+| `coordinateRawText` | พิกัดตามตัวอักษรบนกระดาษ | `latitude` / `longitude` (Parse — ตรรกะเลื่อน) |
+
+- **คำตัดสิน 12 มีผลต่อ Double-entry:** ต้องเทียบที่ `coordinateRawText` ไม่ใช่ที่ค่าที่ตีความแล้ว → ป้องกัน Discrepancy เท็จ
+- **ตรรกะ Parse พิกัด และการแปลง พ.ศ./ค.ศ.** เป็น **ตรรกะ App-layer** ที่ขึ้นกับการบรีฟผู้สำรวจ (Q-10) → **ไม่รวมในรอบนี้** เพิ่มเฉพาะคอลัมน์เก็บดิบ
+
+> **ผลข้างเคียงเชิงสถาปัตยกรรม:** คำตัดสิน 11–12 สร้าง **"pattern การเก็บดิบ"** ที่ควรขยายไปยังฟิลด์อื่นที่มีปัญหาเดียวกัน (ระดับน้ำ ม.+ซม., อายุครรภ์หน่วยไม่ชัด, "ไม่มี"/"ไม่สะดวก") → ดู [17](17-approved-schema-change-spec.md) กลุ่ม "รอเจ้าของยืนยันการขยาย Pattern"
+
+---
+
+### กลุ่ม E — Risk (คำตัดสิน 13–14) ⚠️ สำคัญ
+
+**คำตัดสิน 13 (ยืนยัน) — เก็บ 3 คะแนน:**
+
+```prisma
+model FloodRiskProfile {
+  rawScore              Float?   // Σ(Factor × Weight) — สูงสุด 115
+  maximumPossibleScore  Float?   // Σ(Weight ของปัจจัยที่มีข้อมูล)
+  normalizedScore       Float?   // rawScore / maximumPossibleScore × 100
+  // ลบ: riskScoreAuto Float?
+}
+```
+
++ แก้ CHECK: `ck_risk_score (0-100 บน riskScoreAuto)` → `ck_raw_score (rawScore >= 0)` + `ck_raw_le_max (rawScore <= maximumPossibleScore)` + `ck_normalized_score (0-100)`
+→ **ปิด RISK-01** (Constraint จะไม่ปฏิเสธ rawScore = 115 อีกต่อไป)
+
+**คำตัดสิน 14 (เลื่อน) — สิ่งที่ห้ามทำจนกว่าได้ BR ยืนยัน:**
+
+| ห้ามทำในรอบนี้ | เหตุผล | รอ Q |
+|---|---|---|
+| การจัดระดับ LOW/MEDIUM/HIGH/CRITICAL | ต้องมี Threshold ที่รับรอง | Q-26 |
+| การเลือก `absoluteScore` vs `normalizedScore` จัดระดับ | เป็นส่วนของสูตร Final | Q-25(สูตร) |
+| Hard Rules (ติดเตียง/ฟอกไต → ≥HIGH) | ยังไม่มีข้อความ BR | Q-29, GAP-D01 |
+| สูตร Confidence | ยังไม่รับรอง | Q-28 |
+| Seed น้ำหนัก 12 ปัจจัย (115) | ไม่มีที่มา/ไม่รับรอง | Q-29 |
+| `RiskWeightVersion` / `RiskHardRule` structure | ผูกกับสูตรที่เลื่อน | Q-29 |
+
+> **การตีความ #13 + #14 ร่วมกัน:** เพิ่ม**คอลัมน์เก็บองค์ประกอบคะแนน**ได้ทันที (โครงสร้าง) แต่**ห้ามเดินสายตรรกะคำนวณ/จัดระดับ** จนกว่าได้ BR → คอลัมน์จะเป็น NULL ไว้ก่อน
+> **ข้อสังเกตที่ต้องยกเมื่อทบทวน BR:** RISK-02 พิสูจน์ว่า `normalizedScore` เพียงอย่างเดียวทำให้ "ข้อมูลขาด 1 ปัจจัย → คะแนนพุ่ง 100" → ควรเสนอ `absoluteScore` (÷115) เพิ่มตอนยืนยันสูตร (บันทึกไว้ใน Q-25)
+
+---
+
+### กลุ่ม F — Migration Order (คำตัดสิน 15)
+
+ยืนยันว่า Custom PostGIS SQL ต้องอยู่ในลำดับ Migration ที่ถูกต้อง → **ปิด SQL-01, SQL-02 (ทิศทาง)**
+
+**ลำดับที่ยืนยัน:**
+```
+0001_init (Prisma: tables + extensions=[postgis,pg_trgm])
+0002_postgis_columns (Unsupported geography → ไม่มี Drift)
+0003_functions_triggers
+0004_constraints (DO $$ IF NOT EXISTS)
+0005_indexes
+0006_views
+```
+- แก้ความเข้าใจผิดใน schema.prisma:747 — `Unsupported()` ใช้เป็น**คอลัมน์**ได้ (ใช้ใน relation ไม่ได้เท่านั้น)
+- `database/drafts/00_postgis_extensions.sql` → เก็บอ้างอิง **ห้ามรันมือ**
+
+---
+
+### กลุ่ม G — สงวนให้เจ้าของ (คำตัดสิน 16) 🔴
+
+**ห้ามตัดสินใจแทนในเรื่อง Consent และ Encryption** → คงเปิด:
+
+| เรื่อง | Q | สิ่งที่ห้ามทำ | สิ่งที่ทำได้ |
+|---|---|---|---|
+| **Consent / PDPA** | Q-04 | ห้ามกำหนดว่า `UNKNOWN` ใช้ทำอะไรได้; ห้ามออกแบบ Consent flow ที่ผูกกฎ | คง enum `ConsentStatus` ที่มีอยู่; เตรียมโครง `ConsentRecord`/`PdpaRequest` ไว้ (โครงสร้างไม่ตัดสินนโยบาย) |
+| **Encryption** | Q-20 | ห้าม implement Prisma Extension เข้ารหัส; ห้ามตัดสินว่าชื่อเข้ารหัสหรือไม่ | คง 🔒 เป็นเครื่องหมาย "รอตัดสิน"; **ห้ามลบ 🔒 และห้ามอ้างว่าเข้ารหัสแล้ว** |
+
+> ⚠️ **นี่หมายความว่า SCH-08 (Encryption ไม่จริง) และ GAP-R06 (Consent) ยังเป็น BLOCKER ที่เปิดอยู่** — และเป็น BLOCKER ที่ต้องปิด**ก่อนเก็บข้อมูลจริง** (ไม่ใช่แค่ก่อนเขียนโค้ด) โดยเฉพาะ PDPA ม.26
+
+---
+
+## 3. สรุปสถานะ Blocker หลังคำตัดสิน
+
+### ✅ ปิดแล้ว (พร้อมแก้ Schema)
+
+| Blocker | ปิดด้วย | การแก้ที่ตามมา |
+|---|---|---|
+| CONF-01 (600/3,000) | #1, #2 | Coverage Model ใหม่ |
+| CONF-02 / SCH-05 / RBAC-01 (VOLUNTEER) | #5 | Rename enum |
+| SCH-01 / SEED-01 (Community-Tambon) | #6, #7, #8, #9, #10 | CommunityTambon M:N |
+| SCH-04 / COV-01 (targetHouseholds) | #1, #2, #3 | ลบ targetHouseholds, เพิ่ม Coverage fields |
+| RISK-01 (115 vs CHECK 100) | #13 | แยก 3 คะแนน + แก้ CHECK |
+| SQL-01 / SQL-02 (ลำดับ/Drift) | #15 | Migration ordering + Unsupported() |
+| **SEED-01 (รหัสชุมชน)** | **R2-#1,#2** | TK01/PM01/KS01/PW01/NK01 |
+| **Q-19 Version (Better Auth)** | **R2-#4** | ล็อก `1.6.23` + Prisma Adapter |
+
+### 🟢 ปลดล็อกแล้ว — พร้อมแก้ (ไม่ต้องรอคำตัดสินเพิ่ม)
+
+| Blocker | เหตุผล |
+|---|---|
+| SCH-03 (คนเดียวคีย์ 2 รอบ) | Pure fix — เพิ่ม Trigger + App logic; ไม่ต้องอาศัยคำตัดสินใด |
+| QM-03 (unique address — ลบ constraint) | ปลอดภัยเสมอ; ส่วน semantics อพาร์ทเมนต์รอ Q-12 แต่ไม่บล็อกการลบ |
+| SQL-03 (Constraint Idempotent) | Pure fix |
+| SQL-04 (Batch Trigger) | Pure fix (นิยาม receivedCount รอ Q-30 แต่ไม่บล็อกโครงสร้าง Trigger) |
+
+### 🟡 ได้แนวทางแล้ว — ยังรอเงื่อนไข (อัปเดตรอบ 2)
+
+| Blocker | สถานะ | เหตุผล |
+|---|---|---|
+| **SCH-08 / RBAC-03** (Encryption) | 🟡 ได้ design | รอบ 2 ให้แนวทาง AES-256-GCM + Blind Index HMAC-SHA256; **ยังห้าม implement จนกว่ามี Key Management + ยืนยัน PDPA** (ดู R2-#5) |
+
+### 🔴 ยังเปิด — ต้องปิดก่อน Migration แรก หรือก่อนเก็บข้อมูล
+
+| Blocker | สถานะ | เหตุผลที่ยังเปิด |
+|---|---|---|
+| **GAP-D01** (BR 38 ข้อหาย) | 🔴 เปิด | ยังไม่ได้ไฟล์ v2.0 / ยังไม่เขียน BR ใหม่ (Q-03) — **บล็อก Risk formula (#14)** |
+| **GAP-R06 / RBAC-04** (Consent/PDPA) | 🔴 เปิด — legal BLOCKER | สงวนให้เจ้าของ + นิติกร (#16, Q-04, R2-#6) |
+| **RISK-02 / RISK-07** (สูตร + Versioning) | 🔴 เปิด | เลื่อนตาม #14 จนกว่าได้ BR (R2-#7,9) |
+
+---
+
+## 4. ข้อจำกัดที่คำตัดสินสร้างขึ้น (บังคับใช้กับทุกงานต่อไป)
+
+1. **ห้ามใช้ 0 แทน "ไม่ทราบ"** — `totalHouseholds` และ Coverage ที่ไม่มี Denominator ต้องเป็น `NULL` เสมอ
+2. **เกณฑ์ผ่าน Coverage ใช้ `>` strict** — 60% พอดี = ไม่ผ่าน
+3. **85% ห้ามปรากฏในตรรกะการตัดสินสถานะ** — เป็นเป้าหมายอ้างอิงเท่านั้น
+4. **`VOLUNTEER` เท่านั้น** — ห้ามมี `RESCUE_VOLUNTEER` เหลือในโค้ด/Seed/Test
+5. **นับครัวเรือนต่อตำบลต้องใช้ `Household.tambonId`** — ห้าม Join ผ่าน `CommunityTambon` (นับควนสันติซ้ำ)
+6. **`isPrimary` อนุญาต 0 หรือ 1 ตำบลหลัก** — ไม่บังคับต้องมี
+7. **ข้อมูลกระดาษต้องเก็บดิบ** — `communityNameOnPaper`, `coordinateRawText` และ Double-entry เทียบที่ raw
+8. **Risk: เก็บได้ คำนวณไม่ได้** — 3 คะแนนเป็นคอลัมน์ NULL จนกว่าได้ BR; ห้ามจัดระดับ/Hard Rule/Threshold/Confidence
+9. **Custom SQL อยู่ใน Prisma Migration เท่านั้น** — ห้ามไฟล์รันมือ; ใช้ `Unsupported()` สำหรับ geography
+10. **Consent/Encryption สงวนให้เจ้าของ** — คง 🔒 เป็น "รอตัดสิน"; ห้ามอ้างว่าเข้ารหัสแล้ว
+
+---
+
+## 5. สิ่งที่ยังต้องได้รับคำตอบก่อน Migration แรก (อัปเดตหลังรอบ 2)
+
+| ลำดับ | ต้องการ | สถานะ | อ้างอิง |
+|---|---|---|---|
+| 1 | ~~รหัสชุมชน 5 แห่ง (`code`)~~ | ✅ **ปิดแล้ว** — TK01/PM01/KS01/PW01/NK01 (R2-#1,2) | Q-21 |
+| 2 | **รหัสอำเภอ/ตำบล/หมู่** | 🔴 **ยังเปิด — ต้อง Verify (ห้ามเดา)** — ปัจจุบัน `UNVERIFIED`; `9001` น่าจะเป็นเมืองสงขลา | Q-24, R2-#3 |
+| 3 | ~~เวอร์ชัน Better Auth~~ | ✅ **ปิดแล้ว** — `1.6.23` (R2-#4) | Q-19(2) |
+| 4 | **Encryption Implementation** | 🟡 ได้ design; **ยังห้าม implement** จนกว่ามี Key Management + PDPA (R2-#5) | Q-20 |
+| 5 | **ทิศทาง Consent/PDPA** | 🔴 legal BLOCKER (R2-#6) | Q-04 |
+| 6 | **Business Rules (Risk + การคีย์ + จัดเก็บ)** | 🔴 ยังเปิด | Q-03, GAP-D01 |
+
+> **สำคัญ:** รหัสอำเภอ/ตำบล (ลำดับ 2) จำเป็นสำหรับ **Seed ข้อมูลพื้นที่** — ไม่บล็อก DDL Migration แรก (สร้างตาราง) แต่**บล็อกการ Seed Production พื้นที่**
+> รายการ 4–6 บล็อก **Feature ที่เกี่ยวข้อง** และ **การเก็บข้อมูลจริง** — ดูรายละเอียดใน [18-pre-migration-checklist.md](18-pre-migration-checklist.md)
+
+---
+
+## 6. คำตัดสินรอบที่ 2 (9 ข้อ)
+
+> เพิ่มเติมจากรอบที่ 1 — เรียกว่า **R2-#1 ถึง R2-#9**
+
+### R2-#1, R2-#2 — รหัสชุมชนเริ่มต้น (ปิด Q-21 / SEED-01)
+
+| ชุมชน | รหัส |
+|---|---|
+| ชุมชนท่าเคียน | **`TK01`** |
+| ชุมชนประสานมิตร | **`PM01`** |
+| ชุมชนควนสันติ | **`KS01`** |
+| ชุมชนปลักหว้า | **`PW01`** |
+| ชุมชนหน้าควน | **`NK01`** |
+
+- **R2-#2:** รหัสชุมชน**ต้องไม่ผูกกับรหัสตำบล** เพราะชุมชนหนึ่งอาจครอบคลุมหลายตำบล (ควนสันติ = 2 ตำบล)
+- **ผลผูกพัน:** รหัสนี้ฝังใน `sheetNo` (`SHEET-{ชุมชน}-{batch}-{ลำดับ}`) ที่พิมพ์ลงกระดาษ → **เปลี่ยนไม่ได้หลังพิมพ์**
+- **ข้อสังเกต:** รหัสใหม่ใช้อักษรย่อชื่อชุมชน (ไม่ใช่ตำบล) → รองรับชุมชนข้ามตำบลได้ ✅ ตรงเจตนา R2-#2
+
+### R2-#3 — ห้ามเดารหัสพื้นที่ (จังหวัด/อำเภอ/ตำบล/หมู่)
+
+**คำตัดสิน:** ตรวจว่ารหัสพื้นที่ใน Seed ปัจจุบันถูกต้องหรือไม่ — ถ้าไม่มีแหล่งยืนยัน ให้ระบุ `UNVERIFIED` — **ห้ามแก้ด้วยการคาดเดา**
+
+**ผลการตรวจ Seed ปัจจุบัน (`seed.ts:16-54`):**
+
+| ระดับ | ชื่อ | รหัสใน Seed | สถานะ | เหตุผล |
+|---|---|---|---|---|
+| จังหวัด | สงขลา | `90` | 🟡 **UNVERIFIED (สอดคล้องมาตรฐาน)** | `90` ตรงกับรหัสจังหวัดสงขลาตามระบบมาตรฐาน — แต่ยังไม่ยืนยันจากแหล่งทางการในรอบนี้ |
+| อำเภอ | หาดใหญ่ | `9001` | 🔴 **UNVERIFIED — น่าจะผิด** | `9001` ตามระบบมาตรฐานมักเป็น **อำเภอเมืองสงขลา**; หาดใหญ่มักเป็น **`9011`** — **ห้ามแก้เป็น 9011 โดยไม่ยืนยัน** |
+| ตำบล | ควนลัง | `900105` | 🔴 **UNVERIFIED** | ผูกกับรหัสอำเภอที่น่าจะผิด (ควรขึ้นต้นด้วยรหัสอำเภอที่ถูกต้อง) |
+| ตำบล | หาดใหญ่ | `900101` | 🔴 **UNVERIFIED** | เช่นเดียวกัน |
+| หมู่ | ควนลัง 1-10, หาดใหญ่ 1-5 | — | 🔴 **UNVERIFIED (Comment ยอมรับว่าตัวอย่าง)** | `seed.ts:56` = "หมู่ — ตัวอย่าง (ปรับตามจริง)" |
+
+> **⚠️ ไม่ยืนยันว่ารหัสที่ถูกต้องคืออะไร** ตามคำสั่ง "ห้ามเดา" — เพียงชี้ว่า `9001` มีความเสี่ยงสูงที่จะผิด และต้องตรวจกับ **Dataset กรมการปกครอง (TIS-1099)** ก่อน Seed Production
+> **แนวทาง:** จนกว่าจะยืนยัน — ทำเครื่องหมายทุกรหัสพื้นที่เป็น `UNVERIFIED` ในเอกสาร; **ห้าม Seed Production พื้นที่**
+
+### R2-#4 — Better Auth เวอร์ชัน `1.6.23` (ปิด Q-19 ส่วน Version)
+
+| ข้อกำหนด | รายละเอียด |
+|---|---|
+| เวอร์ชัน | **`1.6.23`** — ล็อกใน `package.json` (ห้าม `latest` ใน Production Workflow) |
+| Adapter | **Prisma Adapter** |
+| CLI | ใช้ **Better Auth CLI เฉพาะ Generate Schema เพื่อเปรียบเทียบ** เท่านั้น |
+| Migration จริง | **Prisma Migration เป็นผู้จัดการ** (ไม่ใช่ Better Auth CLI) |
+| RBAC | ใช้ **`UserRole` + `UserCommunityScope` ของระบบเอง** — **ไม่ใช้ Better Auth Admin Plugin เป็น RBAC หลัก** |
+
+- **ผลผูกพัน:** โครงสร้างตาราง Auth ตอนนี้กำหนดได้แล้ว (ตามข้อกำหนด v1.6.23) → ปลดล็อก Phase 3 เชิงการวางแผน
+- **⚠️ รอบนี้ยังห้ามติดตั้ง Package** — บันทึกเวอร์ชันไว้ใน [18-pre-migration-checklist.md](18-pre-migration-checklist.md) เพื่อดำเนินการเมื่อสร้างโปรเจกต์
+
+### R2-#5 — แนวทาง Encryption เบื้องต้น (ทำเครื่องหมาย Q-20: ได้แนวทาง — ยังรอเงื่อนไข)
+
+| ประเภทข้อมูล | แนวทาง |
+|---|---|
+| **ชื่อ + ข้อมูลค้นหา Fuzzy** | **ยังไม่เข้ารหัสระดับ Application รอบนี้** — ป้องกันด้วย RBAC + Query Scope + Audit Log + Database/Disk Encryption |
+| **เบอร์โทรศัพท์ + ข้อมูลสุขภาพ** | ออกแบบให้**รองรับ Application-level Encryption** (ยังไม่ implement) |
+| อัลกอริทึม (เมื่อ implement) | **AES-256-GCM** |
+| ค้นหาแบบ Exact | **Blind Index แบบ HMAC-SHA256** |
+| พิกัดรายบ้าน | ถือเป็น**ข้อมูลอ่อนไหว** (L3) |
+| Public API / Public View | **ห้ามคืน PII, ข้อมูลสุขภาพ, พิกัดรายบ้าน** |
+
+> **🔴 ยังห้าม Implement Encryption** จนกว่า **(1) มี Key Management** และ **(2) ได้รับการยืนยันด้าน PDPA**
+> → นี่ปลด SCH-08 จาก "🔴 สงวน" เป็น "🟡 ได้ design" แต่**ยังไม่ปิด** — Encryption Implementation ยังอยู่ในกลุ่ม `WAITING_FOR_LEGAL_DECISION`
+> → **ผลต่อ Schema รอบนี้:** ยังไม่เพิ่มคอลัมน์ ciphertext/blind-index (เพราะการเพิ่มหมายถึงต้องคำนวณ = implement); แต่**เพิ่มเครื่องหมาย 🔒 ให้พิกัดรายบ้าน** (`latitude`/`longitude` = L3) ได้ (เป็นการจัดหมวด ไม่ใช่ implement)
+
+### R2-#6 — Consent + ฐานกฎหมาย = ยังเป็น legal BLOCKER
+
+คงสถานะ GAP-R06 / Q-04 เป็น **BLOCKER ด้านกฎหมาย** — สงวนให้เจ้าของ + นิติกร (ไม่เปลี่ยนจากรอบ 1)
+
+### R2-#7, R2-#8, R2-#9 — Risk
+
+| # | คำตัดสิน |
+|---|---|
+| R2-#7 | **สูตร Risk Final และ Hard Rules ยังไม่อนุมัติ** |
+| R2-#8 | **แก้ได้เฉพาะโครงสร้างเก็บ** `rawScore`, `maximumPossibleScore`, `normalizedScore` (ตรงกับรอบ 1 #13) |
+| R2-#9 | **ห้ามสร้าง Logic กำหนดระดับ Risk Final** จนกว่าอนุมัติ Business Rule |
+
+> ยืนยันและตอกย้ำคำตัดสินรอบ 1 #13/#14 — **3 คะแนน = STRUCTURE_ONLY**; การจัดระดับ/Hard Rule = `WAITING_FOR_BUSINESS_RULE`
+
+---
+
+## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)
+
+11. **รหัสชุมชนไม่ผูกตำบล** — ใช้ TK01/PM01/KS01/PW01/NK01 (อักษรย่อชื่อชุมชน)
+12. **ห้ามเดารหัสพื้นที่** — `UNVERIFIED` จนกว่ายืนยันจากกรมการปกครอง; ห้าม Seed Production พื้นที่ก่อนยืนยัน
+13. **Better Auth ล็อก `1.6.23`** — ห้าม `latest`; Prisma จัดการ Migration; RBAC ใช้ของระบบเอง
+14. **Encryption: ได้ design แต่ยังห้าม implement** — คง 🔒; ไม่เพิ่มคอลัมน์ ciphertext/blind-index จนกว่ามี Key Management + PDPA
+15. **พิกัดรายบ้าน = อ่อนไหว (L3)** — Public ห้ามคืนพิกัดรายบ้าน/PII/สุขภาพ
+
+---
+
+## เอกสารที่เกี่ยวข้อง
+
+- [14-open-questions.md](14-open-questions.md) — คำถามที่ปรับสถานะตามคำตัดสินนี้
+- [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md) — สเปกการแก้ Schema (5 กลุ่ม)
+- [18-pre-migration-checklist.md](18-pre-migration-checklist.md) — เงื่อนไขทั้งหมดก่อน Migration แรก
+- [15-database-fix-plan.md](15-database-fix-plan.md) — แผนแก้ไขฉบับเต็ม (FIX-01..49)

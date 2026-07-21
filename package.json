@@ -1,0 +1,27 @@
+{
+  "name": "skl-fris",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SKL-FRIS — Song Khlong Khuan Lang Flood Resilience Information System",
+  "scripts": {
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "better-auth": "1.6.23"
+  },
+  "devDependencies": {
+    "prisma": "5.22.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8",
+    "@types/node": "20.17.6"
+  }
+}
