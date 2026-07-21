@@ -2,7 +2,9 @@
 
 > **วัตถุประสงค์:** ระบุ **ทุกเงื่อนไข** ที่ต้องผ่านก่อนสร้าง/รัน Migration แรก และก่อน Seed / เก็บข้อมูลจริง
 > **ฐานอ้างอิง:** [16-owner-decisions.md](16-owner-decisions.md) (รอบ 1 #1..16 + รอบ 2 R2-#1..9), [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md), [14-open-questions.md](14-open-questions.md)
-> **🔴 สถานะรอบนี้:** ยังไม่แก้ `schema.prisma`/`seed.ts`/SQL · ยังไม่สร้าง Migration · ยังไม่ติดตั้ง Package
+> **🟢 สถานะจริง (อัปเดต 2026-07-21):** `schema.prisma` **v3.1 แก้แล้ว** (Gate B) · `prisma validate` **ผ่าน** · Unit tests **17/17 ผ่าน** · `tsc --noEmit` **ผ่าน** · Package ติดตั้งแล้ว (`better-auth 1.6.23`, `prisma 5.22.0`)
+> **🔴 ยังค้าง:** ยังไม่มี real `prisma/migrations/` (มีแค่ draft) · ยังไม่มี `.env` / Development Database · ยังไม่ Apply Migration
+> **📌 หมายเหตุ:** ข้อความ "รอบนี้ยังไม่แก้ schema" ในเวอร์ชันเดิมของไฟล์นี้ **ล้าสมัย** — ดูสถานะจริงฉบับเต็มที่ [19-current-project-status.md](19-current-project-status.md)
 
 ---
 
@@ -41,20 +43,20 @@
 
 > ดำเนินการเฉพาะรายการ **APPROVED_TO_IMPLEMENT + STRUCTURE_ONLY** ใน [17](17-approved-schema-change-spec.md)
 
-- [ ] `git commit` สำรองก่อนแก้ Schema (CLAUDE.md บังคับ)
-- [ ] Enum: `RESCUE_VOLUNTEER` → `VOLUNTEER`
-- [ ] Enum ใหม่: `SurveyorRiskLevel`, `PregnancyUnit`, `VolunteerApprovalStatus`, `AreaScopeType`, `CompareMode`, status enums, `EvacuationSiteType`
-- [ ] Model ใหม่: `CommunityTambon`, `CommunityBoundary`, `VolunteerProfile`(+Skill), `EmergencyContact`, `UserAreaScope`, `IncidentCommunity`, `CriticalFieldConfig`
-- [ ] `Community`: ลบ `tambonId`/`targetHouseholds` → เพิ่ม `totalHouseholds Int?` + `targetCoveragePercent Float @default(60)` + metadata
-- [ ] `Household`: เพิ่ม `communityNameOnPaper`, `coordinateRawText`, `hasNoResources`, `volunteerNotAvailable`, `assistanceTotalPersonCount`; ลบ `@@unique([houseNo,mooId,tambonId])`; เพิ่ม 🔒 `latitude`/`longitude`
-- [ ] `FloodRiskProfile`: ลบ `riskScoreAuto` → เพิ่ม `rawScore`/`maximumPossibleScore`/`normalizedScore`; `floodDepthMetersRaw`/`CmRaw`; `riskLevelSurveyor` → `SurveyorRiskLevel?` **(ห้ามเพิ่ม logic จัดระดับ)**
-- [ ] `PersonVulnerability`: เพิ่ม `pregnancyRawText`/`pregnancyUnit`/`pregnancyValue`
-- [ ] FK relation ที่ขาด (6 จุด) + Unique ที่ขาด + `createdAt`/`updatedAt` + `deletedAt` soft-delete
-- [ ] `onDelete: Cascade` → `Restrict` (7 ตาราง)
-- [ ] Comment v2.0 → v3.0 (รวม `DATA_ENTRY`, `ConfidentialityAgreement`)
-- [ ] **ห้ามเพิ่ม:** `RiskWeightVersion`, `RiskHardRule`, `absoluteScore`, Confidence, ciphertext/blind-index columns
-- [ ] `npx prisma format` ผ่าน
-- [ ] `npx prisma validate` ผ่าน
+- [ ] `git commit` สำรองก่อนแก้ Schema (CLAUDE.md บังคับ) — *schema v3.1 ถูกรวมใน commit `b62957a` "Initial project setup" แล้ว*
+- [x] Enum: `RESCUE_VOLUNTEER` → `VOLUNTEER` *(ยืนยันด้วย test: มี `VOLUNTEER` ไม่มี `RESCUE_VOLUNTEER`)*
+- [~] Enum ใหม่: `SurveyorRiskLevel`, `PregnancyUnit`, `VolunteerApprovalStatus`, `CompareMode`, status enums ✅ · **`EvacuationSiteType` ยังไม่มี** (FIX-45 ค้าง — ใช้ `NearestEvacSiteType` แทน)
+- [x] Model ใหม่: `CommunityTambon`, `CommunityBoundary`, `VolunteerProfile`(+Skill), `EmergencyContact`, `UserAreaScope`, `IncidentCommunity`, `CriticalFieldConfig`
+- [x] `Community`: ลบ `tambonId`/`targetHouseholds` → เพิ่ม `totalHouseholds Int?` + `targetCoveragePercent Float @default(60)` + metadata
+- [x] `Household`: เพิ่ม `communityNameOnPaper`, `coordinateRawText`, `hasNoResources`, `volunteerNotAvailable`, `assistanceTotalPersonCount`; ลบ `@@unique([houseNo,mooId,tambonId])`; 🔒 `latitude`/`longitude` (Decimal)
+- [x] `FloodRiskProfile`: ลบ `riskScoreAuto` → เพิ่ม `rawScore`/`maximumPossibleScore`/`normalizedScore`; `floodDepthMetersRaw`/`CmRaw`; `SurveyorRiskLevel?` **(ไม่มี logic จัดระดับ — ยืนยันด้วย test)**
+- [x] `PersonVulnerability`: เพิ่ม `pregnancyRawText`/`pregnancyUnit`/`pregnancyValue`
+- [x] FK relation ที่ขาด + Unique ที่ขาด + `createdAt`/`updatedAt` + `deletedAt` soft-delete
+- [x] `onDelete: Cascade` → `Restrict`
+- [x] Comment v2.0 → v3.0 (รวม `DATA_ENTRY`, `ConfidentialityAgreement`)
+- [x] **ห้ามเพิ่ม:** `RiskWeightVersion`, `RiskHardRule`, `absoluteScore`, Confidence, ciphertext/blind-index columns *(ยืนยันไม่มี)*
+- [x] `npx prisma format` ผ่าน
+- [x] `npx prisma validate` ผ่าน *(ด้วย dummy `DATABASE_URL` — validate ไม่ต่อ DB)*
 
 ---
 
