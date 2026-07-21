@@ -617,6 +617,30 @@ ISR ยังพึ่ง Next.js server → ถ้า Server ล่ม ISR ก�
 
 ---
 
+### Q-EVAC-TYPE — ค่า enum ของประเภทจุดอพยพจริง (`EvacuationSiteType`)
+
+> ## ✅ สถานะ: **ตอบแล้ว — เจ้าของระบบยืนยันค่า enum (2026-07-21)** → ปิด Conflict D
+
+**บริบท:** `EvacuationSite.type` เดิมใช้ `NearestEvacSiteType` (มี `UNKNOWN`/`OTHER` ซึ่งไร้สาระสำหรับจุดอพยพจริง) FIX-45 อนุมัติให้แยก enum แต่**ไม่มีเอกสารระบุค่า** → เคย HALT (ดู [20](20-schema-conflict-resolution.md))
+
+**คำตัดสินเจ้าของระบบ:** `EvacuationSite` เป็น **Phase 2 Future Module** (เมนู "จัดการจุดอพยพ") — Phase 1 สร้าง**โครงสร้างเท่านั้น** (ไม่มี UI/API/Seed จริง/Business Logic) และให้สร้าง enum ดังนี้ (ห้ามเพิ่ม/ลบ/เปลี่ยนชื่อ):
+
+| ค่า | ความหมาย |
+|---|---|
+| `RELATIVE_HOME` | บ้านญาติ/บ้านพักพิง |
+| `SCHOOL` | โรงเรียน |
+| `TEMPLE_OR_MOSQUE` | วัด/มัสยิด |
+| `COMMUNITY_CENTER` | ศูนย์ชุมชน |
+| `MUNICIPAL_AREA` | พื้นที่/อาคารเทศบาล |
+| `OTHER` | อื่นๆ |
+
+**ข้อจำกัด:** ไม่มี `UNKNOWN` โดยเจตนา (ไม่ทราบประเภท → `type = NULL`); `NearestEvacSiteType` (คำตอบแบบสอบถาม ส่วนที่ 3 ข้อ 8) **คงไว้ครบ** — สอง enum แยกกันถาวร; **ห้าม Seed ตัวอย่างจุดอพยพใน Production**
+
+**อ้างอิง:** FIX-45, [16-owner-decisions.md](16-owner-decisions.md) #EVAC, [20-schema-conflict-resolution.md](20-schema-conflict-resolution.md) §Conflict D
+**Phase:** โครงสร้างพร้อมแล้ว; โมดูลจริง = Phase 2
+
+---
+
 ## ตารางสรุปคำถามตาม Phase (อัปเดตหลังคำตัดสิน)
 
 > ✅ = ปิดแล้วด้วยคำตัดสิน · 🟡 = ตอบบางส่วน · 🔴 = ยังเปิด

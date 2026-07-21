@@ -120,6 +120,18 @@ enum NearestEvacSiteType {
   OTHER // อื่นๆ
 }
 
+/// ประเภทจุดอพยพจริง (Master Data) — Phase 2 Future Module สำหรับเมนู "จัดการจุดอพยพ"
+/// แยกจาก NearestEvacSiteType (คำตอบในแบบสอบถาม) โดยตั้งใจ — ห้ามรวมสอง enum
+/// ไม่มี UNKNOWN โดยเจตนา: ถ้าไม่ทราบประเภท ให้ EvacuationSite.type = NULL
+enum EvacuationSiteType {
+  RELATIVE_HOME // บ้านญาติ/บ้านพักพิง
+  SCHOOL // โรงเรียน
+  TEMPLE_OR_MOSQUE // วัด/มัสยิด
+  COMMUNITY_CENTER // ศูนย์ชุมชน
+  MUNICIPAL_AREA // พื้นที่/อาคารเทศบาล
+  OTHER // อื่นๆ
+}
+
 /// ประเภทยานพาหนะอพยพ (ส่วนที่ 3 ข้อ 9)
 enum VehicleType {
   CAR // รถยนต์
@@ -1222,11 +1234,12 @@ model VolunteerInterest {
 // =============================================================================
 
 /// จุดอพยพหลัก (ข้อมูลจากเทศบาล/ชุมชน ไม่ใช่จากแบบสอบถาม)
+/// Phase 2 Future Module — ยังไม่เปิดใช้งานใน Phase 1 (โครงสร้างเท่านั้น: ไม่มี UI/API/Seed จริง/Business Logic)
 model EvacuationSite {
   id                      String                                 @id @default(cuid())
   communityId             String
   name                    String /// ชื่อจุดอพยพ เช่น "โรงเรียนควนลังวิทยา"
-  type                    NearestEvacSiteType
+  type                    EvacuationSiteType? /// ประเภทจุดอพยพจริง (NULL = ไม่ทราบประเภท)
   address                 String?
   latitude                Decimal                                @db.Decimal(10, 7)
   longitude               Decimal                                @db.Decimal(10, 7)

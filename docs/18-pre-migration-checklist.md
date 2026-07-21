@@ -2,7 +2,7 @@
 
 > **วัตถุประสงค์:** ระบุ **ทุกเงื่อนไข** ที่ต้องผ่านก่อนสร้าง/รัน Migration แรก และก่อน Seed / เก็บข้อมูลจริง
 > **ฐานอ้างอิง:** [16-owner-decisions.md](16-owner-decisions.md) (รอบ 1 #1..16 + รอบ 2 R2-#1..9), [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md), [14-open-questions.md](14-open-questions.md)
-> **🟢 สถานะจริง (อัปเดต 2026-07-21):** `schema.prisma` **v3.1 แก้แล้ว** (Gate B) · `prisma validate` **ผ่าน** · Unit tests **23/23 ผ่าน** · `tsc --noEmit` **ผ่าน** · Package ติดตั้งแล้ว (`better-auth 1.6.23`, `prisma 5.22.0`) · **Conflict A+B แก้แล้ว, D HALT** (ดู `docs/20`)
+> **🟢 สถานะจริง (อัปเดต 2026-07-21):** `schema.prisma` **v3.1 แก้แล้ว** (Gate B) · `prisma validate` **ผ่าน** · Unit tests **29/29 ผ่าน** · `tsc --noEmit` **ผ่าน** · Package ติดตั้งแล้ว (`better-auth 1.6.23`, `prisma 5.22.0`) · **Conflict A+B+D แก้แล้ว** (`EvacuationSiteType` สร้างแล้ว — Phase 2 Module; ดู `docs/20`)
 > **🔴 ยังค้าง:** ยังไม่มี real `prisma/migrations/` (มีแค่ draft) · ยังไม่มี `.env` / Development Database · ยังไม่ Apply Migration
 > **📌 หมายเหตุ:** ข้อความ "รอบนี้ยังไม่แก้ schema" ในเวอร์ชันเดิมของไฟล์นี้ **ล้าสมัย** — ดูสถานะจริงฉบับเต็มที่ [19-current-project-status.md](19-current-project-status.md)
 
@@ -45,7 +45,7 @@
 
 - [ ] `git commit` สำรองก่อนแก้ Schema (CLAUDE.md บังคับ) — *schema v3.1 ถูกรวมใน commit `b62957a` "Initial project setup" แล้ว*
 - [x] Enum: `RESCUE_VOLUNTEER` → `VOLUNTEER` *(ยืนยันด้วย test: มี `VOLUNTEER` ไม่มี `RESCUE_VOLUNTEER`)*
-- [~] Enum ใหม่: `SurveyorRiskLevel`, `PregnancyUnit`, `VolunteerApprovalStatus`, `CompareMode`, status enums ✅ · **`EvacuationSiteType` HALT** (Conflict D — อนุมัติให้สร้างแต่ไม่มีค่า enum ในเอกสาร; รอเจ้าของยืนยัน — ดู `docs/20` §6)
+- [x] Enum ใหม่: `SurveyorRiskLevel`, `PregnancyUnit`, `VolunteerApprovalStatus`, `CompareMode`, status enums ✅ · **`EvacuationSiteType` สร้างแล้ว** (Conflict D ปิด 2026-07-21 — 6 ค่า `RELATIVE_HOME/SCHOOL/TEMPLE_OR_MOSQUE/COMMUNITY_CENTER/MUNICIPAL_AREA/OTHER`, ไม่มี `UNKNOWN`, `EvacuationSite.type` nullable, Phase 2 Module — ดู `docs/20` §Conflict D)
 - [x] Model ใหม่: `CommunityTambon`, `CommunityBoundary`, `VolunteerProfile`(+Skill), `EmergencyContact`, `UserAreaScope`, `IncidentCommunity`, `CriticalFieldConfig`
 - [x] `Community`: ลบ `tambonId`/`targetHouseholds` → เพิ่ม `totalHouseholds Int?` + `targetCoveragePercent Float @default(60)` + metadata
 - [x] `Household`: เพิ่ม `communityNameOnPaper`, `coordinateRawText`, `hasNoResources`, `volunteerNotAvailable`, `assistanceTotalPersonCount`; ลบ `@@unique([houseNo,mooId,tambonId])`; 🔒 `latitude`/`longitude` (Decimal)

@@ -143,10 +143,56 @@ describe("Conflict A/B resolution (schema text)", () => {
     expect(schemaText).not.toMatch(/Unsupported\("geometry\(/);
   });
 
-  // Conflict D: HALT — ยังไม่สร้าง EvacuationSiteType (รอค่า enum จากเจ้าของ)
-  it("Conflict D (halt): ยังไม่มี enum EvacuationSiteType; EvacuationSite.type ยังใช้ NearestEvacSiteType", () => {
-    expect(schemaText).not.toMatch(/enum\s+EvacuationSiteType/);
+  // Conflict D (CLOSED): EvacuationSiteType สร้างแล้ว (Phase 2 Future Module — คำตัดสินเจ้าของ)
+  it("Conflict D: มี enum EvacuationSiteType ครบ 6 ค่าตามคำตัดสินเจ้าของ", () => {
+    const e = enums.find((x) => x.name === "EvacuationSiteType")!;
+    expect(e).toBeTruthy();
+    expect(e.values.map((v) => v.name)).toEqual([
+      "RELATIVE_HOME",
+      "SCHOOL",
+      "TEMPLE_OR_MOSQUE",
+      "COMMUNITY_CENTER",
+      "MUNICIPAL_AREA",
+      "OTHER",
+    ]);
+  });
+
+  it("Conflict D: EvacuationSiteType ไม่มี UNKNOWN (โดยเจตนา — ไม่ทราบ = NULL)", () => {
+    const e = enums.find((x) => x.name === "EvacuationSiteType")!;
+    expect(e.values.map((v) => v.name)).not.toContain("UNKNOWN");
+  });
+
+  it("Conflict D: EvacuationSite.type = EvacuationSiteType และ nullable (optional)", () => {
     const ev = model("EvacuationSite").fields.find((f) => f.name === "type")!;
-    expect(ev.type).toBe("NearestEvacSiteType");
+    expect(ev.type).toBe("EvacuationSiteType");
+    expect(ev.isRequired).toBe(false);
+  });
+
+  it("Conflict D: NearestEvacSiteType ยังคงอยู่ครบ (รวม UNKNOWN + OTHER)", () => {
+    const e = enums.find((x) => x.name === "NearestEvacSiteType")!;
+    expect(e).toBeTruthy();
+    const vals = e.values.map((v) => v.name);
+    expect(vals).toContain("UNKNOWN");
+    expect(vals).toContain("OTHER");
+    expect(vals).toContain("RELATIVE_HOUSE");
+  });
+
+  it("Conflict D: คำตอบครัวเรือน (ส่วนที่ 3 ข้อ 8) ยังใช้ NearestEvacSiteType", () => {
+    // Household มีฟิลด์ที่อ้าง NearestEvacSiteType (nearestEvacSite)
+    const usesNearest = models.some((m) =>
+      m.fields.some((f) => f.type === "NearestEvacSiteType"),
+    );
+    expect(usesNearest).toBe(true);
+  });
+
+  it("Conflict D: สอง enum แยกจากกัน (ชื่อค่าไม่เหมือนกัน)", () => {
+    const evac = enums.find((x) => x.name === "EvacuationSiteType")!.values.map((v) => v.name);
+    const near = enums.find((x) => x.name === "NearestEvacSiteType")!.values.map((v) => v.name);
+    expect(evac).not.toEqual(near);
+  });
+
+  it("Conflict D: Production Seed ไม่มีข้อมูลตัวอย่าง EvacuationSite (Phase 2)", () => {
+    const seed = readFileSync(join(process.cwd(), "prisma", "seed.ts"), "utf8");
+    expect(seed).not.toMatch(/evacuationSite|EvacuationSite/);
   });
 });

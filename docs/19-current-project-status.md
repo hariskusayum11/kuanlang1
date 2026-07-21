@@ -9,7 +9,7 @@
 
 ## 1. สรุปหนึ่งบรรทัด
 
-**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 23/23 ผ่าน + tsc ผ่าน** · **Conflict A (PostGIS Unsupported) + B (pg_trgm) แก้แล้ว** · **Conflict D (EvacuationSiteType) HALT — รอค่า enum** แต่ **ยังไม่มี real migration / ไม่มี `.env` / ไม่มี Database** — พร้อมสร้าง DDL Migration แต่ยังไม่ได้ทำ
+**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A (PostGIS Unsupported) + B (pg_trgm) + D (EvacuationSiteType) แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) แต่ **ยังไม่มี real migration / ไม่มี `.env` / ไม่มี Database** — พร้อมสร้าง DDL Migration แต่ยังไม่ได้ทำ
 
 ---
 
@@ -20,7 +20,7 @@
 | `schema.prisma` v3.1 | 🟢 แก้เสร็จ | 1578 บรรทัด, commit `b62957a` |
 | `prisma validate` | 🟢 ผ่าน | รันด้วย dummy `DATABASE_URL` (validate ไม่ต่อ DB) |
 | Coverage Pure Function | 🟢 สร้างแล้ว | `domain/coverage/coverage.ts` (ตามคำตัดสิน #1, #2) |
-| Unit tests | 🟢 17/17 ผ่าน | `tests/unit/coverage.test.ts` (7) + `schema-structure.test.ts` (10) |
+| Unit tests | 🟢 29/29 ผ่าน | `tests/unit/coverage.test.ts` (7) + `schema-structure.test.ts` (22 — รวม Conflict A/B/D) |
 | TypeScript strict check | 🟢 ผ่าน | `npx tsc --noEmit` ไม่มี error |
 | Package ติดตั้ง | 🟢 แล้ว | `prisma 5.22.0`, `@prisma/client 5.22.0`, `better-auth 1.6.23`, `vitest 2.1.8`, `tsx 4.19.2` |
 | SQL Drafts | 🟢 เขียนครบ 6 กลุ่ม | `database/migrations-draft/00→50`, `prisma/migrations-draft/0001` |
@@ -43,7 +43,7 @@
 | `.env` / `DATABASE_URL` จริง | 🔴 ยังไม่มี | ต้องมี Development DB ก่อน |
 | Development Database (PG16+PostGIS) | 🔴 ยังไม่ตั้ง | Docker Compose ยังไม่รัน |
 | Apply Migration | 🔴 ยังไม่ทำ | ตามคำสั่ง — ห้าม apply Production |
-| `EvacuationSiteType` enum (FIX-45) | 🔴 **HALT** (Conflict D) | อนุมัติให้สร้าง แต่**ไม่มีเอกสารระบุค่า enum** → ห้ามเดา (ดู `docs/20`) |
+| `EvacuationSiteType` enum (FIX-45) | ✅ **แก้แล้ว** (Conflict D ปิด 2026-07-21) | เจ้าของยืนยัน 6 ค่า, ไม่มี `UNKNOWN`, `EvacuationSite.type` nullable, Phase 2 Module (ดู `docs/20`) |
 | PostGIS columns ใน schema | ✅ **แก้แล้ว** (Conflict A) | ประกาศ `Unsupported("geography(...)")` แล้ว — ไม่ drift (ดู `docs/20`) |
 | `pg_trgm` ใน datasource | ✅ **แก้แล้ว** (Conflict B) | `extensions = [postgis, pg_trgm]` — validate ผ่าน (ดู `docs/20`) |
 | Risk Final formula/leveling | 🔴 รอ Business Rule (Q-03) | **ห้าม implement** |
@@ -78,7 +78,7 @@
 | **A** | ~~location/geom ไม่อยู่ใน schema.prisma~~ ✅ **แก้แล้ว** | ประกาศ `Unsupported("geography(Point, 4326)")` (household+evacuation_site) และ `Unsupported("geography(MultiPolygon, 4326)")` (community_boundary) ใน schema แล้ว | ✅ Prisma รับรู้ → ไม่ drift · `10_postgis_columns.sql` เป็น fallback idempotent |
 | **B** | ~~`pg_trgm` ไม่ประกาศใน datasource~~ ✅ **แก้แล้ว** | `extensions = [postgis, pg_trgm]` (Prisma 5.22.0 + `postgresqlExtensions` preview) | ✅ validate ผ่าน · Prisma จัดการ extension ให้ |
 | **C** | postgis extension สร้าง 2 ที่ | `0001_init` บรรทัด 1 + `00_extensions.sql` | 🟢 Idempotent (`IF NOT EXISTS`) — ซ้ำซ้อนแต่ไม่อันตราย |
-| **D** | `EvacuationSiteType` ไม่ถูกสร้าง | 🔴 **HALT** — FIX-45/doc17 อนุมัติให้สร้าง แต่**ไม่มีเอกสารใดระบุค่า enum**; instruction ห้ามเดา | 🔴 รอเจ้าของยืนยันค่า enum (ดู `docs/20` §6) — `EvacuationSite.type` คง `NearestEvacSiteType` ไว้ก่อน |
+| **D** | ~~`EvacuationSiteType` ไม่ถูกสร้าง~~ ✅ **แก้แล้ว** | เจ้าของยืนยันค่า enum (2026-07-21): 6 ค่า `RELATIVE_HOME/SCHOOL/TEMPLE_OR_MOSQUE/COMMUNITY_CENTER/MUNICIPAL_AREA/OTHER` ไม่มี `UNKNOWN`; `EvacuationSite.type` → `EvacuationSiteType?`; `NearestEvacSiteType` คงไว้ (สอง enum แยกกัน); Phase 2 Module | ✅ ปิด Conflict D — Prisma รับรู้ · ไม่มี Seed จุดอพยพ Production (ดู `docs/20`) |
 | **E** | ไม่มี real `prisma/migrations/` + เลขไม่ตรงกัน | draft 2 โฟลเดอร์ใช้เลขคนละแบบ (prisma: `0001`; database: `00/10/20/30/40/50`) ยังไม่ merge เป็น layout เป้าหมาย `0001–0006` | 🔴 ต้อง formalize ก่อน apply |
 | **F** | prisma draft เป็น `.sql` หลวม | ไม่ใช่ Prisma migration folder จริง (ขาด `migration.sql` + `migration_lock.toml`) | 🔴 รัน `prisma migrate` ไม่ได้ตรง ๆ |
 
@@ -105,7 +105,7 @@
 ## 7. ขั้นต่อไปที่แนะนำ (เมื่อได้รับอนุญาต)
 
 1. ✅ ~~เพิ่ม `pg_trgm` + `Unsupported("geography(...)")`~~ — **ทำแล้ว** (Conflict A, B — ดู `docs/20`)
-2. 🔴 `EvacuationSiteType` (FIX-45) — **HALT** รอเจ้าของยืนยันค่า enum (Conflict D — `docs/20` §6)
+2. ✅ ~~`EvacuationSiteType` (FIX-45)~~ — **ทำแล้ว** (Conflict D ปิด 2026-07-21 — enum 6 ค่า, Phase 2 Module; `docs/20`)
 3. ตั้ง Development DB (Docker Compose) + `.env` (`DATABASE_URL`)
 4. `prisma migrate dev --create-only` เพื่อสร้าง migration แรก แล้วแทรก custom SQL ตามลำดับ 0002–0006
 5. รัน migration 2 ครั้งติดกัน → ต้องไม่ error (Idempotent)

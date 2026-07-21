@@ -331,6 +331,22 @@ model FloodRiskProfile {
 
 ---
 
+## 6.5 คำตัดสินรอบที่ 3 — โมดูลจุดอพยพ (ปิด Q-EVAC-TYPE / Conflict D, 2026-07-21)
+
+> เรียกว่า **#EVAC** — ปิด Conflict D (ดู [20-schema-conflict-resolution.md](20-schema-conflict-resolution.md))
+
+| # | คำตัดสิน |
+|---|---|
+| #EVAC-1 | `EvacuationSite` เป็น **Phase 2 Future Module** (เมนู "จัดการจุดอพยพ") — Phase 1 สร้าง**โครงสร้างเท่านั้น**: ห้ามมี UI/API/Seed จริง/การผูกกับคำตอบครัวเรือน/Business Logic |
+| #EVAC-2 | สร้าง enum **`EvacuationSiteType`** = `RELATIVE_HOME`, `SCHOOL`, `TEMPLE_OR_MOSQUE`, `COMMUNITY_CENTER`, `MUNICIPAL_AREA`, `OTHER` (ห้ามเพิ่ม/ลบ/เปลี่ยนชื่อ) |
+| #EVAC-3 | **ไม่มี `UNKNOWN`** โดยเจตนา — ไม่ทราบประเภท → `EvacuationSite.type = NULL` (เปลี่ยนฟิลด์เป็น nullable) |
+| #EVAC-4 | `NearestEvacSiteType` (คำตอบแบบสอบถาม ส่วนที่ 3 ข้อ 8) **คงไว้ครบ** รวม `UNKNOWN`/`OTHER` — **สอง enum แยกกันถาวร ห้ามรวม** |
+| #EVAC-5 | **ห้าม Seed ตัวอย่างจุดอพยพใน Production** (ถ้าจำเป็นให้ใส่เฉพาะ Dev Seed) |
+
+> **ผล:** ปิด Conflict D + FIX-45; `EvacuationSite.type` เปลี่ยนจาก `NearestEvacSiteType` → `EvacuationSiteType?`
+
+---
+
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)
 
 11. **รหัสชุมชนไม่ผูกตำบล** — ใช้ TK01/PM01/KS01/PW01/NK01 (อักษรย่อชื่อชุมชน)

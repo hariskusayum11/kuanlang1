@@ -53,7 +53,7 @@
 | `deletedAt` soft-delete + แยก `isActive` | FIX-38 | — | SCH-07 |
 | FK relation ที่ขาด (6 จุด) | FIX-39 | — | SCH-20 |
 | Unique ที่ขาด (`Account` ฯลฯ) | FIX-40 | — | SCH-22 |
-| status String → enum + `EvacuationSiteType` | FIX-41,45 | — | SCH-26,25 |
+| status String → enum + `EvacuationSiteType` *(✅ FIX-45 สร้างแล้ว 2026-07-21 — ค่า enum ยืนยันโดยเจ้าของ, Phase 2 Module)* | FIX-41,45 | #EVAC | SCH-26,25 |
 | `createdAt`/`updatedAt` ครบ | FIX-44 | — | SCH-24 |
 | Index ที่ขาด + Spatial Partial + แก้ `ix_vulnerable_search_name` (deletedAt) | FIX-30 | — | SCH-16, SQL-15/16 |
 | View: `v_community_coverage` (NULL-aware) + `v_household_geo_internal` (VERIFIED) + DROP ก่อน CREATE | FIX-28 | #1,2 | COV-01/02, SQL-10 |
@@ -144,7 +144,8 @@
 | `VolunteerApprovalStatus` *(ใหม่)* | `{ PENDING, APPROVED, REJECTED, SUSPENDED }` | 🟢 A2 |
 | `AreaScopeType` *(ใหม่)* | `{ PROVINCE, DISTRICT, TAMBON }` | 🟢 A2 |
 | `CompareMode` *(ใหม่)* | `{ EXACT, NORMALIZED_PHONE, NORMALIZED_TEXT, NUMERIC_TOLERANCE, SET_EQUALITY }` | 🟢 A2 |
-| `NotificationStatus`/`ExportStatus`/`PdpaRequestType`/`PdpaRequestStatus`/`IncidentType`/`IncidentSeverity`/`EvacuationSiteType` *(ใหม่)* | แทน String | 🟢 A2 |
+| `NotificationStatus`/`ExportStatus`/`PdpaRequestType`/`PdpaRequestStatus`/`IncidentType`/`IncidentSeverity` *(ใหม่)* | แทน String | 🟢 A2 |
+| `EvacuationSiteType` *(ใหม่ — ✅ สร้างแล้ว)* | `{ RELATIVE_HOME, SCHOOL, TEMPLE_OR_MOSQUE, COMMUNITY_CENTER, MUNICIPAL_AREA, OTHER }` — ไม่มี `UNKNOWN`; `EvacuationSite.type` → nullable; แยกจาก `NearestEvacSiteType` (Phase 2 Module) — ปิด Q-EVAC-TYPE/Conflict D | ✅ A2 (2026-07-21) |
 | `RiskVersionStatus` *(ใหม่)* | `{ DRAFT, ACTIVE, SUPERSEDED }` | 🔴 C |
 | `TriageLevel` | P1-P3 → ? (แยก `TaskPriority` P1-P4?) | 🟡 B (Q-18) |
 
