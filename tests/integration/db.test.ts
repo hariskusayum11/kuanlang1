@@ -66,9 +66,129 @@ describe.skipIf(!isLocalDevDb)("Integration (local Dev DB — PostgreSQL/PostGIS
     expect(sites).toBe(0);
   });
 
-  // ข้อ8 (BR-44): คนเดียวกันคีย์ Entry 1+2 ต้องถูกปฏิเสธ (Trigger check_different_entry_person)
-  //   → ต้องรอ Custom SQL 0003 (functions/triggers) ซึ่งยังไม่ได้ formalize/apply
-  it.todo("ข้อ8: คนเดียวกันคีย์ Entry 1+2 ถูกปฏิเสธ (รอ trigger BR-44 — custom SQL 0003)");
+  // ข้อ8 (BR-44/FR-VER-03/SCH-03): คนเดียวกันคีย์ Entry 1+2 ต้องถูกปฏิเสธ
+  // Trigger: check_different_entry_person (migration 20260721231914_br44_check_different_entry_person)
+  // Fixtures สังเคราะห์ล้วน (prefix TEST-BR44-) — สร้างใน beforeAll และลบทิ้งใน afterAll (idempotent)
+  describe("ข้อ8 (BR-44): Trigger check_different_entry_person", () => {
+    const EMAIL_A = "br44-test-a@test.invalid";
+    const EMAIL_B = "br44-test-b@test.invalid";
+    let userAId = "";
+    let userBId = "";
+    let sheet1Id = "";
+    let sheet2Id = "";
+
+    async function cleanupFixtures() {
+      await prisma.entryAttempt.deleteMany({
+        where: { sheet: { sheetNo: { startsWith: "TEST-BR44-" } } },
+      });
+      await prisma.paperSheet.deleteMany({ where: { sheetNo: { startsWith: "TEST-BR44-" } } });
+      await prisma.paperBatch.deleteMany({ where: { code: { startsWith: "TEST-BR44-" } } });
+      await prisma.user.deleteMany({ where: { email: { in: [EMAIL_A, EMAIL_B] } } });
+    }
+
+    beforeAll(async () => {
+      await cleanupFixtures();
+      const tk = await prisma.community.findUnique({ where: { code: "TK01" } });
+      if (!tk) throw new Error("[BR-44 test] ไม่พบชุมชน TK01 — ต้องรัน seed ก่อน");
+
+      const userA = await prisma.user.create({
+        data: { email: EMAIL_A, name: "BR44 Test User A" },
+      });
+      const userB = await prisma.user.create({
+        data: { email: EMAIL_B, name: "BR44 Test User B" },
+      });
+      userAId = userA.id;
+      userBId = userB.id;
+
+      const batch = await prisma.paperBatch.create({
+        data: {
+          code: "TEST-BR44-BATCH",
+          communityId: tk.id,
+          expectedCount: 2,
+          receivedAt: new Date(),
+          receivedById: userA.id,
+        },
+      });
+      const s1 = await prisma.paperSheet.create({
+        data: { batchId: batch.id, sheetNo: "TEST-BR44-S1", sequence: 1 },
+      });
+      const s2 = await prisma.paperSheet.create({
+        data: { batchId: batch.id, sheetNo: "TEST-BR44-S2", sequence: 2 },
+      });
+      sheet1Id = s1.id;
+      sheet2Id = s2.id;
+    });
+
+    afterAll(async () => {
+      await cleanupFixtures();
+    });
+
+    it("คนละคนคีย์ Entry 1 และ 2 ของใบเดียวกัน → ผ่าน", async () => {
+      await prisma.entryAttempt.create({
+        data: {
+          sheetId: sheet1Id,
+          attemptNo: 1,
+          enteredById: userAId,
+          startedAt: new Date(),
+          payload: {},
+        },
+      });
+      const e2 = await prisma.entryAttempt.create({
+        data: {
+          sheetId: sheet1Id,
+          attemptNo: 2,
+          enteredById: userBId,
+          startedAt: new Date(),
+          payload: {},
+          isBlind: true,
+        },
+      });
+      expect(e2.id).toBeTruthy();
+    });
+
+    it("คนเดียวกันคีย์ Entry 1+2 ของใบเดียวกัน → ถูกปฏิเสธด้วย BR-44", async () => {
+      await prisma.entryAttempt.create({
+        data: {
+          sheetId: sheet2Id,
+          attemptNo: 1,
+          enteredById: userAId,
+          startedAt: new Date(),
+          payload: {},
+        },
+      });
+      await expect(
+        prisma.entryAttempt.create({
+          data: {
+            sheetId: sheet2Id,
+            attemptNo: 2,
+            enteredById: userAId,
+            startedAt: new Date(),
+            payload: {},
+            isBlind: true,
+          },
+        }),
+      ).rejects.toThrow(/BR-44/);
+    });
+
+    it("bypass ด้วย UPDATE enteredById เป็นคนเดิม → ถูกปฏิเสธด้วย BR-44", async () => {
+      const e2 = await prisma.entryAttempt.findUnique({
+        where: { sheetId_attemptNo: { sheetId: sheet1Id, attemptNo: 2 } },
+      });
+      expect(e2).not.toBeNull();
+      await expect(
+        prisma.entryAttempt.update({
+          where: { id: e2!.id },
+          data: { enteredById: userAId },
+        }),
+      ).rejects.toThrow(/BR-44/);
+    });
+
+    it("คนเดียวกันคีย์คนละใบ → ผ่าน (trigger ไม่บล็อกข้าม sheet)", async () => {
+      // userA มี attempt 1 ทั้ง S1 และ S2 สำเร็จแล้ว = ไม่บล็อกข้ามใบ
+      const count = await prisma.entryAttempt.count({ where: { enteredById: userAId } });
+      expect(count).toBe(2);
+    });
+  });
 
   // ข้อ3: Community มีตำบลหลักได้ไม่เกิน 1 (partial unique ux_community_primary_tambon)
   //   → ต้องรอ Custom SQL 0004 (constraints) ซึ่งยังไม่ได้ formalize/apply

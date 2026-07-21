@@ -9,7 +9,7 @@
 
 ## 1. สรุปหนึ่งบรรทัด
 
-**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A + B + D แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) · **Migration แรก `20260721153936_init_schema_v1` Apply แล้วบน Development DB (local Docker `postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)** — 56 ตาราง (app) + 21 enum, ไม่มี drift, seed master+dev สำเร็จ · **Production ไม่ถูกแตะ**
+**Schema v3.1 แก้เสร็จ + validate ผ่าน + Unit tests 29/29 ผ่าน + tsc ผ่าน** · **Conflict A + B + D แก้แล้ว** (D ปิด 2026-07-21 — enum สร้างแล้ว, Phase 2 Module) · **Migration แรก `20260721153936_init_schema_v1` Apply แล้วบน Development DB (local Docker `postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)** — 56 ตาราง (app) + 21 enum, ไม่มี drift, seed master+dev สำเร็จ · **Migration 2 `20260721231914_br44_check_different_entry_person` Apply แล้ว (BR-44 trigger)** — integration tests 8 ผ่าน + 1 todo · **Production ไม่ถูกแตะ**
 
 ---
 
@@ -43,8 +43,9 @@
 | `.env` / `DATABASE_URL` จริง | ✅ **สร้างแล้ว** | local dev เท่านั้น (`localhost:5432/kuanlang_dev`) · `.env.example` committable, `.env` gitignored |
 | Development Database (PG16+PostGIS) | ✅ **ตั้งแล้ว** | Docker `postgis/postgis:16-3.4` (port 5432) · PostGIS 3.4.3 · pg_trgm 1.6 |
 | Apply Migration | ✅ **Apply แล้ว (Dev เท่านั้น)** | `migrate dev` → "up to date", ไม่มี drift · **Production ไม่ถูกแตะ** |
-| Integration tests (DB) | ✅ **รันจริง + ผ่าน** | 4 tests ผ่าน + 2 `it.todo` (รอ custom SQL 0003/0004) · แก้บั๊ก `skipIf` แล้ว → `describe.skipIf(!isLocalDevDb)` |
-| Custom SQL formalize (0002–0006) | 🔴 ยังไม่ทำ | trigger/GIST/GIN/view ยังเป็น draft (Conflict E/F) |
+| Integration tests (DB) | ✅ **รันจริง + ผ่าน** | 8 tests ผ่าน + 1 `it.todo` (รอ custom SQL 0004 partial-unique) · แก้บั๊ก `skipIf` แล้ว → `describe.skipIf(!isLocalDevDb)` |
+| **BR-44 Trigger (SCH-03)** | ✅ **Applied (Dev)** | `20260721231914_br44_check_different_entry_person` — `check_different_entry_person` + `trg_entry_different_person` (BEFORE INSERT OR UPDATE OF sheetId/enteredById/attemptNo) + advisory xact lock · ทดสอบจริง 4 ข้อผ่าน |
+| Custom SQL formalize ที่เหลือ | 🔴 ยังไม่ทำ | location/batch/audit triggers, constraints (0004), GIST/GIN (0005), views (0006) ยังเป็น draft (Conflict E/F) |
 | `EvacuationSiteType` enum (FIX-45) | ✅ **แก้แล้ว** (Conflict D ปิด 2026-07-21) | เจ้าของยืนยัน 6 ค่า, ไม่มี `UNKNOWN`, `EvacuationSite.type` nullable, Phase 2 Module (ดู `docs/20`) |
 | PostGIS columns ใน schema | ✅ **แก้แล้ว** (Conflict A) | ประกาศ `Unsupported("geography(...)")` แล้ว — ไม่ drift (ดู `docs/20`) |
 | `pg_trgm` ใน datasource | ✅ **แก้แล้ว** (Conflict B) | `extensions = [postgis, pg_trgm]` — validate ผ่าน (ดู `docs/20`) |
@@ -64,7 +65,7 @@
 |---|---|---|
 | `00_extensions.sql` | `CREATE EXTENSION IF NOT EXISTS postgis; pg_trgm;` | — |
 | `10_postgis_columns.sql` | ADD COLUMN location/geom (geography) บน household/evacuation_site/community_boundary — **หมายเหตุ: หลังแก้ Conflict A คอลัมน์เหล่านี้ประกาศใน schema แล้ว → Prisma จัดการเอง; ไฟล์นี้เป็น fallback idempotent** | postgis |
-| `20_functions_triggers.sql` | 6 ฟังก์ชัน/trigger: update_household_location, update_evac_site_location, `check_different_entry_person` (BR-44), update_batch_counts, release_expired_locks, prevent_audit_modification (`RETURN OLD`) | — |
+| `20_functions_triggers.sql` | 6 ฟังก์ชัน/trigger: update_household_location, update_evac_site_location, ~~`check_different_entry_person` (BR-44)~~ **← formalize แล้วเป็น migration `20260721231914` (เพิ่ม UPDATE coverage + advisory lock)**, update_batch_counts, release_expired_locks, prevent_audit_modification (`RETURN OLD`) | — |
 | `30_constraints.sql` | CHECK ทั้งหมดห่อ `DO $$ IF NOT EXISTS` + `ux_community_primary_tambon` partial unique (WHERE isPrimary=true) | — |
 | `40_indexes.sql` | GIST spatial partial + GIN trigram บน respondentName/placeName/fullName | pg_trgm |
 | `50_views.sql` | `v_community_coverage` (NULL-aware), `v_household_geo_internal` (VERIFIED only), `v_public_community_stats` (aggregate — ไม่มี PII) | postgis |
@@ -110,8 +111,9 @@
 2. ✅ ~~`EvacuationSiteType` (FIX-45)~~ — **ทำแล้ว** (Conflict D ปิด 2026-07-21 — enum 6 ค่า, Phase 2 Module; `docs/20`)
 3. ✅ ~~ตั้ง Development DB (Docker Compose) + `.env`~~ — **ทำแล้ว** (`postgis/postgis:16-3.4`, PostGIS 3.4.3, pg_trgm 1.6)
 4. ✅ ~~สร้าง + Apply Migration แรก~~ — **ทำแล้ว** (`20260721153936_init_schema_v1` — 56 ตาราง, 21 enum, ไม่มี drift)
-5. ✅ ~~แก้ integration tests ที่ skip เสมอ (`skipIf` timing)~~ — **ทำแล้ว** (`describe.skipIf(!isLocalDevDb)`, 4 tests รันจริง+ผ่าน, +2 todo; `npm run test:integration`)
-6. Formalize Custom SQL (trigger/GIST spatial/GIN trigram/view) เป็น migration 0002–0006 (Conflict E/F) → แล้วเปิด 2 `it.todo` (trigger BR-44, partial-unique) ให้รันจริง
-7. รัน migration 2 ครั้งติดกัน + ตรวจ idempotency
+5. ✅ ~~แก้ integration tests ที่ skip เสมอ (`skipIf` timing)~~ — **ทำแล้ว** (`describe.skipIf(!isLocalDevDb)`, `npm run test:integration`)
+6. ✅ ~~Formalize BR-44 trigger เป็น migration~~ — **ทำแล้ว** (`20260721231914_br44_check_different_entry_person` applied บน Dev · 4 tests BR-44 รันจริง+ผ่าน · รวม integration = 8 ผ่าน + 1 todo)
+7. Formalize Custom SQL ที่เหลือทีละ migration (location/batch/audit triggers → constraints 0004 → GIST/GIN 0005 → views 0006) → แล้วเปิด `it.todo` สุดท้าย (partial-unique) ให้รันจริง
+8. รัน migration 2 ครั้งติดกัน + ตรวจ idempotency
 
 > **ยังห้าม:** Apply Production · `prisma db push` / `migrate deploy` / `migrate reset` · ลบ volume · Commit/Push · Risk Final logic · Encryption · แก้รหัสพื้นที่โดยเดา
