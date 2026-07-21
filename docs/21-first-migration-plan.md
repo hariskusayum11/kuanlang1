@@ -111,7 +111,7 @@ docker compose down -v    # ⚠️ ลบ Development Database ทั้งห�
 - [x] Development Seed สำเร็จ — master (5 ชุมชน + master data) + dev (5 หมู่, 12 risk weight DRAFT)
 - [x] Unit Tests ผ่าน — **29/29**
 - [x] TypeScript (`tsc --noEmit`) ผ่าน — exit 0
-- [x] Integration Tests ที่ต้องใช้ DB ผ่าน — **8 รันจริง + ผ่าน** (+1 `it.todo` รอ custom SQL 0004 partial-unique) · แก้บั๊ก `skipIf` timing แล้ว · BR-44 trigger applied (`20260721231914`)
+- [x] Integration Tests ที่ต้องใช้ DB ผ่าน — **15 รันจริง + ผ่าน, `it.todo` เหลือ 0** · แก้บั๊ก `skipIf` timing แล้ว · BR-44 trigger applied (`20260721231914`) · Partial unique applied (`20260721234500`)
 
 ---
 
@@ -144,8 +144,9 @@ docker compose down -v    # ⚠️ ลบ Development Database ทั้งห�
 | migration.sql | 56 `CREATE TABLE`, 21 `CREATE TYPE`, **ไม่มี** DROP/TRUNCATE/DELETE/destructive · ไม่มีชื่อ/URL Production · `EvacuationSiteType` 6 ค่า (nullable บน `evacuation_site.type`) · `NearestEvacSiteType` แยกอยู่ (7 ค่า, มี UNKNOWN) · geography 3 จุด (community_boundary.geom MultiPolygon/4326, household.location + evacuation_site.location Point/4326) |
 | Development Seed | master: 5 ชุมชน (TK01/PM01/KS01/PW01/NK01, totalHouseholds=null), 2 ตำบล, master data 7 ชุด · dev: 5 หมู่ (UNVERIFIED), 12 risk weight (DRAFT/UNAPPROVED) · **evacuation_site = 0 · household = 0** (ไม่มีข้อมูลบุคคลจริง) |
 | Unit Tests | 29/29 ผ่าน |
-| Integration Tests | ✅ **8 รันจริง + ผ่าน** + 1 `it.todo` (รอ custom SQL 0004 partial-unique) · แก้บั๊ก `it.skipIf(!dbReady)` (ประเมินก่อน `beforeAll`) → `describe.skipIf(!isLocalDevDb)` (จาก `DATABASE_URL` local), `beforeAll` `$connect()` throw เมื่อต่อไม่ได้, `afterAll` `$disconnect()` · assert: 5 ชุมชนครบ, ไม่มี KL01/HY01, KS01 2 ตำบล isPrimary=false, **household=0**, **evacuation_site=0**, BR-44 4 ข้อ (fixtures `TEST-BR44-*` สร้าง/ลบใน suite) · script `npm run test:integration` |
+| Integration Tests | ✅ **15 รันจริง + ผ่าน, `it.todo` เหลือ 0** · แก้บั๊ก `it.skipIf(!dbReady)` (ประเมินก่อน `beforeAll`) → `describe.skipIf(!isLocalDevDb)` (จาก `DATABASE_URL` local), `beforeAll` `$connect()` throw เมื่อต่อไม่ได้, `afterAll` `$disconnect()` · assert: 5 ชุมชนครบ, ไม่มี KL01/HY01, KS01 2 ตำบล isPrimary=false, **household=0**, **evacuation_site=0**, BR-44 4 ข้อ (fixtures `TEST-BR44-*`), partial unique 7 ข้อ (fixtures `TEST-PU-*` — ชุมชน synthetic, ตำบลใช้ของ Seed แบบ read-only) · fixtures สร้าง/ลบใน suite · script `npm run test:integration` |
 | **Migration 2 (BR-44)** | ✅ `20260721231914_br44_check_different_entry_person` — `check_different_entry_person()` + `trg_entry_different_person` BEFORE INSERT OR UPDATE OF `sheetId`/`enteredById`/`attemptNo` บน `entry_attempt` · `pg_advisory_xact_lock` ต่อ sheetId กัน race · `id <> NEW.id` กัน UPDATE ชนตัวเอง · ไม่มี destructive SQL · Apply โดยเจ้าของผ่าน `migrate dev` (interactive) |
+| **Migration 3 (Partial Unique)** | ✅ `20260721234500_add_community_primary_tambon_partial_unique` — `ux_community_primary_tambon` ON `community_tambon("communityId")` WHERE `"isPrimary" = true` (BR-CT-02/คำตัดสิน #8/Q-17, spec 🟢 A1) · `IF NOT EXISTS` idempotent · ไม่มี destructive SQL/CONCURRENTLY/GIST/GIN/View · Apply โดยเจ้าของผ่าน `migrate dev` (interactive) · **งาน database constraints ชุดแรกครบแล้ว — GIST/GIN/Views เป็นงานถัดไป** |
 | TypeScript | `tsc --noEmit` ผ่าน (exit 0) |
 | Drift | ไม่มี — `migrate status` "up to date" · `db pull --print` เตือนเฉพาะ 3 geography Unsupported ที่คาดไว้ |
 | Phase 2 Models (ยังไม่เปิด) | `EvacuationSite` (ตารางสร้าง แต่ไม่มี Seed/UI/API/Business Logic) |

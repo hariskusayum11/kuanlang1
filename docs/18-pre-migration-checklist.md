@@ -4,10 +4,12 @@
 > **ฐานอ้างอิง:** [16-owner-decisions.md](16-owner-decisions.md) (รอบ 1 #1..16 + รอบ 2 R2-#1..9), [17-approved-schema-change-spec.md](17-approved-schema-change-spec.md), [14-open-questions.md](14-open-questions.md)
 > **🟢 สถานะจริง (อัปเดต 2026-07-21):** `schema.prisma` **v3.1 แก้แล้ว** (Gate B) · `prisma validate` **ผ่าน** · Unit tests **29/29 ผ่าน** · `tsc --noEmit` **ผ่าน** · Package ติดตั้งแล้ว (`better-auth 1.6.23`, `prisma 5.22.0`) · **Conflict A+B+D แก้แล้ว** (`EvacuationSiteType` สร้างแล้ว — Phase 2 Module; ดู `docs/20`)
 > **🟢 Migration แรก Apply แล้ว (2026-07-21):** Docker `postgis/postgis:16-3.4` (port `5432`) · PostgreSQL 16 · PostGIS **3.4.3** · pg_trgm **1.6** · Migration `20260721153936_init_schema_v1` · **56 ตาราง (app) + 21 enum** · Dev DB "up to date" ไม่มี drift · Seed (master + dev) สำเร็จ · **Production ไม่ถูกแตะ** (local dev เท่านั้น)
-> **🟢 Integration tests แก้แล้ว (2026-07-21):** ปิดบั๊ก `skipIf(!dbReady)` → ใช้ `describe.skipIf(!isLocalDevDb)` (รู้ค่าตอน collection) + `beforeAll` `$connect()` throw เมื่อต่อไม่ได้ + `afterAll` `$disconnect()` · **8 integration tests รันจริง + ผ่านทั้งหมด** (+1 `it.todo` รอ custom SQL 0004 partial-unique)
+> **🟢 Integration tests แก้แล้ว (2026-07-21):** ปิดบั๊ก `skipIf(!dbReady)` → ใช้ `describe.skipIf(!isLocalDevDb)` (รู้ค่าตอน collection) + `beforeAll` `$connect()` throw เมื่อต่อไม่ได้ + `afterAll` `$disconnect()` · **15 integration tests รันจริง + ผ่านทั้งหมด** (`it.todo` เหลือ 0)
 >
 > **🟢 BR-44 Trigger applied (2026-07-21):** migration `20260721231914_br44_check_different_entry_person` — function `check_different_entry_person` + trigger `trg_entry_different_person` (BEFORE INSERT OR UPDATE OF sheetId/enteredById/attemptNo บน `entry_attempt`) + advisory xact lock กัน race · ทดสอบจริง 4 ข้อ (คนละคนผ่าน / คนเดียวกัน reject / UPDATE bypass reject / ข้ามใบไม่บล็อก)
-> **🔴 ยังค้าง:** Custom SQL (trigger/spatial GIST/trigram GIN/view) draft — ยังไม่ formalize เป็น migration 0002–0006
+>
+> **🟢 Partial Unique applied (2026-07-21):** migration `20260721234500_add_community_primary_tambon_partial_unique` — `ux_community_primary_tambon` ON `community_tambon(communityId)` WHERE `"isPrimary" = true` (BR-CT-02/คำตัดสิน #8/Q-17) · ทดสอบจริง 7 ข้อ · **integration รวม 15 ผ่าน, `it.todo` เหลือ 0 — งาน database constraints ชุดแรกครบแล้ว**
+> **🔴 ยังค้าง:** Custom SQL (location triggers/batch counts/audit append-only/spatial GIST/trigram GIN/views) draft — ยังไม่ formalize เป็น migration
 > **📌 หมายเหตุ:** ข้อความ "รอบนี้ยังไม่แก้ schema" ในเวอร์ชันเดิมของไฟล์นี้ **ล้าสมัย** — ดูสถานะจริงฉบับเต็มที่ [19-current-project-status.md](19-current-project-status.md)
 
 ---
@@ -168,7 +170,7 @@
 
 ## Gate J — Verification Tests (หลัง Migration)
 
-> **หมายเหตุ (2026-07-21 — อัปเดตหลัง BR-44 trigger):** Unit tests 29/29 ผ่าน · **Integration tests (`tests/integration/db.test.ts`) รันจริงแล้ว: 8 ผ่าน + 1 `it.todo`** (todo = partial-unique รอ SQL 0004) · บั๊กเดิม `it.skipIf(!dbReady)` (ประเมินก่อน `beforeAll`) แก้แล้วด้วย `describe.skipIf(!isLocalDevDb)` จาก `DATABASE_URL` · Invariant ที่ตรวจอัตโนมัติแล้ว: 5 ชุมชนครบ, ไม่มี KL01/HY01, KS01 2 ตำบล isPrimary=false, household=0 (ไม่มีข้อมูลบุคคล), evacuation_site=0 (Phase 2 ไม่ seed), **BR-44 trigger reject คนเดียวกันคีย์ 2 รอบ (INSERT + UPDATE bypass) และไม่บล็อกข้ามใบ**
+> **หมายเหตุ (2026-07-21 — อัปเดตหลัง Partial Unique):** Unit tests 29/29 ผ่าน · **Integration tests (`tests/integration/db.test.ts`) รันจริงแล้ว: 15 ผ่าน, `it.todo` เหลือ 0** · บั๊กเดิม `it.skipIf(!dbReady)` (ประเมินก่อน `beforeAll`) แก้แล้วด้วย `describe.skipIf(!isLocalDevDb)` จาก `DATABASE_URL` · Invariant ที่ตรวจอัตโนมัติแล้ว: 5 ชุมชนครบ, ไม่มี KL01/HY01, KS01 2 ตำบล isPrimary=false, household=0 (ไม่มีข้อมูลบุคคล), evacuation_site=0 (Phase 2 ไม่ seed), **BR-44 trigger reject คนเดียวกันคีย์ 2 รอบ (INSERT + UPDATE bypass) และไม่บล็อกข้ามใบ**, **ux_community_primary_tambon reject primary แถวที่ 2 ต่อชุมชน (INSERT + UPDATE), อนุญาต 0 primary และ false หลายแถว**
 
 - [ ] Migration idempotency (รัน 2 ครั้ง)
 - [ ] `rawScore = 115` บันทึกได้ (ck ไม่ปฏิเสธ) — RISK-01

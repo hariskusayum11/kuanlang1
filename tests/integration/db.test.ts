@@ -190,7 +190,108 @@ describe.skipIf(!isLocalDevDb)("Integration (local Dev DB — PostgreSQL/PostGIS
     });
   });
 
-  // ข้อ3: Community มีตำบลหลักได้ไม่เกิน 1 (partial unique ux_community_primary_tambon)
-  //   → ต้องรอ Custom SQL 0004 (constraints) ซึ่งยังไม่ได้ formalize/apply
-  it.todo("ข้อ3: ตำบลหลัก >1 ต่อชุมชน ถูกปฏิเสธ (รอ partial unique — custom SQL 0004)");
+  // ข้อ3 (BR-CT-02/คำตัดสิน #8/Q-17): Community มีตำบลหลักได้ไม่เกิน 1
+  // Partial unique: ux_community_primary_tambon ON community_tambon(communityId) WHERE isPrimary = true
+  // (migration 20260721234500_add_community_primary_tambon_partial_unique)
+  // Fixtures สังเคราะห์ล้วน (ชุมชน prefix TEST-PU-) — ตำบลใช้ของ Seed แบบ read-only เท่านั้น
+  describe("ข้อ3 (BR-CT-02): Partial unique ux_community_primary_tambon", () => {
+    let c1Id = "";
+    let c2Id = "";
+    let tambon1Id = "";
+    let tambon2Id = "";
+
+    async function cleanupFixtures() {
+      await prisma.communityTambon.deleteMany({
+        where: { community: { code: { startsWith: "TEST-PU-" } } },
+      });
+      await prisma.community.deleteMany({ where: { code: { startsWith: "TEST-PU-" } } });
+    }
+
+    beforeAll(async () => {
+      await cleanupFixtures();
+      // ใช้ตำบลจาก Seed แบบ read-only (ไม่สร้าง/แก้ geo hierarchy)
+      const tambons = await prisma.tambon.findMany({ take: 2, orderBy: { code: "asc" } });
+      if (tambons.length < 2) throw new Error("[PU test] ต้องมีตำบลจาก Seed อย่างน้อย 2 — รัน seed ก่อน");
+      tambon1Id = tambons[0].id;
+      tambon2Id = tambons[1].id;
+
+      const c1 = await prisma.community.create({
+        data: { code: "TEST-PU-C1", nameTh: "ชุมชนทดสอบ PU 1" },
+      });
+      const c2 = await prisma.community.create({
+        data: { code: "TEST-PU-C2", nameTh: "ชุมชนทดสอบ PU 2" },
+      });
+      c1Id = c1.id;
+      c2Id = c2.id;
+    });
+
+    afterAll(async () => {
+      await cleanupFixtures();
+    });
+
+    it("ตำบลหลักแถวแรกของชุมชน → ผ่าน", async () => {
+      const row = await prisma.communityTambon.create({
+        data: { communityId: c1Id, tambonId: tambon1Id, isPrimary: true },
+      });
+      expect(row.isPrimary).toBe(true);
+    });
+
+    it("ตำบลหลักแถวที่ 2 ในชุมชนเดียวกัน → ถูกปฏิเสธ (unique violation)", async () => {
+      await expect(
+        prisma.communityTambon.create({
+          data: { communityId: c1Id, tambonId: tambon2Id, isPrimary: true },
+        }),
+      ).rejects.toThrow(/Unique constraint|ux_community_primary_tambon/);
+    });
+
+    it("แถว isPrimary=false เพิ่มได้หลายแถว (นอก predicate ของ index)", async () => {
+      await prisma.communityTambon.create({
+        data: { communityId: c1Id, tambonId: tambon2Id, isPrimary: false },
+      });
+      await prisma.communityTambon.create({
+        data: { communityId: c2Id, tambonId: tambon1Id, isPrimary: false },
+      });
+      await prisma.communityTambon.create({
+        data: { communityId: c2Id, tambonId: tambon2Id, isPrimary: false },
+      });
+      const c1Rows = await prisma.communityTambon.count({ where: { communityId: c1Id } });
+      const c2Rows = await prisma.communityTambon.count({ where: { communityId: c2Id } });
+      expect(c1Rows).toBe(2); // t1 primary + t2 false
+      expect(c2Rows).toBe(2); // t1 false + t2 false
+    });
+
+    it("ชุมชนไม่มีตำบลหลักเลย (0 primary) → อนุญาต", async () => {
+      const c2Primary = await prisma.communityTambon.count({
+        where: { communityId: c2Id, isPrimary: true },
+      });
+      expect(c2Primary).toBe(0);
+    });
+
+    it("คนละชุมชนต่างมีตำบลหลักของตัวเอง → ผ่าน (index จำกัดต่อ communityId)", async () => {
+      // C1 มี primary อยู่แล้ว — C2 ตั้ง primary ของตัวเองได้ (UPDATE false → true ไม่ชน)
+      const updated = await prisma.communityTambon.update({
+        where: { communityId_tambonId: { communityId: c2Id, tambonId: tambon1Id } },
+        data: { isPrimary: true },
+      });
+      expect(updated.isPrimary).toBe(true);
+    });
+
+    it("UPDATE false → true ในชุมชนที่มีตำบลหลักแล้ว → ถูกปฏิเสธ", async () => {
+      await expect(
+        prisma.communityTambon.update({
+          where: { communityId_tambonId: { communityId: c2Id, tambonId: tambon2Id } },
+          data: { isPrimary: true },
+        }),
+      ).rejects.toThrow(/Unique constraint|ux_community_primary_tambon/);
+    });
+
+    it("Seed ไม่ถูกกระทบ: KS01 ยังมี 2 ตำบล isPrimary=false ทั้งคู่", async () => {
+      const ks = await prisma.community.findUnique({
+        where: { code: "KS01" },
+        include: { communityTambons: true },
+      });
+      expect(ks?.communityTambons.length).toBe(2);
+      expect(ks?.communityTambons.every((t) => t.isPrimary === false)).toBe(true);
+    });
+  });
 });
