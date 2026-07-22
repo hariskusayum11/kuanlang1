@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { AuditAction, PrismaClient } from "@prisma/client";
 import { auth } from "../../lib/auth";
 import { fetchDashboardCounts } from "../../lib/dashboard/stats";
 
@@ -20,6 +20,15 @@ const FIXTURE_PASSWORD = "Test.Auth.Password.01";
 
 async function cleanupFixtures() {
   // ลบเฉพาะ fixture emails — Session/Account ลบตาม cascade (onDelete: Cascade)
+  // AuditLog ไม่ cascade (append-only, userId เป็น SetNull) → ลบ audit ของ fixture ก่อนในเทสต์
+  const users = await prisma.user.findMany({
+    where: { email: { in: [FIXTURE_EMAIL, FIXTURE_INACTIVE_EMAIL] } },
+    select: { id: true },
+  });
+  const ids = users.map((u) => u.id);
+  if (ids.length > 0) {
+    await prisma.auditLog.deleteMany({ where: { userId: { in: ids } } });
+  }
   await prisma.user.deleteMany({
     where: { email: { in: [FIXTURE_EMAIL, FIXTURE_INACTIVE_EMAIL] } },
   });
@@ -87,6 +96,22 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     const user = await prisma.user.findUnique({ where: { email: FIXTURE_EMAIL } });
     const sessions = await prisma.session.count({ where: { userId: user!.id } });
     expect(sessions).toBeGreaterThanOrEqual(1);
+  });
+
+  it("signInEmail สำเร็จ → เขียน Audit LOGIN + อัปเดต lastLoginAt (session.create.after hook)", async () => {
+    const user = await prisma.user.findUnique({ where: { email: FIXTURE_EMAIL } });
+    expect(user).not.toBeNull();
+
+    // lastLoginAt ถูกตั้งจากการ sign-in สำเร็จก่อนหน้า (best-effort hook)
+    expect(user?.lastLoginAt).not.toBeNull();
+
+    const loginAudit = await prisma.auditLog.findFirst({
+      where: { userId: user!.id, action: AuditAction.LOGIN, entityType: "Session" },
+    });
+    expect(loginAudit).not.toBeNull();
+    expect(loginAudit?.entityId).toBeTruthy(); // = session id ที่เพิ่งสร้าง
+    // Audit เป็น append-only + ไม่มี PII — เก็บแค่ metadata อ้างอิง
+    expect(loginAudit?.changes).toBeNull();
   });
 
   it("ผู้ใช้ inactive → signInEmail ถูกบล็อกโดย databaseHook (ไม่สร้าง session)", async () => {

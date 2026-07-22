@@ -31,8 +31,13 @@ export function LoginForm() {
     });
 
     if (signInError) {
-      // ข้อความกลางเสมอ — ไม่เปิดเผยว่า email หรือ password ผิด และไม่เปิดเผยสถานะบัญชี
-      setError(SAFE_ERROR_MESSAGES.login);
+      // 429 = ถูก rate limit — บอกให้รอ (ไม่ใช่รหัสผิด) เพื่อไม่ให้ผู้ใช้พิมพ์ซ้ำจนโดนล็อกนานขึ้น
+      // กรณีอื่นใช้ข้อความกลางเสมอ — ไม่เปิดเผยว่า email หรือ password ผิด และไม่เปิดเผยสถานะบัญชี
+      setError(
+        signInError.status === 429
+          ? SAFE_ERROR_MESSAGES.rateLimited
+          : SAFE_ERROR_MESSAGES.login,
+      );
       setSubmitting(false);
       return;
     }

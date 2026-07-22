@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { recordLogout } from "@/lib/auth-actions";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -11,6 +12,12 @@ export function LogoutButton() {
   async function handleLogout() {
     if (pending) return;
     setPending(true);
+    // บันทึก Audit LOGOUT ขณะ session ยัง valid (best-effort — ไม่ขวางการออกจากระบบ)
+    try {
+      await recordLogout();
+    } catch {
+      // ไม่บล็อกการออกจากระบบถ้า audit ล้มเหลว
+    }
     await authClient.signOut();
     router.replace("/login");
     router.refresh();
