@@ -50,6 +50,12 @@ export default async function LoginPage() {
             </p>
           </div>
           <LoginForm />
+          <p className="mt-5 text-center text-sm text-slate-500">
+            ยังไม่มีบัญชี?{" "}
+            <a href="/register" className="font-medium text-brand-600 hover:underline">
+              ลงทะเบียนใช้งาน
+            </a>
+          </p>
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">

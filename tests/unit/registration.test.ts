@@ -1,0 +1,122 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { UserRoleEnum } from "@prisma/client";
+import {
+  REQUESTABLE_ROLES,
+  REQUESTABLE_ROLE_LABELS,
+  registrationSchema,
+} from "../../lib/registration/validation";
+import {
+  REGISTRATION_RATE_LIMIT,
+  consumeRegistrationQuota,
+  resetRegistrationQuota,
+} from "../../lib/registration/rate-limit";
+
+const VALID_INPUT = {
+  email: "somchai@example.com",
+  password: "correct-horse-8",
+  name: "สมชาย ใจดี",
+  phone: "081-234-5678",
+  requestedRole: UserRoleEnum.DATA_ENTRY,
+  communityId: "",
+  organization: "เทศบาลเมืองควนลัง",
+  note: "",
+};
+
+describe("registrationSchema (Zod — ใช้ทั้ง client และ server)", () => {
+  it("input ถูกต้องผ่าน และช่องว่าง ('') กลายเป็น undefined", () => {
+    const parsed = registrationSchema.parse(VALID_INPUT);
+    expect(parsed.email).toBe("somchai@example.com");
+    expect(parsed.communityId).toBeUndefined();
+    expect(parsed.note).toBeUndefined();
+    expect(parsed.organization).toBe("เทศบาลเมืองควนลัง");
+  });
+
+  it("บทบาทนอก whitelist (เช่น ADMIN/VERIFIER) ถูกปฏิเสธ", () => {
+    for (const role of [
+      UserRoleEnum.ADMIN,
+      UserRoleEnum.VERIFIER,
+      UserRoleEnum.OFFICER,
+      UserRoleEnum.COORDINATOR,
+      UserRoleEnum.EXECUTIVE,
+      UserRoleEnum.RESEARCHER,
+    ]) {
+      const result = registrationSchema.safeParse({
+        ...VALID_INPUT,
+        requestedRole: role,
+      });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it("whitelist = VOLUNTEER, FIELD_SURVEYOR, DATA_ENTRY เท่านั้น และมี label ไทยครบ", () => {
+    expect([...REQUESTABLE_ROLES].sort()).toEqual(
+      [
+        UserRoleEnum.VOLUNTEER,
+        UserRoleEnum.FIELD_SURVEYOR,
+        UserRoleEnum.DATA_ENTRY,
+      ].sort(),
+    );
+    for (const role of REQUESTABLE_ROLES) {
+      expect(REQUESTABLE_ROLE_LABELS[role]).toBeTruthy();
+    }
+  });
+
+  it("รหัสผ่านสั้นกว่า 8 ตัว / อีเมลผิดรูปแบบ / ชื่อสั้นเกิน ถูกปฏิเสธ", () => {
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, password: "short7!" }).success,
+    ).toBe(false);
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, email: "not-an-email" }).success,
+    ).toBe(false);
+    expect(registrationSchema.safeParse({ ...VALID_INPUT, name: "ก" }).success).toBe(
+      false,
+    );
+  });
+
+  it("เบอร์โทรรับเฉพาะตัวเลข/+/-/เว้นวรรค — ตัวอักษรถูกปฏิเสธ, ค่าว่างถือว่าไม่กรอก", () => {
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, phone: "โทรหาผม" }).success,
+    ).toBe(false);
+    const parsed = registrationSchema.parse({ ...VALID_INPUT, phone: "  " });
+    expect(parsed.phone).toBeUndefined();
+  });
+
+  it("communityId ต้องเป็น cuid เมื่อกรอก", () => {
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, communityId: "1; DROP TABLE" })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("consumeRegistrationQuota — rate limit ต่อ IP (in-memory)", () => {
+  beforeEach(() => resetRegistrationQuota());
+
+  it(`อนุญาต ${REGISTRATION_RATE_LIMIT.max} ครั้งใน window เดียว ครั้งถัดไปถูกปฏิเสธ`, () => {
+    const now = 1_000_000;
+    for (let i = 0; i < REGISTRATION_RATE_LIMIT.max; i += 1) {
+      expect(consumeRegistrationQuota("1.2.3.4", now + i)).toBe(true);
+    }
+    expect(consumeRegistrationQuota("1.2.3.4", now + 100)).toBe(false);
+  });
+
+  it("พ้น window แล้วโควตารีเซ็ต", () => {
+    const now = 1_000_000;
+    for (let i = 0; i < REGISTRATION_RATE_LIMIT.max; i += 1) {
+      consumeRegistrationQuota("1.2.3.4", now);
+    }
+    expect(consumeRegistrationQuota("1.2.3.4", now)).toBe(false);
+    expect(
+      consumeRegistrationQuota("1.2.3.4", now + REGISTRATION_RATE_LIMIT.windowMs),
+    ).toBe(true);
+  });
+
+  it("คนละ key นับแยกกัน", () => {
+    const now = 1_000_000;
+    for (let i = 0; i < REGISTRATION_RATE_LIMIT.max; i += 1) {
+      consumeRegistrationQuota("1.1.1.1", now);
+    }
+    expect(consumeRegistrationQuota("1.1.1.1", now)).toBe(false);
+    expect(consumeRegistrationQuota("2.2.2.2", now)).toBe(true);
+  });
+});

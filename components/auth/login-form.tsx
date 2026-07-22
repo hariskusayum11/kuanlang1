@@ -32,11 +32,15 @@ export function LoginForm() {
 
     if (signInError) {
       // 429 = ถูก rate limit — บอกให้รอ (ไม่ใช่รหัสผิด) เพื่อไม่ให้ผู้ใช้พิมพ์ซ้ำจนโดนล็อกนานขึ้น
-      // กรณีอื่นใช้ข้อความกลางเสมอ — ไม่เปิดเผยว่า email หรือ password ผิด และไม่เปิดเผยสถานะบัญชี
+      // 403 = รหัสถูกต้องแต่บัญชียังไม่ active (รออนุมัติ/ถูกระงับ) — บอกได้อย่างปลอดภัย
+      //       เพราะข้อความนี้โผล่หลังยืนยันรหัสผ่านแล้วเท่านั้น ไม่เปิดช่อง enumeration
+      // กรณีอื่นใช้ข้อความกลางเสมอ — ไม่เปิดเผยว่า email หรือ password ผิด
       setError(
         signInError.status === 429
           ? SAFE_ERROR_MESSAGES.rateLimited
-          : SAFE_ERROR_MESSAGES.login,
+          : signInError.status === 403
+            ? SAFE_ERROR_MESSAGES.accountNotReady
+            : SAFE_ERROR_MESSAGES.login,
       );
       setSubmitting(false);
       return;

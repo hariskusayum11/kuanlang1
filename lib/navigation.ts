@@ -45,6 +45,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: false,
   },
   {
+    label: "คำขอลงทะเบียน",
+    href: "/admin/registrations",
+    permission: PERMISSIONS.REGISTRATION_MANAGE,
+    implemented: true,
+  },
+  {
     label: "ตั้งค่าระบบ",
     href: "/settings",
     permission: PERMISSIONS.SETTINGS_VIEW,

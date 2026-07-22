@@ -209,6 +209,14 @@ enum VolunteerApprovalStatus {
   SUSPENDED // ระงับ
 }
 
+/// สถานะคำขอลงทะเบียนบัญชีผู้ใช้ (Self-registration + Approval — docs/26 §5)
+enum RegistrationRequestStatus {
+  PENDING // รอตรวจ
+  APPROVED // อนุมัติแล้ว (บัญชีถูก activate + มอบ role)
+  REJECTED // ปฏิเสธ (บัญชียังคง inactive)
+  CANCELLED // ยกเลิก
+}
+
 /// วิธีเปรียบเทียบ Critical Field ใน Double-entry (FR-VER-01)
 enum CompareMode {
   EXACT // เทียบตรงตัว
@@ -284,6 +292,10 @@ model User {
 
   // Relations — Volunteer (v3.1 STRUCTURE_ONLY)
   volunteerProfile VolunteerProfile?
+
+  // Relations — Registration (Self-registration + Approval)
+  registrationRequest  RegistrationRequest?  @relation("registrationOf")
+  decidedRegistrations RegistrationRequest[] @relation("registrationDecidedBy")
 
   // Relations — System
   auditLogs  AuditLog[]
@@ -476,14 +488,15 @@ model Community {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  communityTambons    CommunityTambon[] // M:N → Tambon
-  boundaries          CommunityBoundary[] // ขอบเขต GIS (มีประวัติ)
-  incidentCommunities IncidentCommunity[]
-  batches             PaperBatch[]
-  households          Household[]
-  evacuationSites     EvacuationSite[]
-  userScopes          UserCommunityScope[]
-  VolunteerProfile    VolunteerProfile[]
+  communityTambons     CommunityTambon[] // M:N → Tambon
+  boundaries           CommunityBoundary[] // ขอบเขต GIS (มีประวัติ)
+  incidentCommunities  IncidentCommunity[]
+  batches              PaperBatch[]
+  households           Household[]
+  evacuationSites      EvacuationSite[]
+  userScopes           UserCommunityScope[]
+  VolunteerProfile     VolunteerProfile[]
+  registrationRequests RegistrationRequest[]
 
   @@index([isActive])
   @@map("community")
@@ -1562,6 +1575,35 @@ model VolunteerProfileSkill {
 
   @@unique([volunteerProfileId, skillTypeId])
   @@map("volunteer_profile_skill")
+}
+
+/// คำขอลงทะเบียนบัญชีใหม่ (Self-registration + Approval — docs/26 §5, docs/27 §3)
+/// Flow: สมัครจากหน้า public → User ถูกสร้างแบบ isActive=false + row นี้ (PENDING)
+/// → ADMIN อนุมัติ = activate user + มอบ role/scope ใน transaction เดียว
+/// ชื่อ/อีเมล/เบอร์อยู่บน User — ไม่เก็บซ้ำที่นี่
+model RegistrationRequest {
+  id     String @id @default(cuid())
+  userId String @unique /// บัญชี (inactive) ที่สร้างตอนสมัคร — 1 คำขอต่อบัญชี
+
+  requestedRole UserRoleEnum /// จำกัด whitelist ฝั่ง server: VOLUNTEER / FIELD_SURVEYOR / DATA_ENTRY
+  organization  String? /// สังกัด (free text เฟสแรก — docs/27 §4 รอรายชื่อภาคีจริง)
+  communityId   String? /// ชุมชนที่ขอทำงานด้วย
+  note          String? /// เหตุผล/รายละเอียดประกอบ
+
+  status       RegistrationRequestStatus @default(PENDING)
+  decidedById  String? /// ใครตัดสิน (ADMIN)
+  decidedAt    DateTime?
+  rejectReason String? /// เหตุผลเมื่อปฏิเสธ
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation("registrationOf", fields: [userId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id])
+  decidedBy User?      @relation("registrationDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([status, createdAt])
+  @@map("registration_request")
 }
 
 /// การกำหนด Critical Field สำหรับ Double-entry (FR-VER-01 "ตั้งค่าได้")

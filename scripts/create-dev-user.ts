@@ -49,6 +49,10 @@ async function main() {
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) throw new Error("[create-dev-user] สร้างไม่สำเร็จ — ไม่พบ user หลัง signUp");
+
+  // ทุกบัญชีใหม่เกิดมาเป็น isActive=false (user.create.before hook)
+  // dev user ต้อง activate explicit — เป็น script local dev ที่ผ่าน safety gates ข้างบนแล้ว
+  await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
   const credential = await prisma.account.findFirst({
     where: { userId: user.id, providerId: "credential" },
   });

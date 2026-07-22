@@ -53,14 +53,15 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     await prisma.$disconnect();
   });
 
-  it("signUpEmail สร้าง user + credential account (มี password hash)", async () => {
+  it("signUpEmail สร้าง user + credential account — เกิดมาเป็น inactive เสมอ", async () => {
     await auth.api.signUpEmail({
       body: { email: FIXTURE_EMAIL, password: FIXTURE_PASSWORD, name: "Test Auth User" },
     });
 
     const user = await prisma.user.findUnique({ where: { email: FIXTURE_EMAIL } });
     expect(user).not.toBeNull();
-    expect(user?.isActive).toBe(true);
+    // Self-registration + Approval: บัญชีใหม่ทุกบัญชี isActive=false (user.create.before hook)
+    expect(user?.isActive).toBe(false);
 
     const credential = await prisma.account.findFirst({
       where: { userId: user!.id, providerId: "credential" },
@@ -70,8 +71,9 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     // hash ต้องไม่ใช่ plaintext
     expect(credential?.password).not.toBe(FIXTURE_PASSWORD);
 
-    // signUp autoSignIn อาจสร้าง session — ล้างให้ test ถัดไปเริ่มจาก 0
-    await prisma.session.deleteMany({ where: { userId: user!.id } });
+    // autoSignIn ปิดแล้ว — ต้องไม่มี session เกิดจากการสมัคร
+    const sessions = await prisma.session.count({ where: { userId: user!.id } });
+    expect(sessions).toBe(0);
   });
 
   it("signInEmail รหัสผ่านผิด → ถูกปฏิเสธ (ไม่สร้าง session)", async () => {
@@ -87,6 +89,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
   });
 
   it("signInEmail ถูกต้อง → สำเร็จ และมี session row ใน DB", async () => {
+    // จำลองการอนุมัติของแอดมิน — activate ก่อน จึงจะ login ได้
+    await prisma.user.update({
+      where: { email: FIXTURE_EMAIL },
+      data: { isActive: true },
+    });
     const result = await auth.api.signInEmail({
       body: { email: FIXTURE_EMAIL, password: FIXTURE_PASSWORD },
     });
@@ -124,10 +131,8 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     });
     const user = await prisma.user.findUnique({ where: { email: FIXTURE_INACTIVE_EMAIL } });
     expect(user).not.toBeNull();
-
-    // signUp อาจสร้าง session อัตโนมัติ — ล้างก่อน แล้วปิดบัญชี
-    await prisma.session.deleteMany({ where: { userId: user!.id } });
-    await prisma.user.update({ where: { id: user!.id }, data: { isActive: false } });
+    // บัญชีใหม่ inactive อยู่แล้วโดย hook — ยืนยันซ้ำเพื่อความชัดของ test
+    expect(user?.isActive).toBe(false);
 
     await expect(
       auth.api.signInEmail({

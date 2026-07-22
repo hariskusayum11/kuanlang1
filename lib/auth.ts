@@ -13,9 +13,12 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   emailAndPassword: {
     enabled: true,
-    // ไม่มีหน้าสมัครสมาชิกใน UI — sign-up ใช้เฉพาะ script local dev
-    // (scripts/create-dev-user.ts) และถูกปิดใน production
-    disableSignUp: process.env.NODE_ENV === "production",
+    // Self-registration + Approval (docs/26 §5): เปิด sign-up ได้ทุก environment
+    // เพราะบัญชีใหม่ "ทุกบัญชี" เกิดมาเป็น isActive=false เสมอ (user.create.before hook)
+    // → login ไม่ได้และไม่มีสิทธิ์ใด จนกว่า ADMIN จะอนุมัติ (กันคนนอกโดยดีไซน์ ไม่ใช่โดยปิด endpoint)
+    disableSignUp: false,
+    // ห้าม auto-login หลังสมัคร — ผู้สมัครต้องรอการอนุมัติก่อนเสมอ
+    autoSignIn: false,
   },
   // นโยบาย Session (ระดับ global) — ระบบมีข้อมูลสุขภาพ จึงไม่ใช้ค่าเริ่มต้น 7 วัน
   // หมายเหตุ: Better Auth 1.6.x รองรับเฉพาะอายุ session ระดับ global เท่านั้น
@@ -40,6 +43,7 @@ export const auth = betterAuth({
     max: 100,
     customRules: {
       "/sign-in/email": { window: 60, max: 5 }, // ผิดได้ 5 ครั้ง/นาที ต่อ IP
+      "/sign-up/email": { window: 3600, max: 5 }, // สมัครได้ 5 ครั้ง/ชม. ต่อ IP — กัน bot สแปมคำขอ
     },
   },
   user: {
@@ -50,6 +54,16 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          // ทุกบัญชีใหม่เริ่มต้นเป็น inactive เสมอ — บังคับฝั่ง server, client override ไม่ได้
+          // เปิดใช้งานได้ทางเดียว: ADMIN อนุมัติคำขอ (RegistrationRequest)
+          // หรือ script dev ที่ activate ให้ explicit หลังสร้าง (scripts/create-dev-user.ts)
+          return { data: { ...user, isActive: false } };
+        },
+      },
+    },
     session: {
       create: {
         before: async (session) => {
