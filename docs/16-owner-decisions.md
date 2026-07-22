@@ -347,6 +347,23 @@ model FloodRiskProfile {
 
 ---
 
+## 6.6 คำตัดสินรอบที่ 4 — Entry Model + Registration (2026-07-22/23)
+
+> เรียกว่า **#R4** — ดูบริบทโครงการแม่ใน [27-project-context-song-khlong-kuan-lang-model.md](27-project-context-song-khlong-kuan-lang-model.md)
+
+| # | คำตัดสิน |
+|---|---|
+| #R4-1 | **Single-Entry + Verifier แก้ไขได้** แทน Blind Double-Entry — flow จริง: คีย์รอบเดียว → Verifier ตรวจ/แก้ไขได้โดยตรง → VERIFIED (อัปเดตใน CLAUDE.md แล้ว) |
+| #R4-2 | **เก็บ schema Double-Entry ไว้แบบปิดใช้งาน** (`EntryAttempt.attemptNo/isBlind`, `CriticalFieldConfig`, `Discrepancy`, BR-44 trigger) เผื่อเปิดใช้เฉพาะฟิลด์วิกฤตในอนาคต — ห้ามลบ |
+| #R4-3 | **ทุกการแก้ไขของ Verifier ต้องมี Audit diff** (old → new + เหตุผล) ใช้ `AuditLog.changes` ที่มีอยู่ — ห้ามแก้แบบไม่มีร่องรอย |
+| #R4-4 | **Registration = Self-registration + Approval แบบไม่มีลิงก์**: ผู้สมัครตั้งรหัสผ่านเองตอนสมัคร → บัญชีเกิดเป็น `isActive=false` เสมอ (server hook) → ADMIN อนุมัติ 1 คลิก (activate + มอบ role/scope ใน transaction) → login ได้ทันที ไม่มี token/อีเมล/ก้อปลิงก์ |
+| #R4-5 | **Whitelist บทบาทที่สมัครเองได้** = `VOLUNTEER`, `FIELD_SURVEYOR`, `DATA_ENTRY` เท่านั้น — บทบาทอำนาจสูงแอดมินสร้างให้เอง |
+| #R4-6 | **สังกัด (organization) เป็น free text เฟสแรก** — รอรายชื่อภาคีจริง (docs/27 §4) ก่อนทำ master data |
+| #R4-7 | **VolunteerProfile ไม่สร้างอัตโนมัติตอนอนุมัติ** — แยกไป Phase 13 (BR-68) ตามแผนเดิม |
+| #R4-8 | การแจ้งเตือนผลอนุมัติ (email/LINE) = **Future** — เฟสนี้ผู้สมัคร login เองได้ทันทีหลังอนุมัติ; ต่อ email provider เมื่อทำ "ลืมรหัสผ่าน" |
+
+---
+
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)
 
 11. **รหัสชุมชนไม่ผูกตำบล** — ใช้ TK01/PM01/KS01/PW01/NK01 (อักษรย่อชื่อชุมชน)
