@@ -3,6 +3,11 @@
 > รอบงาน: 2026-07-22 · บทบาท: Senior System Analyst / Senior UX Designer / Product Designer
 > **เอกสารออกแบบเท่านั้น** — ไม่มี Production Code, ไม่แก้ Schema/Migration/Seed, ไม่ Commit
 > แหล่งอ้างอิง: `prisma/schema.prisma` (v3.1), `docs/01`, `docs/03` (Data Dictionary ↔ กระดาษ), `docs/10` (RBAC), `docs/16` (Owner Decisions), `docs/23` (RBAC Foundation), `system-analysis.md` (FR-ENT-01..17)
+>
+> ⚠️ **Owner Decision (docs/26) แก้สมมติฐานการแจกงาน:** จุดที่เอกสารนี้ระบุว่า
+> "ระบบเลือกใบถัดไปให้อัตโนมัติ / หยิบงาน" (§2.1 ขั้น 3, §10 Lock, Phase B)
+> ถูกแทนที่ด้วย **Paper Batch Assignment** — หัวหน้าแจกปึกกระดาษ เจ้าหน้าที่พิมพ์รหัสใบ
+> (Sheet ID) เพื่อเปิดฟอร์มเอง · Lock เป็นเพียงกลไกกันเปิดใบซ้อน ไม่ใช่แกนของ UX — ดู docs/26 §7–9
 
 ---
 
