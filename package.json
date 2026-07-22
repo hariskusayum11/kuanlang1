@@ -9,6 +9,7 @@
     "start": "next start",
     "auth:create-dev-user": "node --env-file=.env --import tsx scripts/create-dev-user.ts",
     "auth:assign-dev-access": "node --env-file=.env --import tsx scripts/assign-dev-access.ts",
+    "dev:create-batch": "node --env-file=.env --import tsx scripts/create-dev-batch.ts",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
