@@ -43,8 +43,8 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      <div>
-        <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+      <div className="space-y-1.5">
+        <label htmlFor="email" className="label">
           อีเมล
         </label>
         <input
@@ -52,15 +52,16 @@ export function LoginForm() {
           name="email"
           type="email"
           autoComplete="email"
+          placeholder="you@example.com"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={submitting}
-          className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
+          className="field disabled:bg-slate-50"
         />
       </div>
-      <div>
-        <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+      <div className="space-y-1.5">
+        <label htmlFor="password" className="label">
           รหัสผ่าน
         </label>
         <input
@@ -68,26 +69,40 @@ export function LoginForm() {
           name="password"
           type="password"
           autoComplete="current-password"
+          placeholder="••••••••"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={submitting}
-          className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
+          className="field disabled:bg-slate-50"
         />
       </div>
 
       {error && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 animate-fade-in"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="mt-0.5 h-4 w-4 shrink-0">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+          </svg>
           {error}
-        </p>
+        </div>
       )}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-full rounded-lg bg-blue-700 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+      <button type="submit" disabled={submitting} className="btn btn-primary btn-lg w-full">
+        {submitting ? (
+          <>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
+              <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            กำลังเข้าสู่ระบบ
+          </>
+        ) : (
+          "เข้าสู่ระบบ"
+        )}
       </button>
     </form>
   );

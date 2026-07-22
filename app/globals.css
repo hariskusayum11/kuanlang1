@@ -1,11 +1,216 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: light;
+/* =============================================================================
+   SKL-FRIS Design System — Modern Government / Enterprise
+   Calm · Trustworthy · Data-focused · Premium but restrained
+   ========================================================================== */
+@theme {
+  --font-sans:
+    var(--font-ibm-thai), "Segoe UI", "Leelawadee UI", "Noto Sans Thai", Tahoma,
+    system-ui, -apple-system, sans-serif;
+
+  /* Brand — denim/royal blue (สงบ น่าเชื่อถือ ไม่ใช่ฟ้าเทมเพลตทั่วไป) */
+  --color-brand-50: #f1f5fc;
+  --color-brand-100: #dfe9f8;
+  --color-brand-200: #c5d8f1;
+  --color-brand-300: #9dbde6;
+  --color-brand-400: #6d97d7;
+  --color-brand-500: #4a74c8;
+  --color-brand-600: #3459b4;
+  --color-brand-700: #2c4894;
+  --color-brand-800: #293e78;
+  --color-brand-900: #253560;
+  --color-brand-950: #17213f;
+
+  /* Ink — sidebar / deep surfaces (navy เกือบดำ) */
+  --color-ink-700: #26324a;
+  --color-ink-800: #1a2438;
+  --color-ink-900: #121a2b;
+  --color-ink-950: #0c111d;
+
+  /* Canvas */
+  --color-canvas: #f4f6fb;
+
+  /* Radii */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+
+  /* Shadows — restrained, layered (ไม่หนาจนดูเทมเพลต) */
+  --shadow-xs: 0 1px 2px 0 rgb(17 26 43 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(17 26 43 / 0.04), 0 2px 5px -1px rgb(17 26 43 / 0.05);
+  --shadow-md:
+    0 4px 14px -3px rgb(17 26 43 / 0.09), 0 2px 6px -2px rgb(17 26 43 / 0.05);
+  --shadow-lg:
+    0 18px 40px -12px rgb(17 26 43 / 0.18), 0 6px 16px -6px rgb(17 26 43 / 0.09);
+
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-step-in: step-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-rise: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
 }
 
-body {
-  font-family:
-    "Segoe UI", "Leelawadee UI", Tahoma, -apple-system, BlinkMacSystemFont,
-    "Helvetica Neue", Arial, sans-serif;
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes shimmer {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink-800);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Thai ต้องการ line-height มากขึ้นเพราะสระบน/ล่าง */
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4 {
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--color-brand-100);
+    color: var(--color-brand-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::placeholder {
+    color: #94a3b8;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* --- Surfaces --- */
+  .card {
+    @apply rounded-xl border border-slate-200/70 bg-white shadow-sm;
+  }
+  .card-flush {
+    @apply rounded-xl border border-slate-200/70 bg-white;
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg
+      text-sm font-semibold transition-all duration-150
+      disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-md {
+    @apply px-4 py-2.5;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-[13px];
+  }
+  .btn-lg {
+    @apply px-5 py-3 text-[15px];
+  }
+  .btn-primary {
+    @apply bg-brand-600 text-white shadow-xs
+      hover:bg-brand-700 active:bg-brand-800 active:scale-[0.99];
+  }
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-700 shadow-xs
+      hover:border-slate-400 hover:bg-slate-50 active:scale-[0.99];
+  }
+  .btn-ghost {
+    @apply text-slate-600 hover:bg-slate-100 active:scale-[0.99];
+  }
+  .btn-warning {
+    @apply bg-amber-500 text-white shadow-xs hover:bg-amber-600 active:scale-[0.99];
+  }
+
+  /* --- Form controls --- */
+  .field {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm
+      text-slate-900 shadow-xs transition-colors
+      placeholder:text-slate-400
+      hover:border-slate-400
+      focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+
+  /* --- Badges / chips --- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-brand { @apply bg-brand-50 text-brand-700; }
+  .badge-success { @apply bg-emerald-50 text-emerald-700; }
+  .badge-warning { @apply bg-amber-50 text-amber-700; }
+  .badge-danger { @apply bg-red-50 text-red-700; }
+  .badge-neutral { @apply bg-slate-100 text-slate-600; }
+
+  /* --- Skeleton --- */
+  .skeleton {
+    @apply rounded-md bg-slate-200/70;
+    animation: var(--animate-shimmer);
+  }
+
+  /* --- Keyboard hint --- */
+  .kbd {
+    @apply inline-flex min-w-5 items-center justify-center rounded border border-slate-300
+      bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-medium text-slate-600 shadow-xs;
+  }
+}
+
+@utility animate-fade-in {
+  animation: var(--animate-fade-in);
+}
+@utility animate-step-in {
+  animation: var(--animate-step-in);
+}
+@utility animate-rise {
+  animation: var(--animate-rise);
 }

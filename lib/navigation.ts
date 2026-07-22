@@ -30,7 +30,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "แบบสอบถาม",
     href: "/surveys",
     permission: PERMISSIONS.SURVEY_ENTRY,
-    implemented: false,
+    implemented: true,
   },
   {
     label: "การตรวจสอบข้อมูล",
@@ -56,4 +56,16 @@ export function visibleNavItems(
   permissions: readonly Permission[],
 ): NavItem[] {
   return NAV_ITEMS.filter((item) => permissions.includes(item.permission));
+}
+
+/**
+ * หน้าแรกที่เหมาะกับสิทธิ์ของผู้ใช้ — เมนูแรกที่มองเห็นและสร้างแล้ว
+ * (เช่น DATA_ENTRY ไม่มี dashboard.view → ไป /surveys)
+ * คืน null เมื่อไม่มีหน้าใดให้เข้า
+ */
+export function defaultLandingPath(
+  permissions: readonly Permission[],
+): string | null {
+  const first = visibleNavItems(permissions).find((item) => item.implemented);
+  return first?.href ?? null;
 }

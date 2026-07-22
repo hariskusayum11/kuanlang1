@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Sans_Thai } from "next/font/google";
 import { APP_NAME, APP_DESCRIPTION_TH } from "@/lib/app-config";
 import "./globals.css";
+
+// ฟอนต์ระดับ enterprise — self-host ตอน build (ไม่มี runtime request ออกภายนอก)
+const ibmThai = IBM_Plex_Sans_Thai({
+  subsets: ["thai", "latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-ibm-thai",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -12,10 +21,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th">
-      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        {children}
-      </body>
+    <html lang="th" className={ibmThai.variable}>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
 }
