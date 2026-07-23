@@ -137,7 +137,11 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
         }`}
       >
         <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-[18px]">
-          <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-90"
+          >
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white shadow-sm">
               SF
             </div>
@@ -145,7 +149,7 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
               <p className="text-[15px] font-bold leading-tight text-white">{APP_NAME}</p>
               <p className="text-[11px] text-slate-400">จัดการภัยพิบัติชุมชน</p>
             </div>
-          </div>
+          </Link>
           <button
             type="button"
             onClick={() => setMobileOpen(false)}

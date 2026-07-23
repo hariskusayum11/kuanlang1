@@ -1,6 +1,7 @@
 "use client";
 
 import type { EntryMasterData } from "@/lib/entry/master-data";
+import { sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
 
 export interface VulnerableRow {
   fullName: string;
@@ -79,9 +80,10 @@ export function VulnerableGrid({ master, rows, onChange }: Props) {
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">อายุ (ปี)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={row.age}
-                  onChange={(e) => update(i, { age: e.target.value })}
+                  onChange={(e) => update(i, { age: sanitizeIntString(e.target.value, 120) })}
                   className="field"
                 />
               </div>
@@ -91,8 +93,10 @@ export function VulnerableGrid({ master, rows, onChange }: Props) {
                 </label>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
                   value={row.phone}
-                  onChange={(e) => update(i, { phone: e.target.value })}
+                  onChange={(e) => update(i, { phone: sanitizePhone(e.target.value) })}
                   className="field"
                 />
               </div>

@@ -2,6 +2,8 @@
 
 import type { EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
+import { maskThaiDate, sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
+import { parseThaiDate } from "@/lib/entry/payload";
 
 export type FieldMark = "ILLEGIBLE" | "BLANK_IN_PAPER" | null;
 
@@ -40,38 +42,88 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
   const control = (() => {
     switch (field.type) {
       case "text":
-      case "phone":
         return (
           <input
-            type={field.type === "phone" ? "tel" : "text"}
+            type="text"
             data-field-name={field.name}
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value)}
             className={`field ${markInput}`}
           />
         );
-      case "number":
+      case "phone": {
+        const phone = typeof value === "string" ? value : "";
+        const short = phone.length > 0 && phone.length < 9;
+        return (
+          <div className="space-y-1">
+            <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              data-field-name={field.name}
+              value={phone}
+              onChange={(e) => onChange(sanitizePhone(e.target.value))}
+              className={`field max-w-52 ${markInput}`}
+            />
+            {short && (
+              <p className="text-xs text-amber-600">
+                ยังไม่ครบ 10 หลัก ({phone.length}/10) — ถ้าอ่านไม่ออกกด F2
+              </p>
+            )}
+          </div>
+        );
+      }
+      case "number": {
+        const raw =
+          typeof value === "number" || typeof value === "string" ? String(value) : "";
+        if (field.integer) {
+          return (
+            <input
+              type="text"
+              inputMode="numeric"
+              data-field-name={field.name}
+              value={raw}
+              onChange={(e) => {
+                const s = sanitizeIntString(e.target.value, field.max);
+                onChange(s === "" ? "" : Number(s));
+              }}
+              className={`field max-w-52 ${markInput}`}
+            />
+          );
+        }
         return (
           <input
             type="number"
             data-field-name={field.name}
-            value={typeof value === "number" || typeof value === "string" ? String(value) : ""}
+            value={raw}
             onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
             className={`field max-w-52 ${markInput}`}
           />
         );
-      case "date":
+      }
+      case "date": {
+        const raw = typeof value === "string" ? value : "";
+        const invalid = raw.length === 10 && parseThaiDate(raw) === null;
         return (
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)"
-            data-field-name={field.name}
-            value={typeof value === "string" ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
-            className={`field max-w-72 ${markInput}`}
-          />
+          <div className="space-y-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)"
+              maxLength={10}
+              data-field-name={field.name}
+              value={raw}
+              onChange={(e) => onChange(maskThaiDate(e.target.value))}
+              className={`field max-w-72 ${markInput} ${invalid ? "!border-red-400 !bg-red-50" : ""}`}
+            />
+            {invalid && (
+              <p className="text-xs text-red-600">
+                วันที่ไม่ถูกต้อง — ตรวจรูปแบบ วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)
+              </p>
+            )}
+          </div>
         );
+      }
       case "textarea":
         return (
           <textarea

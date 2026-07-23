@@ -26,6 +26,15 @@ type SheetInfo = {
   communityName: string;
 };
 
+/** ฟิลด์ถือว่า "ตอบแล้ว" เมื่อมีค่า (หรือถูกทำเครื่องหมาย F2/F3 ที่ระดับ caller) */
+function isAnswered(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  return true; // boolean = ตอบแล้วเสมอ (true/false ต่างมีความหมาย)
+}
+
 type Props = {
   sheet: SheetInfo;
   master: EntryMasterData;
@@ -76,9 +85,19 @@ export function EntryWizard({
   const router = useRouter();
   const [stepIndex, setStepIndex] = useState(initialDraft?.stepIndex ?? 0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
-  const [answers, setAnswers] = useState<Record<string, unknown>>(
-    initialDraft?.answers ?? {},
-  );
+  const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
+    const base = initialDraft?.answers ?? {};
+    // Prefill ชื่อชุมชนจากชุมชนของ Batch เมื่อยังไม่มีค่า — ลดการพิมพ์ผิด
+    // (ยังแก้ได้ เพื่อคงความตรงตามกระดาษ QM-01 หากผู้สำรวจเขียนต่างออกไป)
+    if (
+      base.communityNameOnPaper == null ||
+      (typeof base.communityNameOnPaper === "string" &&
+        base.communityNameOnPaper.trim() === "")
+    ) {
+      return { ...base, communityNameOnPaper: sheet.communityName };
+    }
+    return base;
+  });
   const [marks, setMarks] = useState<Record<string, FieldMark>>(
     (initialDraft?.marks as Record<string, FieldMark>) ?? {},
   );
@@ -104,6 +123,7 @@ export function EntryWizard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
   const [submitted, setSubmitted] = useState<{ duplicateSuspected: boolean } | null>(
     null,
   );
@@ -120,6 +140,39 @@ export function EntryWizard({
   const step = steps[safeIndex];
   const lockExpired = remainingMs <= 0;
   const lowLock = !lockExpired && remainingMs < 2 * 60 * 1000;
+
+  // ฟิลด์สำคัญ ⭐ ที่ยังไม่ได้กรอกก่อนส่ง (นับ F2/F3 ว่าตอบแล้ว — ไม่บังคับเดาค่า)
+  const missingCritical = useMemo(() => {
+    const out: { key: string; label: string; stepIndex: number }[] = [];
+    steps.forEach((s, idx) => {
+      if (s.kind === "vulnerable-grid") {
+        vulnerableRows.forEach((row, ri) => {
+          const started =
+            row.fullName.trim() !== "" ||
+            row.phone.trim() !== "" ||
+            row.age.trim() !== "" ||
+            row.vulnerabilities.length > 0;
+          if (started && row.fullName.trim() === "") {
+            out.push({
+              key: `vg-${ri}`,
+              label: `กลุ่มเปราะบาง คนที่ ${ri + 1}: ชื่อ-นามสกุล`,
+              stepIndex: idx,
+            });
+          }
+        });
+        return;
+      }
+      for (const f of s.fields) {
+        if (!f.critical) continue;
+        if (!fieldVisible(f, answers, master)) continue;
+        if (marks[f.name]) continue; // F2/F3 = ตอบแล้ว
+        if (!isAnswered(answers[f.name])) {
+          out.push({ key: f.name, label: f.label, stepIndex: idx });
+        }
+      }
+    });
+    return out;
+  }, [steps, answers, marks, master, vulnerableRows]);
 
   // นับถอยหลัง lock
   useEffect(() => {
@@ -502,6 +555,36 @@ export function EntryWizard({
           </span>
         </div>
 
+        {showValidation && missingCritical.length > 0 && (
+          <div
+            role="alert"
+            className="animate-fade-in rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+          >
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-800">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+                <path d="M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              ยังกรอกฟิลด์สำคัญไม่ครบ ({missingCritical.length})
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-700">
+              ฟิลด์ ⭐ ต้องมีค่า หรือทำเครื่องหมาย <kbd className="kbd">F2</kbd> (อ่านไม่ออก) /{" "}
+              <kbd className="kbd">F3</kbd> (ว่างในกระดาษ) — คลิกเพื่อไปแก้
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {missingCritical.map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => void goTo(m.stepIndex)}
+                  className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <section key={step.id} className="card animate-step-in p-6 md:p-7">
           <header className="mb-6 border-b border-slate-100 pb-5">
             <span className="badge badge-neutral">{step.paperSection}</span>
@@ -566,6 +649,11 @@ export function EntryWizard({
                 type="button"
                 onClick={() => {
                   setSubmitError(null);
+                  if (missingCritical.length > 0) {
+                    setShowValidation(true);
+                    void goTo(missingCritical[0].stepIndex);
+                    return;
+                  }
                   setConfirmOpen(true);
                 }}
                 className="btn btn-primary btn-md"

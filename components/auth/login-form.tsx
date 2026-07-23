@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { loginSchema } from "@/lib/validations/auth";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 
 export function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +44,9 @@ export function LoginForm() {
       return;
     }
 
-    router.replace("/dashboard");
-    router.refresh();
+    // Hard navigation หลังตั้ง session cookie — กัน race ระหว่าง router.replace + refresh
+    // (RSC ฝั่ง server จะอ่าน cookie ใหม่ครบถ้วน ไม่ค้างที่หน้า login)
+    window.location.assign("/dashboard");
   }
 
   return (

@@ -37,6 +37,10 @@ export interface EntryField {
   options?: { value: string; label: string }[];
   /** ป้ายตัวเลือก boolean ตามกระดาษ (ลำดับตรงกระดาษ เช่น "ไม่มี" ก่อน "มี") */
   booleanLabels?: { true: string; false: string; trueFirst: boolean };
+  /** number: บังคับจำนวนเต็มไม่ติดลบ (เช่น อายุ/จำนวนคน) */
+  integer?: boolean;
+  /** number: ค่าสูงสุดที่ยอมรับ (clamp ระหว่างพิมพ์) */
+  max?: number;
   /** Critical Field ⭐ — Entry 2 ต้องคีย์ซ้ำ (อ้าง docs/03) */
   critical?: boolean;
   /** ข้อมูลอ่อนไหว 🔒 (L3/L4) */
@@ -142,6 +146,8 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "memberCount",
         label: "จำนวนสมาชิกในครัวเรือน/หน่วยงาน (คน)",
         type: "number",
+        integer: true,
+        max: 5000,
       },
       {
         name: "ownershipTypeId",
@@ -204,6 +210,8 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "assistanceTotalPersonCount",
         label: "ต้องการความช่วยเหลือ รวมทั้งหมด (คน)",
         type: "number",
+        integer: true,
+        max: 5000,
         hint: "ช่องรวมระดับครัวเรือน — ระบบจะเทียบกับผลรวมรายข้อเป็นคำเตือน (QM-07)",
       },
       {
