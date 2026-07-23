@@ -369,7 +369,7 @@ model FloodRiskProfile {
 11. **รหัสชุมชนไม่ผูกตำบล** — ใช้ TK01/PM01/KS01/PW01/NK01 (อักษรย่อชื่อชุมชน)
 12. **ห้ามเดารหัสพื้นที่** — `UNVERIFIED` จนกว่ายืนยันจากกรมการปกครอง; ห้าม Seed Production พื้นที่ก่อนยืนยัน
 13. **Better Auth ล็อก `1.6.23`** — ห้าม `latest`; Prisma จัดการ Migration; RBAC ใช้ของระบบเอง
-14. **Encryption: ได้ design แต่ยังห้าม implement** — คง 🔒; ไม่เพิ่มคอลัมน์ ciphertext/blind-index จนกว่ามี Key Management + PDPA
+14. ~~**Encryption: ได้ design แต่ยังห้าม implement**~~ — **ยกเลิกโดย R5 (2026-07-23)**: อนุมัติ App-layer AES-256-GCM + key ใน server env + blind index เบอร์โทร; พิกัดเก็บตรงตามดีไซน์ GIS — รายละเอียดและขั้นตอนสำรอง key ใน [28-encryption-key-management.md](28-encryption-key-management.md)
 15. **พิกัดรายบ้าน = อ่อนไหว (L3)** — Public ห้ามคืนพิกัดรายบ้าน/PII/สุขภาพ
 
 ---
