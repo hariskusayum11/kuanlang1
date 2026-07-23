@@ -1,7 +1,7 @@
 "use server";
 
 // Server Actions — ชั้นบางที่โหลด Authorization Context จาก session จริง
-// แล้วส่งต่อให้ core (lib/entry/claim.ts) — ห้ามรับ userId/role/scope จาก client
+// แล้วส่งต่อให้ core (lib/entry/claim.ts, lib/entry/save.ts) — ห้ามรับ userId/role/scope จาก client
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
@@ -11,6 +11,13 @@ import {
   renewLock,
 } from "./claim";
 import type { OpenSheetResult } from "./claim";
+import { entryPayloadSchema } from "./payload";
+import {
+  saveDraft,
+  submitEntry,
+  type SaveDraftResult,
+  type SubmitEntryResult,
+} from "./save";
 
 const sheetIdSchema = z.string().cuid();
 // รหัสใบจากกระดาษ: ตัวอักษร/ตัวเลข/ขีด เท่านั้น (กัน input แปลกปลอม) ยาวไม่เกิน 64
@@ -68,6 +75,44 @@ export async function releaseSheetAction(
   const parsed = sheetIdSchema.safeParse(sheetId);
   if (!parsed.success) return { ok: false };
   return { ok: await releaseSheet(ctx, parsed.data) };
+}
+
+export type SaveDraftActionResult =
+  | SaveDraftResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** บันทึกร่างแบบฟอร์ม — payload ถูกเข้ารหัสฝั่ง server ก่อนเก็บเสมอ */
+export async function saveDraftAction(
+  sheetId: string,
+  payload: unknown,
+): Promise<SaveDraftActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsedId = sheetIdSchema.safeParse(sheetId);
+  const parsedPayload = entryPayloadSchema.safeParse(payload);
+  if (!parsedId.success || !parsedPayload.success) {
+    return { ok: false, reason: "INVALID" };
+  }
+  return saveDraft(ctx, parsedId.data, parsedPayload.data);
+}
+
+export type SubmitEntryActionResult =
+  | SubmitEntryResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** ส่งใบ — สร้าง Household + ปิดใบเป็น ENTERED_1 */
+export async function submitEntryAction(
+  sheetId: string,
+  payload: unknown,
+): Promise<SubmitEntryActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsedId = sheetIdSchema.safeParse(sheetId);
+  const parsedPayload = entryPayloadSchema.safeParse(payload);
+  if (!parsedId.success || !parsedPayload.success) {
+    return { ok: false, reason: "INVALID" };
+  }
+  return submitEntry(ctx, parsedId.data, parsedPayload.data);
 }
 
 export async function renewLockAction(

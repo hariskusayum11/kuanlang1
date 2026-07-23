@@ -190,10 +190,10 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
         <label className="text-sm font-medium text-slate-800">{field.label}</label>
         {field.critical && (
           <span
-            title="Critical Field — ต้องคีย์ซ้ำใน Entry รอบที่ 2"
+            title="ฟิลด์สำคัญ — ผู้ตรวจจะเทียบกับกระดาษอย่างละเอียด คีย์ให้ตรงตามตัวอักษร"
             className="badge badge-warning !bg-orange-50 !text-orange-700"
           >
-            ⭐ คีย์ซ้ำรอบ 2
+            ⭐ ฟิลด์สำคัญ
           </span>
         )}
         {field.sensitive && (

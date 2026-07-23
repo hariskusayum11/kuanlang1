@@ -867,9 +867,11 @@ model Household {
   buildingTypeOther String? /// ระบุ ถ้าเลือก "อื่นๆ"
 
   // --- ส่วนที่ 1 ข้อ 2: ข้อมูลทั่วไป ---
-  placeName       String? /// ชื่อสถานที่/ชื่อร้าน (ถ้ามี)
-  respondentName  String? /// ชื่อ-นามสกุลผู้ให้ข้อมูล 🔒
-  respondentPhone String? /// เบอร์โทรศัพท์ 🔒 ⭐ double-entry
+  placeName          String? /// ชื่อสถานที่/ชื่อร้าน (ถ้ามี)
+  respondentName     String? /// ชื่อ-นามสกุลผู้ให้ข้อมูล 🔒 (ciphertext — R5)
+  respondentPhone    String? /// เบอร์โทรศัพท์ 🔒 ⭐ (ciphertext — R5)
+  /// Blind index ของเบอร์โทร (HMAC-SHA256 hex) — จับใบซ้ำโดยไม่ต้องถอดรหัส (docs/28 §3)
+  respondentPhoneIdx String? @db.VarChar(64)
 
   // --- ส่วนที่ 1 ข้อ 3: ที่ตั้ง ---
   houseNo  String? /// บ้านเลขที่ ⭐ double-entry
@@ -968,6 +970,8 @@ model Household {
   @@index([hasDuplicateFlag])
   // ⭐ ตรวจพิกัดซ้ำเป๊ะ (FR-GIS-15)
   @@index([latitude, longitude], name: "ix_household_exact_coord")
+  // ⭐ จับใบซ้ำจากเบอร์โทร (blind index — docs/28 §3)
+  @@index([respondentPhoneIdx], name: "ix_household_phone_idx")
   @@map("household")
 }
 

@@ -28,6 +28,7 @@ export type SheetAccess =
         sequence: number;
         status: SheetStatus;
         lockExpiresAt: Date | null;
+        batchId: string;
         batchCode: string;
         communityId: string;
         communityName: string;
@@ -366,6 +367,7 @@ export async function getSheetForEntry(
       status: true,
       lockedById: true,
       lockExpiresAt: true,
+      batchId: true,
       batch: {
         select: {
           code: true,
@@ -396,6 +398,7 @@ export async function getSheetForEntry(
       sequence: sheet.sequence,
       status: sheet.status,
       lockExpiresAt: sheet.lockExpiresAt,
+      batchId: sheet.batchId,
       batchCode: sheet.batch.code,
       communityId: sheet.batch.communityId,
       communityName: sheet.batch.community.nameTh,

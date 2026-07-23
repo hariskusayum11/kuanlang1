@@ -4,6 +4,7 @@ import { getAuthorizationContext } from "@/lib/authz/context";
 import { hasPermission } from "@/lib/authz/access";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getSheetForEntry } from "@/lib/entry/claim";
+import { loadDraftPayload } from "@/lib/entry/save";
 import { getEntryMasterData } from "@/lib/entry/master-data";
 import { EntryWizard } from "@/components/entry/entry-wizard";
 import { SheetGate } from "@/components/entry/sheet-gate";
@@ -12,7 +13,7 @@ export const metadata = { title: "คีย์แบบสอบถาม" };
 export const dynamic = "force-dynamic";
 
 const WRONG_STATUS_LABEL: Record<string, string> = {
-  ENTERED_1: "ใบนี้คีย์รอบที่ 1 เสร็จแล้ว (รอคีย์ยืนยันรอบที่ 2)",
+  ENTERED_1: "ใบนี้คีย์เสร็จแล้ว — รอผู้ตรวจยืนยันความถูกต้อง",
   ENTERED_2: "ใบนี้คีย์ครบสองรอบแล้ว (รอเปรียบเทียบ)",
   DISCREPANCY: "ใบนี้อยู่ระหว่างการตัดสินข้อมูลไม่ตรงกัน",
   NEEDS_FIELD_QUERY: "ใบนี้รอคำตอบจากภาคสนาม",
@@ -69,7 +70,11 @@ export default async function EntrySheetPage({
       break;
   }
 
-  const master = await getEntryMasterData(access.sheet.communityId);
+  // โหลดร่างที่ค้างไว้ (ถอดรหัสฝั่ง server หลังยืนยันเจ้าของ lock แล้ว)
+  const [master, initialDraft] = await Promise.all([
+    getEntryMasterData(access.sheet.communityId),
+    loadDraftPayload(ctx, sheetId),
+  ]);
   const lockExpiry = access.sheet.lockExpiresAt ?? new Date();
 
   return (
@@ -83,6 +88,7 @@ export default async function EntrySheetPage({
       master={master}
       lockExpiresAt={lockExpiry.toISOString()}
       initialRemainingMs={Math.max(0, lockExpiry.getTime() - Date.now())}
+      initialDraft={initialDraft}
     />
   );
 }

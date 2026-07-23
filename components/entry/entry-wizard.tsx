@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { visibleSteps, type EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
+import type { EntryPayload } from "@/lib/entry/payload";
 import {
   claimSheetAction,
   releaseSheetAction,
   renewLockAction,
+  saveDraftAction,
+  submitEntryAction,
 } from "@/lib/entry/actions";
 import { FieldInput, type FieldMark } from "./field-input";
 import {
@@ -29,7 +32,11 @@ type Props = {
   lockExpiresAt: string;
   /** เวลาที่เหลือ (ms) คำนวณฝั่ง server — กัน hydration mismatch จาก Date.now() */
   initialRemainingMs: number;
+  /** ร่างที่บันทึกไว้ (ถอดรหัสฝั่ง server แล้ว) — null = เริ่มฟอร์มว่าง */
+  initialDraft: EntryPayload | null;
 };
+
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 const LOCK_FULL_MS = 10 * 60 * 1000;
 
@@ -59,20 +66,50 @@ function fieldVisible(
   return actual === field.showWhen.equals;
 }
 
-export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }: Props) {
+export function EntryWizard({
+  sheet,
+  master,
+  lockExpiresAt,
+  initialRemainingMs,
+  initialDraft,
+}: Props) {
   const router = useRouter();
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(initialDraft?.stepIndex ?? 0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
-  const [answers, setAnswers] = useState<Record<string, unknown>>({});
-  const [marks, setMarks] = useState<Record<string, FieldMark>>({});
-  const [vulnerableRows, setVulnerableRows] = useState<VulnerableRow[]>([
-    emptyVulnerableRow(),
-  ]);
+  const [answers, setAnswers] = useState<Record<string, unknown>>(
+    initialDraft?.answers ?? {},
+  );
+  const [marks, setMarks] = useState<Record<string, FieldMark>>(
+    (initialDraft?.marks as Record<string, FieldMark>) ?? {},
+  );
+  const [vulnerableRows, setVulnerableRows] = useState<VulnerableRow[]>(() => {
+    const rows = initialDraft?.vulnerableRows ?? [];
+    if (rows.length === 0) return [emptyVulnerableRow()];
+    return rows.map((r) => ({
+      fullName: r.fullName,
+      age: String(r.age ?? ""),
+      phone: r.phone,
+      vulnerabilities: r.vulnerabilities,
+      details: r.details,
+    }));
+  });
   const [expiry, setExpiry] = useState(() => new Date(lockExpiresAt).getTime());
   // ค่าเริ่มต้นจาก server (deterministic) — interval จะ recompute จาก expiry หลัง mount
   const [remainingMs, setRemainingMs] = useState(Math.max(0, initialRemainingMs));
   const [busy, setBusy] = useState<"release" | "reclaim" | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>(
+    initialDraft ? "saved" : "idle",
+  );
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<{ duplicateSuspected: boolean } | null>(
+    null,
+  );
   const touched = useRef(false);
+  /** มีการแก้ไขที่ยังไม่ถูกบันทึกร่าง */
+  const dirty = useRef(false);
 
   const hasVulnerable =
     typeof answers.hasVulnerable === "boolean"
@@ -92,10 +129,10 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
     return () => clearInterval(timer);
   }, [expiry]);
 
-  // เตือนก่อนออกเมื่อมีข้อมูลที่ยังไม่บันทึก (รอบนี้ระบบไม่บันทึกร่างเลย)
+  // เตือนก่อนออกเฉพาะเมื่อมีการแก้ไขที่ยังไม่ถูกบันทึกร่าง
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
-      if (touched.current) e.preventDefault();
+      if (dirty.current) e.preventDefault();
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
@@ -114,6 +151,7 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
       const mark: FieldMark = e.key === "F2" ? "ILLEGIBLE" : "BLANK_IN_PAPER";
       setMarks((prev) => ({ ...prev, [name]: prev[name] === mark ? null : mark }));
       touched.current = true;
+      dirty.current = true;
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -140,9 +178,58 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
 
   function setAnswer(name: string, value: unknown) {
     touched.current = true;
+    dirty.current = true;
     setAnswers((prev) => ({ ...prev, [name]: value }));
     setMarks((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
   }
+
+  /** payload ปัจจุบันของฟอร์ม — server เป็นผู้เข้ารหัสก่อนเก็บ */
+  const buildPayload = useCallback((): EntryPayload => {
+    const cleanMarks: EntryPayload["marks"] = {};
+    for (const [k, v] of Object.entries(marks)) {
+      if (v) cleanMarks[k] = v;
+    }
+    return {
+      answers: answers as EntryPayload["answers"],
+      marks: cleanMarks,
+      vulnerableRows: vulnerableRows.map((r) => ({
+        fullName: r.fullName,
+        age: String(r.age ?? ""),
+        phone: r.phone,
+        vulnerabilities: r.vulnerabilities,
+        details: r.details,
+      })),
+      stepIndex: safeIndex,
+    };
+  }, [answers, marks, vulnerableRows, safeIndex]);
+
+  /** บันทึกร่าง (เรียกเมื่อ dirty เท่านั้น) — best-effort, สถานะแสดงในแถบบน */
+  const persistDraft = useCallback(async () => {
+    if (!dirty.current || lockExpired) return;
+    setSaveState("saving");
+    const result = await saveDraftAction(sheet.id, buildPayload());
+    if (result.ok) {
+      dirty.current = false;
+      setSaveState("saved");
+      setLastSavedAt(
+        new Date(result.savedAt).toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+    } else {
+      setSaveState("error");
+    }
+  }, [buildPayload, lockExpired, sheet.id]);
+
+  // Auto-save: หน่วง 2.5 วินาทีหลังการแก้ไขล่าสุด
+  useEffect(() => {
+    if (!dirty.current) return;
+    const timer = setTimeout(() => {
+      void persistDraft();
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [answers, marks, vulnerableRows, persistDraft]);
 
   const markVisited = useCallback((id: string) => {
     setVisited((prev) => {
@@ -159,22 +246,47 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
 
   async function goTo(index: number) {
     setStepIndex(Math.max(0, Math.min(index, steps.length - 1)));
-    if (!lockExpired) void renew();
+    if (!lockExpired) {
+      void renew();
+      void persistDraft(); // เปลี่ยนขั้นตอน = จุดบันทึกร่างธรรมชาติ
+    }
   }
 
   async function handleRelease() {
-    if (
-      touched.current &&
-      !window.confirm(
-        "ข้อมูลที่คีย์ไว้จะหายทั้งหมด (ระบบยังไม่บันทึกร่าง) — ยืนยันออกจากแบบฟอร์ม?",
-      )
-    )
-      return;
     setBusy("release");
+    // บันทึกร่างก่อนออกเสมอ — กลับมาคีย์ต่อจากที่ค้างได้
+    await persistDraft();
     await releaseSheetAction(sheet.id);
     touched.current = false;
+    dirty.current = false;
+    // ห้ามเรียก router.refresh() ต่อท้าย — จะแทรก transition จนหน้าไม่เปลี่ยน
+    // (/surveys เป็น force-dynamic โหลดสดอยู่แล้ว)
     router.push("/surveys");
-    router.refresh();
+  }
+
+  const SUBMIT_ERRORS: Record<string, string> = {
+    LOCK_LOST: "การจองใบหมดอายุระหว่างส่ง — กด \"คีย์ใบนี้ต่อ\" แล้วส่งใหม่ (ร่างถูกเก็บไว้แล้ว)",
+    ALREADY_ENTERED: "ใบนี้ถูกส่งไปแล้ว — กลับหน้าคีย์แบบสอบถามเพื่อเปิดใบถัดไป",
+    INVALID_MASTER: "ตัวเลือกบางข้อไม่ตรงกับข้อมูลระบบ — รีเฟรชหน้าแล้วตรวจตัวเลือกอีกครั้ง",
+    NOT_ALLOWED: "ไม่มีสิทธิ์ส่งใบนี้ในขณะนี้",
+  };
+
+  async function handleSubmit() {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    const result = await submitEntryAction(sheet.id, buildPayload());
+    if (!result.ok) {
+      setSubmitError(
+        SUBMIT_ERRORS[result.reason] ?? "เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่อีกครั้ง",
+      );
+      setSubmitting(false);
+      return;
+    }
+    dirty.current = false;
+    touched.current = false;
+    setSubmitted({ duplicateSuspected: result.duplicateSuspected });
+    setConfirmOpen(false);
   }
 
   async function handleReclaim() {
@@ -188,7 +300,41 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
       return;
     }
     router.push("/surveys");
-    router.refresh();
+  }
+
+  // ส่งใบสำเร็จ — หน้ายืนยันพร้อมคำเตือนใบซ้ำ (ถ้ามี)
+  if (submitted) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-4">
+        <div className="w-full max-w-md animate-rise rounded-2xl border border-slate-200/70 bg-white p-8 text-center shadow-md">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 className="mt-5 text-xl font-bold text-slate-900">ส่งใบเรียบร้อย</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
+            ใบ <span className="font-mono font-medium">{sheet.sheetNo}</span>{" "}
+            ถูกบันทึกเข้าระบบแล้ว (ข้อมูลอ่อนไหวถูกเข้ารหัส) — รอผู้ตรวจยืนยันความถูกต้อง
+          </p>
+          {submitted.duplicateSuspected && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+              ⚠ เบอร์โทรผู้ให้ข้อมูลตรงกับใบอื่นในระบบ — ระบบติดธง &ldquo;สงสัยใบซ้ำ&rdquo;
+              ให้ผู้ตรวจดูแล้ว ไม่ต้องทำอะไรเพิ่ม
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              router.replace("/surveys");
+            }}
+            className="btn btn-primary btn-md mt-7"
+          >
+            คีย์ใบถัดไป
+          </button>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -298,17 +444,40 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
 
       {/* ── เนื้อหา step ── */}
       <div className="min-w-0 flex-1 space-y-4">
-        {/* แถบสถานะการบันทึก + ปุ่มลัดคีย์บอร์ด */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3">
-          <p className="flex items-start gap-2 text-xs text-amber-800">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="mt-0.5 h-4 w-4 shrink-0">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
-            </svg>
-            <span>
-              <strong className="font-semibold">โหมดทดลองคีย์</strong> — ยังไม่บันทึกคำตอบลงฐานข้อมูล
-              (รอกลไกเข้ารหัสข้อมูลอ่อนไหว) ปิดหน้านี้แล้วข้อมูลจะหาย
-            </span>
+        {/* แถบสถานะการบันทึกร่าง + ปุ่มลัดคีย์บอร์ด */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3">
+          <p
+            className={`flex items-center gap-2 text-xs ${
+              saveState === "error" ? "text-red-600" : "text-slate-600"
+            }`}
+            role="status"
+          >
+            {saveState === "saving" ? (
+              <>
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
+                  <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+                กำลังบันทึกร่าง…
+              </>
+            ) : saveState === "saved" ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 text-emerald-500">
+                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                บันทึกร่างแล้ว{lastSavedAt ? ` · ${lastSavedAt} น.` : " (เข้ารหัสในระบบ)"}
+              </>
+            ) : saveState === "error" ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+                </svg>
+                บันทึกร่างไม่สำเร็จ — ระบบจะลองใหม่เมื่อคุณคีย์ต่อ
+              </>
+            ) : (
+              <>ระบบบันทึกร่างอัตโนมัติระหว่างคีย์ (ข้อมูลถูกเข้ารหัสก่อนเก็บ)</>
+            )}
           </p>
           <div className="flex items-center gap-3 text-[11px] text-slate-500">
             <span className="flex items-center gap-1">
@@ -348,6 +517,7 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
               rows={vulnerableRows}
               onChange={(rows) => {
                 touched.current = true;
+                dirty.current = true;
                 setVulnerableRows(rows);
               }}
             />
@@ -392,16 +562,91 @@ export function EntryWizard({ sheet, master, lockExpiresAt, initialRemainingMs }
                 </svg>
               </button>
             ) : (
-              <span
-                title="การส่งใบ (สร้างข้อมูลครัวเรือน) เปิดใช้เมื่อระบบบันทึกได้จริง"
-                className="btn btn-md cursor-not-allowed bg-slate-100 text-slate-400"
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmitError(null);
+                  setConfirmOpen(true);
+                }}
+                className="btn btn-primary btn-md"
               >
-                ส่งใบ (ยังไม่เปิดใช้)
-              </span>
+                ส่งใบ
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             )}
           </footer>
         </section>
       </div>
+
+      {/* Overlay ยืนยันการส่งใบ */}
+      {confirmOpen && !lockExpired && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md animate-rise rounded-2xl bg-white p-7 shadow-lg">
+            <h3 className="text-lg font-bold text-slate-900">ยืนยันการส่งใบ</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+              ใบ <span className="font-mono font-medium">{sheet.sheetNo}</span> ·{" "}
+              {sheet.communityName}
+            </p>
+            <ul className="mt-4 space-y-1.5 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <li className="flex justify-between">
+                <span>อ่านไม่ออก (F2)</span>
+                <span className="tabular-nums font-medium">
+                  {Object.values(marks).filter((m) => m === "ILLEGIBLE").length} ช่อง
+                </span>
+              </li>
+              <li className="flex justify-between">
+                <span>ว่างในกระดาษ (F3)</span>
+                <span className="tabular-nums font-medium">
+                  {Object.values(marks).filter((m) => m === "BLANK_IN_PAPER").length} ช่อง
+                </span>
+              </li>
+              <li className="flex justify-between">
+                <span>กลุ่มเปราะบางที่กรอก</span>
+                <span className="tabular-nums font-medium">
+                  {
+                    vulnerableRows.filter(
+                      (r) =>
+                        r.fullName.trim() !== "" ||
+                        r.phone.trim() !== "" ||
+                        r.vulnerabilities.length > 0,
+                    ).length
+                  }{" "}
+                  คน
+                </span>
+              </li>
+            </ul>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
+              ส่งแล้วใบจะเข้าสู่การตรวจสอบ — แก้ไขเพิ่มเติมได้โดยผู้ตรวจเท่านั้น
+              ข้อมูลอ่อนไหวถูกเข้ารหัสก่อนบันทึก
+            </p>
+            {submitError && (
+              <p role="alert" className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {submitError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={submitting}
+                className="btn btn-secondary btn-md"
+              >
+                กลับไปตรวจอีกครั้ง
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={submitting}
+                className="btn btn-primary btn-md"
+              >
+                {submitting ? "กำลังส่ง…" : "ยืนยันส่งใบ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Overlay เมื่อ lock หมดอายุ */}
       {lockExpired && (
