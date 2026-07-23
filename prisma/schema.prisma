@@ -547,6 +547,21 @@ model CommunityBoundary {
   @@map("community_boundary")
 }
 
+/// คำนำหน้าชื่อ (นาย/นาง/นางสาว/เด็กชาย/เด็กหญิง/อื่นๆ)
+/// Master Data — dropdown ในฟอร์มคีย์ดึงจากตารางนี้ (ห้าม hardcode)
+model NamePrefix {
+  id        String  @id @default(cuid())
+  code      String  @unique /// เช่น "MR", "MRS", "MISS", "BOY", "GIRL", "OTHER"
+  nameTh    String /// เช่น "นาย", "นาง", "นางสาว"
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  households        Household[]
+  vulnerablePersons VulnerablePerson[]
+
+  @@map("name_prefix")
+}
+
 /// ประเภทสิ่งปลูกสร้าง (ส่วนที่ 1 ข้อ 1)
 model BuildingType {
   id        String  @id @default(cuid())
@@ -867,11 +882,14 @@ model Household {
   buildingTypeOther String? /// ระบุ ถ้าเลือก "อื่นๆ"
 
   // --- ส่วนที่ 1 ข้อ 2: ข้อมูลทั่วไป ---
-  placeName          String? /// ชื่อสถานที่/ชื่อร้าน (ถ้ามี)
-  respondentName     String? /// ชื่อ-นามสกุลผู้ให้ข้อมูล 🔒 (ciphertext — R5)
-  respondentPhone    String? /// เบอร์โทรศัพท์ 🔒 ⭐ (ciphertext — R5)
+  placeName           String? /// ชื่อสถานที่/ชื่อร้าน (ถ้ามี)
+  // ชื่อผู้ให้ข้อมูล แยก 3 ส่วน — คำนำหน้าเป็น FK master (plaintext), ชื่อ/นามสกุลเข้ารหัส
+  respondentPrefixId  String? /// FK คำนำหน้า (นาย/นาง/นางสาว...) — ไม่ใช่ PII
+  respondentFirstName String? /// ชื่อผู้ให้ข้อมูล 🔒 (ciphertext — R5)
+  respondentLastName  String? /// นามสกุลผู้ให้ข้อมูล 🔒 (ciphertext — R5)
+  respondentPhone     String? /// เบอร์โทรศัพท์ 🔒 ⭐ (ciphertext — R5)
   /// Blind index ของเบอร์โทร (HMAC-SHA256 hex) — จับใบซ้ำโดยไม่ต้องถอดรหัส (docs/28 §3)
-  respondentPhoneIdx String? @db.VarChar(64)
+  respondentPhoneIdx  String? @db.VarChar(64)
 
   // --- ส่วนที่ 1 ข้อ 3: ที่ตั้ง ---
   houseNo  String? /// บ้านเลขที่ ⭐ double-entry
@@ -933,15 +951,16 @@ model Household {
   updatedAt DateTime @updatedAt
 
   // Relations
-  sheet         PaperSheet     @relation(fields: [sheetId], references: [id])
-  community     Community      @relation(fields: [communityId], references: [id])
-  buildingType  BuildingType?  @relation(fields: [buildingTypeId], references: [id])
-  moo           Moo?           @relation(fields: [mooId], references: [id])
-  tambon        Tambon?        @relation(fields: [tambonId], references: [id])
-  ownershipType OwnershipType? @relation(fields: [ownershipTypeId], references: [id])
-  enteredBy     User           @relation("enteredBy", fields: [enteredById], references: [id])
-  verifiedBy    User?          @relation("verifiedBy", fields: [verifiedById], references: [id])
-  surveyorUser  User?          @relation("surveyorUser", fields: [surveyorUserId], references: [id])
+  sheet            PaperSheet     @relation(fields: [sheetId], references: [id])
+  community        Community      @relation(fields: [communityId], references: [id])
+  respondentPrefix NamePrefix?    @relation(fields: [respondentPrefixId], references: [id])
+  buildingType     BuildingType?  @relation(fields: [buildingTypeId], references: [id])
+  moo              Moo?           @relation(fields: [mooId], references: [id])
+  tambon           Tambon?        @relation(fields: [tambonId], references: [id])
+  ownershipType    OwnershipType? @relation(fields: [ownershipTypeId], references: [id])
+  enteredBy        User           @relation("enteredBy", fields: [enteredById], references: [id])
+  verifiedBy       User?          @relation("verifiedBy", fields: [verifiedById], references: [id])
+  surveyorUser     User?          @relation("surveyorUser", fields: [surveyorUserId], references: [id])
 
   // 1:N Relations
   vulnerablePersons  VulnerablePerson[]
@@ -1021,13 +1040,15 @@ model VulnerablePerson {
   householdId String /// อยู่ครัวเรือนไหน
   seq         Int /// ลำดับในตาราง (1, 2, 3...)
 
-  // --- ข้อมูลบุคคล ---
-  fullName       String? /// ชื่อ-นามสกุล 🔒 ⭐ double-entry
-  fullNameStatus FieldStatusEnum @default(HAS_VALUE) /// สถานะฟิลด์
-  age            Int? /// อายุ (ปี) (BR-06: 0-120)
-  ageStatus      FieldStatusEnum @default(HAS_VALUE)
-  phone          String? /// เบอร์โทรศัพท์ (ถ้ามี) 🔒 ⭐ double-entry
-  phoneStatus    FieldStatusEnum @default(HAS_VALUE)
+  // --- ข้อมูลบุคคล (ชื่อแยก 3 ส่วน — คำนำหน้า FK master, ชื่อ/นามสกุลเข้ารหัส) ---
+  namePrefixId String? /// FK คำนำหน้า (นาย/นาง/เด็กชาย...) — ไม่ใช่ PII
+  firstName    String? /// ชื่อ 🔒 ⭐ (ciphertext)
+  lastName     String? /// นามสกุล 🔒 ⭐ (ciphertext)
+  nameStatus   FieldStatusEnum @default(HAS_VALUE) /// สถานะช่องชื่อรวม (F2/F3)
+  age          Int? /// อายุ (ปี) (BR-06: 0-120)
+  ageStatus    FieldStatusEnum @default(HAS_VALUE)
+  phone        String? /// เบอร์โทรศัพท์ (ถ้ามี) 🔒 ⭐ double-entry
+  phoneStatus  FieldStatusEnum @default(HAS_VALUE)
 
   // --- Triage ---
   triageLevel       TriageLevel? /// P1/P2/P3 (คำนวณอัตโนมัติ)
@@ -1046,6 +1067,7 @@ model VulnerablePerson {
   updatedAt DateTime @updatedAt
 
   household       Household             @relation(fields: [householdId], references: [id])
+  namePrefix      NamePrefix?           @relation(fields: [namePrefixId], references: [id])
   vulnerabilities PersonVulnerability[]
   rescueTasks     RescueTask[]
 

@@ -52,6 +52,7 @@ describe("wizard step config (ยึด Data Dictionary)", () => {
 
   it("masterKey ทุกตัวถูกต้องตาม EntryMasterData", () => {
     const valid: MasterKey[] = [
+      "namePrefixes",
       "buildingTypes",
       "ownershipTypes",
       "tambons",

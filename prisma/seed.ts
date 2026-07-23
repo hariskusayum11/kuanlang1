@@ -103,6 +103,25 @@ async function main() {
   }
 
   // =========================================================================
+  // 4.0 คำนำหน้าชื่อ (นาย/นาง/นางสาว/เด็กชาย/เด็กหญิง/อื่นๆ)
+  // =========================================================================
+  const namePrefixes = [
+    { code: "MR", nameTh: "นาย", sortOrder: 1 },
+    { code: "MRS", nameTh: "นาง", sortOrder: 2 },
+    { code: "MISS", nameTh: "นางสาว", sortOrder: 3 },
+    { code: "BOY", nameTh: "เด็กชาย", sortOrder: 4 },
+    { code: "GIRL", nameTh: "เด็กหญิง", sortOrder: 5 },
+    { code: "OTHER", nameTh: "อื่นๆ", sortOrder: 6 },
+  ];
+  for (const np of namePrefixes) {
+    await prisma.namePrefix.upsert({
+      where: { code: np.code },
+      update: { nameTh: np.nameTh, sortOrder: np.sortOrder },
+      create: np,
+    });
+  }
+
+  // =========================================================================
   // 4. ประเภทสิ่งปลูกสร้าง (ส่วนที่ 1 ข้อ 1) — 6 ตัวเลือก
   // =========================================================================
   const buildingTypes = [

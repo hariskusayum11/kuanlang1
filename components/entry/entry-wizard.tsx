@@ -105,7 +105,9 @@ export function EntryWizard({
     const rows = initialDraft?.vulnerableRows ?? [];
     if (rows.length === 0) return [emptyVulnerableRow()];
     return rows.map((r) => ({
-      fullName: r.fullName,
+      prefix: r.prefix,
+      firstName: r.firstName,
+      lastName: r.lastName,
       age: String(r.age ?? ""),
       phone: r.phone,
       vulnerabilities: r.vulnerabilities,
@@ -148,14 +150,16 @@ export function EntryWizard({
       if (s.kind === "vulnerable-grid") {
         vulnerableRows.forEach((row, ri) => {
           const started =
-            row.fullName.trim() !== "" ||
+            row.prefix.trim() !== "" ||
+            row.firstName.trim() !== "" ||
+            row.lastName.trim() !== "" ||
             row.phone.trim() !== "" ||
             row.age.trim() !== "" ||
             row.vulnerabilities.length > 0;
-          if (started && row.fullName.trim() === "") {
+          if (started && row.firstName.trim() === "") {
             out.push({
               key: `vg-${ri}`,
-              label: `กลุ่มเปราะบาง คนที่ ${ri + 1}: ชื่อ-นามสกุล`,
+              label: `กลุ่มเปราะบาง คนที่ ${ri + 1}: ชื่อ`,
               stepIndex: idx,
             });
           }
@@ -246,7 +250,9 @@ export function EntryWizard({
       answers: answers as EntryPayload["answers"],
       marks: cleanMarks,
       vulnerableRows: vulnerableRows.map((r) => ({
-        fullName: r.fullName,
+        prefix: r.prefix,
+        firstName: r.firstName,
+        lastName: r.lastName,
         age: String(r.age ?? ""),
         phone: r.phone,
         vulnerabilities: r.vulnerabilities,
@@ -696,7 +702,8 @@ export function EntryWizard({
                   {
                     vulnerableRows.filter(
                       (r) =>
-                        r.fullName.trim() !== "" ||
+                        r.firstName.trim() !== "" ||
+                        r.lastName.trim() !== "" ||
                         r.phone.trim() !== "" ||
                         r.vulnerabilities.length > 0,
                     ).length

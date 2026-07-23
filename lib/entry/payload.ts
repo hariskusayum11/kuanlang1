@@ -22,7 +22,9 @@ const answerValueSchema = z.union([
 export const fieldMarkSchema = z.enum(["ILLEGIBLE", "BLANK_IN_PAPER"]);
 
 export const vulnerableRowSchema = z.object({
-  fullName: z.string().max(200).default(""),
+  prefix: z.string().max(64).default(""), // id ของ NamePrefix (master)
+  firstName: z.string().max(200).default(""),
+  lastName: z.string().max(200).default(""),
   age: z.union([z.string().max(6), z.number()]).default(""),
   phone: z.string().max(30).default(""),
   vulnerabilities: z.array(z.string().max(64)).max(30).default([]),

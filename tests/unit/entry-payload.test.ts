@@ -95,9 +95,9 @@ describe("answer helpers — อ่านค่าอย่างระวัง
 describe("mapVulnerableRows — ตารางกลุ่มเปราะบาง (สถานะรายช่อง BR-42/43)", () => {
   it("แถวว่างล้วนถูกตัดทิ้ง — seq เรียงตามแถวที่เหลือ", () => {
     const mapped = mapVulnerableRows([
-      { fullName: "", age: "", phone: "", vulnerabilities: [], details: {} },
-      { fullName: "นายทดสอบ", age: "80", phone: "", vulnerabilities: [], details: {} },
-      { fullName: "", age: "", phone: "081", vulnerabilities: [], details: {} },
+      { prefix: "", firstName: "", lastName: "", age: "", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", firstName: "ทดสอบ", lastName: "", age: "80", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", firstName: "", lastName: "", age: "", phone: "081", vulnerabilities: [], details: {} },
     ]);
     expect(mapped).toHaveLength(2);
     expect(mapped[0].seq).toBe(1);
@@ -106,9 +106,9 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
 
   it("ช่องว่าง = BLANK_IN_PAPER, มีค่า = HAS_VALUE, อายุเป็นไปไม่ได้ = ILLEGIBLE", () => {
     const [row] = mapVulnerableRows([
-      { fullName: "ยายมี", age: "999", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", firstName: "มี", lastName: "", age: "999", phone: "", vulnerabilities: [], details: {} },
     ]);
-    expect(row.fullNameStatus).toBe(FieldStatusEnum.HAS_VALUE);
+    expect(row.nameStatus).toBe(FieldStatusEnum.HAS_VALUE);
     expect(row.age).toBeNull();
     expect(row.ageStatus).toBe(FieldStatusEnum.ILLEGIBLE);
     expect(row.phone).toBeNull();
@@ -118,7 +118,9 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
   it("detail ผูกตาม vulnerabilityTypeId และ trim ค่าว่างเป็น null", () => {
     const [row] = mapVulnerableRows([
       {
-        fullName: "ตา สา",
+        prefix: "",
+        firstName: "สา",
+        lastName: "",
         age: "72",
         phone: "081-111-2222",
         vulnerabilities: ["vt1", "vt2"],

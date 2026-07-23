@@ -6,6 +6,7 @@
 // หมายเหตุ: รอบนี้ยังไม่บันทึกคำตอบ (Owner Decision — payload ต้องมีกลไกเข้ารหัสก่อน)
 
 export type MasterKey =
+  | "namePrefixes"
   | "buildingTypes"
   | "ownershipTypes"
   | "tambons"
@@ -22,6 +23,7 @@ export type FieldType =
   | "number"
   | "date"
   | "radio"
+  | "select"
   | "checkbox-group"
   | "boolean"
   | "textarea";
@@ -109,8 +111,20 @@ export const ENTRY_STEPS: EntryStep[] = [
       },
       { name: "placeName", label: "ชื่อสถานที่/ชื่อร้าน (ถ้ามี)", type: "text" },
       {
-        name: "respondentName",
-        label: "ชื่อ-นามสกุล (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
+        name: "respondentPrefix",
+        label: "คำนำหน้า (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
+        type: "select",
+        masterKey: "namePrefixes",
+      },
+      {
+        name: "respondentFirstName",
+        label: "ชื่อ (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
+        type: "text",
+        sensitive: true,
+      },
+      {
+        name: "respondentLastName",
+        label: "นามสกุล (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
         type: "text",
         sensitive: true,
       },
@@ -187,7 +201,9 @@ export const ENTRY_STEPS: EntryStep[] = [
     kind: "vulnerable-grid",
     skipWhenNoVulnerable: true,
     fields: [
-      { name: "fullName", label: "ชื่อ-นามสกุล", type: "text", critical: true, sensitive: true },
+      { name: "prefix", label: "คำนำหน้า", type: "select", masterKey: "namePrefixes" },
+      { name: "firstName", label: "ชื่อ", type: "text", critical: true, sensitive: true },
+      { name: "lastName", label: "นามสกุล", type: "text", sensitive: true },
       { name: "age", label: "อายุ (ปี)", type: "number" },
       { name: "phone", label: "เบอร์โทรศัพท์ (ถ้ามี)", type: "phone", critical: true, sensitive: true },
       {

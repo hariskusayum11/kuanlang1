@@ -10,6 +10,7 @@ export interface MasterOption {
 }
 
 export interface EntryMasterData {
+  namePrefixes: MasterOption[];
   buildingTypes: MasterOption[];
   ownershipTypes: MasterOption[];
   tambons: MasterOption[];
@@ -32,6 +33,7 @@ export async function getEntryMasterData(
   communityId: string,
 ): Promise<EntryMasterData> {
   const [
+    namePrefixes,
     buildingTypes,
     ownershipTypes,
     communityTambons,
@@ -41,6 +43,11 @@ export async function getEntryMasterData(
     alertChannels,
     volunteerSkillTypes,
   ] = await Promise.all([
+    prisma.namePrefix.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, code: true, nameTh: true },
+    }),
     prisma.buildingType.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
@@ -112,6 +119,7 @@ export async function getEntryMasterData(
   });
 
   return {
+    namePrefixes: namePrefixes.map(opt),
     buildingTypes: buildingTypes.map(opt),
     ownershipTypes: ownershipTypes.map(opt),
     tambons: communityTambons.map((ct) => opt(ct.tambon)),

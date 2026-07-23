@@ -114,8 +114,10 @@ export type SubmitEntryResult =
 
 interface VulnerableRowMapped {
   seq: number;
-  fullName: string | null;
-  fullNameStatus: FieldStatusEnum;
+  namePrefixId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  nameStatus: FieldStatusEnum;
   age: number | null;
   ageStatus: FieldStatusEnum;
   phone: string | null;
@@ -127,7 +129,9 @@ interface VulnerableRowMapped {
 export function mapVulnerableRows(rows: VulnerableRowInput[]): VulnerableRowMapped[] {
   const nonEmpty = rows.filter(
     (r) =>
-      r.fullName.trim() !== "" ||
+      r.prefix.trim() !== "" ||
+      r.firstName.trim() !== "" ||
+      r.lastName.trim() !== "" ||
       String(r.age).trim() !== "" ||
       r.phone.trim() !== "" ||
       r.vulnerabilities.length > 0,
@@ -136,12 +140,13 @@ export function mapVulnerableRows(rows: VulnerableRowInput[]): VulnerableRowMapp
     const ageRaw = String(r.age).trim();
     const ageNum = Number(ageRaw);
     const ageValid = ageRaw !== "" && Number.isInteger(ageNum) && ageNum >= 0 && ageNum <= 120;
+    const hasName = r.firstName.trim() !== "" || r.lastName.trim() !== "";
     return {
       seq: i + 1,
-      fullName: r.fullName.trim() || null,
-      fullNameStatus: r.fullName.trim()
-        ? FieldStatusEnum.HAS_VALUE
-        : FieldStatusEnum.BLANK_IN_PAPER,
+      namePrefixId: r.prefix.trim() || null,
+      firstName: r.firstName.trim() || null,
+      lastName: r.lastName.trim() || null,
+      nameStatus: hasName ? FieldStatusEnum.HAS_VALUE : FieldStatusEnum.BLANK_IN_PAPER,
       age: ageValid ? ageNum : null,
       ageStatus:
         ageRaw === ""
@@ -176,7 +181,9 @@ export async function submitEntry(
   const now = new Date();
 
   // --- เตรียมข้อมูล Household (ฟิลด์อ่อนไหวเข้ารหัสก่อนเข้า transaction) ---
-  const respondentName = answerString(clean, "respondentName");
+  const respondentPrefixId = answerString(clean, "respondentPrefix");
+  const respondentFirstName = answerString(clean, "respondentFirstName");
+  const respondentLastName = answerString(clean, "respondentLastName");
   const respondentPhone = answerString(clean, "respondentPhone");
   const respondentPhoneIdx = respondentPhone
     ? phoneBlindIndex(respondentPhone, searchKey)
@@ -203,8 +210,12 @@ export async function submitEntry(
     buildingTypeId: answerString(clean, "buildingTypeId"),
     buildingTypeOther: answerString(clean, "buildingTypeOther"),
     placeName: answerString(clean, "placeName"),
-    respondentName: respondentName
-      ? encryptText(respondentName, keyring, CURRENT_KEY_VERSION)
+    respondentPrefixId, // FK master (plaintext) — Prisma ตรวจ FK; ไม่ถูกต้อง → P2003
+    respondentFirstName: respondentFirstName
+      ? encryptText(respondentFirstName, keyring, CURRENT_KEY_VERSION)
+      : null,
+    respondentLastName: respondentLastName
+      ? encryptText(respondentLastName, keyring, CURRENT_KEY_VERSION)
       : null,
     respondentPhone: respondentPhone
       ? encryptText(respondentPhone, keyring, CURRENT_KEY_VERSION)
@@ -292,10 +303,14 @@ export async function submitEntry(
           data: {
             householdId: household.id,
             seq: row.seq,
-            fullName: row.fullName
-              ? encryptText(row.fullName, keyring, CURRENT_KEY_VERSION)
+            namePrefixId: row.namePrefixId, // FK master (plaintext)
+            firstName: row.firstName
+              ? encryptText(row.firstName, keyring, CURRENT_KEY_VERSION)
               : null,
-            fullNameStatus: row.fullNameStatus,
+            lastName: row.lastName
+              ? encryptText(row.lastName, keyring, CURRENT_KEY_VERSION)
+              : null,
+            nameStatus: row.nameStatus,
             age: row.age,
             ageStatus: row.ageStatus,
             phone: row.phone

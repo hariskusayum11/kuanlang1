@@ -4,7 +4,9 @@ import type { EntryMasterData } from "@/lib/entry/master-data";
 import { sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
 
 export interface VulnerableRow {
-  fullName: string;
+  prefix: string; // NamePrefix id (master) — plaintext, ไม่ใช่ PII
+  firstName: string;
+  lastName: string;
   age: string;
   phone: string;
   vulnerabilities: string[]; // vulnerabilityType ids
@@ -12,7 +14,15 @@ export interface VulnerableRow {
 }
 
 export function emptyVulnerableRow(): VulnerableRow {
-  return { fullName: "", age: "", phone: "", vulnerabilities: [], details: {} };
+  return {
+    prefix: "",
+    firstName: "",
+    lastName: "",
+    age: "",
+    phone: "",
+    vulnerabilities: [],
+    details: {},
+  };
 }
 
 type Props = {
@@ -66,14 +76,37 @@ export function VulnerableGrid({ master, rows, onChange }: Props) {
           </div>
 
           <div className="space-y-4 p-4">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600">คำนำหน้า</label>
+                <select
+                  value={row.prefix}
+                  onChange={(e) => update(i, { prefix: e.target.value })}
+                  className="field"
+                >
+                  <option value="">— เลือก —</option>
+                  {master.namePrefixes.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">
-                  ชื่อ-นามสกุล <span className="text-orange-500">⭐</span>
+                  ชื่อ <span className="text-orange-500">⭐</span>
                 </label>
                 <input
-                  value={row.fullName}
-                  onChange={(e) => update(i, { fullName: e.target.value })}
+                  value={row.firstName}
+                  onChange={(e) => update(i, { firstName: e.target.value })}
+                  className="field"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600">นามสกุล</label>
+                <input
+                  value={row.lastName}
+                  onChange={(e) => update(i, { lastName: e.target.value })}
                   className="field"
                 />
               </div>

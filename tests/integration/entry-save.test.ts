@@ -134,7 +134,8 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
   const draftPayload = entryPayloadSchema.parse({
     answers: {
       surveyNo: "42",
-      respondentName: "นางสาวทดสอบ ระบบ",
+      respondentFirstName: "ทดสอบ",
+      respondentLastName: "ระบบ",
       respondentPhone: "081-234-5678",
       houseNo: "12/3",
       memberCount: 4,
@@ -145,7 +146,9 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     marks: { soi: "BLANK_IN_PAPER", coordinateRawText: "ILLEGIBLE" },
     vulnerableRows: [
       {
-        fullName: "ยายทดสอบ ติดเตียง",
+        prefix: "",
+        firstName: "ทดสอบ",
+        lastName: "ติดเตียง",
         age: "82",
         phone: "089-000-1111",
         vulnerabilities: [],
@@ -175,9 +178,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     expect(attempt.submittedAt).toBeNull();
 
     const restored = await loadDraftPayload(ctxA, sheetId);
-    expect(restored?.answers.respondentName).toBe("นางสาวทดสอบ ระบบ");
+    expect(restored?.answers.respondentFirstName).toBe("ทดสอบ");
+    expect(restored?.answers.respondentLastName).toBe("ระบบ");
     expect(restored?.marks.soi).toBe("BLANK_IN_PAPER");
-    expect(restored?.vulnerableRows[0]?.fullName).toBe("ยายทดสอบ ติดเตียง");
+    expect(restored?.vulnerableRows[0]?.firstName).toBe("ทดสอบ");
+    expect(restored?.vulnerableRows[0]?.lastName).toBe("ติดเตียง");
     expect(restored?.stepIndex).toBe(3);
   });
 
@@ -217,8 +222,10 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     const hh = await prisma.household.findUniqueOrThrow({
       where: { id: result.householdId },
     });
-    expect(isEncrypted(hh.respondentName!)).toBe(true);
-    expect(decryptText(hh.respondentName!, getKeyring())).toBe("นางสาวทดสอบ ระบบ");
+    expect(isEncrypted(hh.respondentFirstName!)).toBe(true);
+    expect(decryptText(hh.respondentFirstName!, getKeyring())).toBe("ทดสอบ");
+    expect(isEncrypted(hh.respondentLastName!)).toBe(true);
+    expect(decryptText(hh.respondentLastName!, getKeyring())).toBe("ระบบ");
     expect(isEncrypted(hh.respondentPhone!)).toBe(true);
     expect(hh.respondentPhoneIdx).toBe(
       phoneBlindIndex("081-234-5678", getSearchHashKey()),
@@ -235,8 +242,10 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       where: { householdId: hh.id },
       include: { vulnerabilities: true },
     });
-    expect(isEncrypted(person.fullName!)).toBe(true);
-    expect(decryptText(person.fullName!, getKeyring())).toBe("ยายทดสอบ ติดเตียง");
+    expect(isEncrypted(person.firstName!)).toBe(true);
+    expect(decryptText(person.firstName!, getKeyring())).toBe("ทดสอบ");
+    expect(isEncrypted(person.lastName!)).toBe(true);
+    expect(decryptText(person.lastName!, getKeyring())).toBe("ติดเตียง");
     expect(person.age).toBe(82);
     expect(person.vulnerabilities).toHaveLength(1);
     expect(isEncrypted(person.vulnerabilities[0].detail!)).toBe(true);
@@ -285,7 +294,8 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
 
     const payload = entryPayloadSchema.parse({
       answers: {
-        respondentName: "คนละคน แต่เบอร์เดียวกัน",
+        respondentFirstName: "คนละคน",
+        respondentLastName: "เบอร์เดียวกัน",
         respondentPhone: "+66 81 234 5678", // รูปแบบต่าง แต่ normalize แล้วตรงใบแรก
         hasVulnerable: false,
       },
