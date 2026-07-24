@@ -8,9 +8,10 @@ import {
 } from "@prisma/client";
 import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
 import type { AuthorizationContext } from "../../lib/authz/types";
-import { encryptText } from "../../lib/crypto/encryption";
-import { CURRENT_KEY_VERSION, getKeyring } from "../../lib/crypto/keys";
+import { decryptText, encryptText, phoneBlindIndex } from "../../lib/crypto/encryption";
+import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../../lib/crypto/keys";
 import { loadHouseholdForReview, verifyHousehold } from "../../lib/verification/review";
+import { applyHouseholdEdits } from "../../lib/verification/edit";
 
 // Integration — Verifier: review (decrypt + audit READ) + verify (ENTERED_1 → VERIFIED)
 // รันเฉพาะ local dev DB — fixtures สังเคราะห์ (TESV-*) ลบใน afterAll
@@ -67,6 +68,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
   let ctxKeyer: AuthorizationContext;
   let ctxOutsider: AuthorizationContext;
   let verifierId = "";
+  let namePrefixId = "";
   const hh: Record<string, string> = {}; // key → householdId
 
   beforeAll(async () => {
@@ -134,6 +136,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     await mkHousehold("byKeyer", "TESV-920001", keyer.id); // ผู้ตรวจไม่ใช่ผู้คีย์ → ยืนยันได้
     await mkHousehold("bySelf", "TESV-920002", verifier.id); // ผู้ตรวจคีย์เอง → SELF_VERIFY
     await mkHousehold("scope", "TESV-920003", keyer.id); // ทดสอบ scope/permission
+    await mkHousehold("toEdit", "TESV-920004", keyer.id); // คง ENTERED_1 ไว้ทดสอบแก้ไข
+
+    const np = await prisma.namePrefix.findFirst({ where: { isActive: true }, select: { id: true } });
+    if (!np) throw new Error("ต้องมี NamePrefix seed ใน dev DB");
+    namePrefixId = np.id;
 
     const load = (u: { id: string; name: string; email: string }) =>
       loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
@@ -229,6 +236,89 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(await verifyHousehold(ctxKeyer, hh.scope)).toEqual({
       ok: false,
       reason: "NOT_ALLOWED",
+    });
+  });
+
+  // ---- Slice 2: แก้ไขข้อมูล ----
+
+  it("applyHouseholdEdits: แก้ชื่อ(🔒)/เบอร์(idx)/บ้านเลขที่/สมาชิก/คำนำหน้า(FK) + version + audit", async () => {
+    const result = await applyHouseholdEdits(ctxVerifier, hh.toEdit, {
+      respondentFirstName: "สมหญิง",
+      houseNo: "10/10",
+      respondentPhone: "0899998888",
+      memberCount: "5",
+      respondentPrefixId: namePrefixId,
+    });
+    expect(result).toEqual({ ok: true, changedCount: 5 });
+
+    const household = await prisma.household.findUniqueOrThrow({ where: { id: hh.toEdit } });
+    expect(decryptText(household.respondentFirstName!, getKeyring())).toBe("สมหญิง"); // เข้ารหัสใหม่
+    expect(household.houseNo).toBe("10/10");
+    expect(decryptText(household.respondentPhone!, getKeyring())).toBe("0899998888");
+    expect(household.respondentPhoneIdx).toBe(
+      phoneBlindIndex("0899998888", getSearchHashKey()),
+    ); // blind index คำนวณใหม่
+    expect(household.memberCount).toBe(5);
+    expect(household.respondentPrefixId).toBe(namePrefixId); // FK master
+
+    const version = await prisma.householdVersion.findFirstOrThrow({
+      where: { householdId: hh.toEdit },
+    });
+    expect(version.versionNo).toBe(1);
+    expect(version.changedById).toBe(verifierId);
+    expect(version.changeReason).toBe("verifier-edit");
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: "UPDATE", entityType: "Household", entityId: hh.toEdit },
+    });
+    expect(audit).not.toBeNull();
+
+    // ใบยังเป็น ENTERED_1 (การแก้ไม่เปลี่ยนสถานะ — ยังต้องยืนยันแยก)
+    const sheet = await prisma.paperSheet.findFirstOrThrow({
+      where: { household: { id: hh.toEdit } },
+    });
+    expect(sheet.status).toBe(SheetStatus.ENTERED_1);
+  });
+
+  it("แก้ค่าเดิม (ไม่เปลี่ยน) → changedCount 0 ไม่สร้าง version ใหม่", async () => {
+    const before = await prisma.householdVersion.count({ where: { householdId: hh.toEdit } });
+    const result = await applyHouseholdEdits(ctxVerifier, hh.toEdit, { houseNo: "10/10" });
+    expect(result).toEqual({ ok: true, changedCount: 0 });
+    const after = await prisma.householdVersion.count({ where: { householdId: hh.toEdit } });
+    expect(after).toBe(before);
+  });
+
+  it("คำนำหน้าปลอม (FK ผิด) → INVALID_MASTER และ rollback (ไม่มี version เพิ่ม)", async () => {
+    const before = await prisma.householdVersion.count({ where: { householdId: hh.toEdit } });
+    expect(
+      await applyHouseholdEdits(ctxVerifier, hh.toEdit, {
+        respondentPrefixId: "cfake0000000000000000000x",
+      }),
+    ).toEqual({ ok: false, reason: "INVALID_MASTER" });
+    const after = await prisma.householdVersion.count({ where: { householdId: hh.toEdit } });
+    expect(after).toBe(before); // transaction rollback
+  });
+
+  it("ผู้คีย์แก้งานตัวเอง / นอก scope / ไม่มีสิทธิ์ → ปฏิเสธตามเหตุ", async () => {
+    expect(await applyHouseholdEdits(ctxVerifier, hh.bySelf, { houseNo: "1" })).toEqual({
+      ok: false,
+      reason: "SELF_EDIT",
+    });
+    expect(await applyHouseholdEdits(ctxOutsider, hh.toEdit, { houseNo: "1" })).toEqual({
+      ok: false,
+      reason: "NOT_FOUND",
+    });
+    expect(await applyHouseholdEdits(ctxKeyer, hh.toEdit, { houseNo: "1" })).toEqual({
+      ok: false,
+      reason: "NOT_ALLOWED",
+    });
+  });
+
+  it("แก้ไขใบที่ยืนยันแล้ว → WRONG_STATUS (แก้ได้เฉพาะ ENTERED_1)", async () => {
+    expect((await verifyHousehold(ctxVerifier, hh.toEdit)).ok).toBe(true);
+    expect(await applyHouseholdEdits(ctxVerifier, hh.toEdit, { houseNo: "99" })).toEqual({
+      ok: false,
+      reason: "WRONG_STATUS",
     });
   });
 });

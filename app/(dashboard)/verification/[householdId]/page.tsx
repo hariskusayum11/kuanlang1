@@ -8,7 +8,9 @@ import {
   type ReviewField,
   type ReviewVulnerablePerson,
 } from "@/lib/verification/review";
+import { loadHouseholdEditable } from "@/lib/verification/edit";
 import { VerifyPanel } from "@/components/verification/verify-panel";
+import { EditPanel } from "@/components/verification/edit-panel";
 
 export const metadata = { title: "ตรวจสอบใบ" };
 export const dynamic = "force-dynamic";
@@ -93,6 +95,8 @@ export default async function ReviewPage({
   if (!review) notFound();
 
   const isVerified = review.status === "VERIFIED";
+  // โหลดค่าที่แก้ได้เฉพาะเมื่อยืนยัน/แก้ได้ (ENTERED_1 และไม่ใช่ผู้คีย์เอง)
+  const editable = review.canConfirm ? await loadHouseholdEditable(ctx, householdId) : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
@@ -162,6 +166,15 @@ export default async function ReviewPage({
             ))}
           </div>
         </section>
+      )}
+
+      {/* แก้ไขข้อมูล (เฉพาะใบ ENTERED_1 ที่ผู้ตรวจไม่ใช่ผู้คีย์) */}
+      {editable?.canEdit && (
+        <EditPanel
+          householdId={review.householdId}
+          initialValues={editable.values}
+          options={editable.options}
+        />
       )}
 
       {/* แถบยืนยัน */}

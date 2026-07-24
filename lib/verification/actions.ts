@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import { verifyHousehold, type VerifyResult } from "./review";
+import { applyHouseholdEdits, type EditResult } from "./edit";
 
 const householdIdSchema = z.string().cuid();
 
@@ -21,4 +22,20 @@ export async function verifyHouseholdAction(
   const parsed = householdIdSchema.safeParse(householdId);
   if (!parsed.success) return { ok: false, reason: "INVALID" };
   return verifyHousehold(ctx, parsed.data);
+}
+
+export type EditActionResult =
+  | EditResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** แก้ไขฟิลด์ Household โดย Verifier (RBAC/scope/สถานะ/แยกหน้าที่ ตรวจใน core) */
+export async function editHouseholdAction(
+  householdId: string,
+  edits: Record<string, string | number | null>,
+): Promise<EditActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsed = householdIdSchema.safeParse(householdId);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+  return applyHouseholdEdits(ctx, parsed.data, edits);
 }
