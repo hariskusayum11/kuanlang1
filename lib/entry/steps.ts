@@ -26,7 +26,9 @@ export type FieldType =
   | "select"
   | "checkbox-group"
   | "boolean"
-  | "textarea";
+  | "textarea"
+  // 2 ช่องตัวเลขบนคำถามเดียว ตรงตามกระดาษ (เช่น "___ เมตร ___ ซม." — QM-08)
+  | "measure-pair";
 
 export interface EntryField {
   /** ชื่อฟิลด์ตรงกับ Prisma schema (Household.* / FloodRiskProfile.* ฯลฯ) */
@@ -43,6 +45,10 @@ export interface EntryField {
   integer?: boolean;
   /** number: ค่าสูงสุดที่ยอมรับ (clamp ระหว่างพิมพ์) */
   max?: number;
+  /** number/measure-pair: หน่วยแสดงต่อท้ายช่อง (เช่น "เมตร") */
+  unit?: string;
+  /** measure-pair: ช่องที่สองบนคำถามเดียว (เก็บเป็น answer key แยกของตัวเอง) */
+  pair?: { name: string; unit: string; max?: number };
   /** Critical Field ⭐ — Entry 2 ต้องคีย์ซ้ำ (อ้าง docs/03) */
   critical?: boolean;
   /** ข้อมูลอ่อนไหว 🔒 (L3/L4) */
@@ -287,13 +293,17 @@ export const ENTRY_STEPS: EntryStep[] = [
         booleanLabels: { true: "เคย", false: "ไม่เคย", trueFirst: true },
       },
       {
+        // คำถามเดียว 2 ช่องตรงกระดาษ — คีย์ตามช่อง ระบบคำนวณ ซม.รวมให้เอง (QM-08)
         name: "floodDepthMetersRaw",
-        label: "3. ระดับน้ำท่วมสูงสุด — เมตร",
-        type: "number",
+        label: "3. ระดับน้ำท่วมสูงสุด (วัดจากพื้น)",
+        type: "measure-pair",
+        integer: true,
+        unit: "เมตร",
+        max: 10,
+        pair: { name: "floodDepthCmRaw", unit: "ซม.", max: 99 },
         critical: true,
-        hint: "2 ช่องตรงกระดาษ ห้ามรวมเป็นเซนติเมตรเอง (QM-08)",
+        hint: "กรอกตามช่องบนกระดาษ — เขียนไว้ช่องไหนใส่ช่องนั้น ไม่ต้องคิดเลขรวมเอง",
       },
-      { name: "floodDepthCmRaw", label: "3. ระดับน้ำท่วมสูงสุด — เซนติเมตร", type: "number", critical: true },
       { name: "lastFloodDurationDays", label: "4. น้ำท่วมครั้งล่าสุดนานกี่วัน", type: "number" },
       {
         name: "hasSafeParking",

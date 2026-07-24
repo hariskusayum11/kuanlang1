@@ -7,9 +7,14 @@
 import { z } from "zod";
 import { ENTRY_STEPS } from "./steps";
 
-/** ชื่อฟิลด์ทั้งหมดที่ Wizard รู้จัก — คีย์นอกรายการนี้ถูกตัดทิ้งตอน sanitize */
+/** ชื่อฟิลด์ทั้งหมดที่ Wizard รู้จัก — คีย์นอกรายการนี้ถูกตัดทิ้งตอน sanitize
+ *  measure-pair มี answer key 2 ตัว (name + pair.name) จึงรวมทั้งคู่ */
 export const KNOWN_FIELD_NAMES: ReadonlySet<string> = new Set(
-  ENTRY_STEPS.flatMap((s) => (s.kind === "fields" ? s.fields.map((f) => f.name) : [])),
+  ENTRY_STEPS.flatMap((s) =>
+    s.kind === "fields"
+      ? s.fields.flatMap((f) => (f.pair ? [f.name, f.pair.name] : [f.name]))
+      : [],
+  ),
 );
 
 const answerValueSchema = z.union([

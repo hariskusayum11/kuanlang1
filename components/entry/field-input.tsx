@@ -13,7 +13,18 @@ type Props = {
   value: unknown;
   mark: FieldMark;
   onChange: (value: unknown) => void;
+  /** measure-pair เท่านั้น: ค่า/สถานะ/ตัวจัดการของช่องที่สอง (field.pair) */
+  pairValue?: unknown;
+  pairMark?: FieldMark;
+  onPairChange?: (value: unknown) => void;
 };
+
+/** border สีเหลือง/เทา ตามสถานะ F2/F3 ของช่อง */
+function markBorder(mark: FieldMark): string {
+  if (mark === "ILLEGIBLE") return "!border-amber-400 !bg-amber-50";
+  if (mark === "BLANK_IN_PAPER") return "!border-slate-300 !bg-slate-100";
+  return "";
+}
 
 /** ตัวเลือกของฟิลด์ — จาก Master Data (DB) หรือ enum ตามกระดาษ */
 function optionsOf(field: EntryField, master: EntryMasterData) {
@@ -29,7 +40,16 @@ const OPTION_BASE =
 const OPTION_ON = "border-brand-500 bg-brand-50 text-brand-800 shadow-xs";
 const OPTION_OFF = "text-slate-700 hover:border-slate-400 hover:bg-slate-50";
 
-export function FieldInput({ field, master, value, mark, onChange }: Props) {
+export function FieldInput({
+  field,
+  master,
+  value,
+  mark,
+  onChange,
+  pairValue,
+  pairMark,
+  onPairChange,
+}: Props) {
   // สถานะ F2/F3 ทำให้ input ดูเป็นเหลือง/เทา
   const markInput =
     mark === "ILLEGIBLE"
@@ -99,6 +119,48 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
             onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
             className={`field max-w-52 ${markInput}`}
           />
+        );
+      }
+      case "measure-pair": {
+        const primary =
+          typeof value === "number" || typeof value === "string" ? String(value) : "";
+        const secondary =
+          typeof pairValue === "number" || typeof pairValue === "string"
+            ? String(pairValue)
+            : "";
+        return (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              data-field-name={field.name}
+              value={primary}
+              onChange={(e) => {
+                const s = sanitizeIntString(e.target.value, field.max);
+                onChange(s === "" ? "" : Number(s));
+              }}
+              className={`field w-20 text-right ${markBorder(mark)}`}
+            />
+            <span className="text-sm text-slate-600">{field.unit}</span>
+            {field.pair && (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  data-field-name={field.pair.name}
+                  value={secondary}
+                  onChange={(e) => {
+                    const s = sanitizeIntString(e.target.value, field.pair!.max);
+                    onPairChange?.(s === "" ? "" : Number(s));
+                  }}
+                  className={`field w-20 text-right ${markBorder(pairMark ?? null)}`}
+                />
+                <span className="text-sm text-slate-600">{field.pair.unit}</span>
+              </>
+            )}
+            {pairMark === "ILLEGIBLE" && <span className="badge badge-warning">ซม.อ่านไม่ออก · F2</span>}
+            {pairMark === "BLANK_IN_PAPER" && <span className="badge badge-neutral">ซม.ว่าง · F3</span>}
+          </div>
         );
       }
       case "date": {

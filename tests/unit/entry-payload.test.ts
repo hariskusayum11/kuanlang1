@@ -46,6 +46,9 @@ describe("sanitizeEntryPayload — whitelist ฟิลด์ที่รู้�
   it("KNOWN_FIELD_NAMES ครอบคลุมฟิลด์จริง และไม่มีฟิลด์ต้องห้าม", () => {
     expect(KNOWN_FIELD_NAMES.has("respondentPhone")).toBe(true);
     expect(KNOWN_FIELD_NAMES.has("hasVulnerable")).toBe(true);
+    // measure-pair: ทั้งช่องหลักและช่องที่สองต้องอยู่ใน whitelist (ไม่งั้นถูกตัดตอน sanitize)
+    expect(KNOWN_FIELD_NAMES.has("floodDepthMetersRaw")).toBe(true);
+    expect(KNOWN_FIELD_NAMES.has("floodDepthCmRaw")).toBe(true);
     expect(KNOWN_FIELD_NAMES.has("lastFloodYear")).toBe(false); // QM-11
     expect(KNOWN_FIELD_NAMES.has("lineUserId")).toBe(false);
   });

@@ -85,17 +85,20 @@ describe("wizard step config (ยึด Data Dictionary)", () => {
       "houseNo",
       "mooId",
       "coordinateRawText",
-      "floodDepthMetersRaw",
-      "floodDepthCmRaw",
+      "floodDepthMetersRaw", // measure-pair — คำถามเดียวคุมทั้งเมตร+ซม.
     ]) {
       expect(critical).toContain(expected);
     }
   });
 
-  it("ระดับน้ำท่วมเป็น 2 ช่องดิบตามกระดาษ (QM-08) — ไม่มีช่องรวม cm", () => {
+  it("ระดับน้ำท่วมเป็น 2 ช่องดิบตามกระดาษ (QM-08) — คำถามเดียว measure-pair, ไม่มีช่องรวม cm", () => {
     const names = allFields.map((f) => f.name);
-    expect(names).toContain("floodDepthMetersRaw");
-    expect(names).toContain("floodDepthCmRaw");
+    const depth = allFields.find((f) => f.name === "floodDepthMetersRaw");
+    // คำถามเดียวชนิด measure-pair ที่มีช่องที่สอง floodDepthCmRaw (ตรงกระดาษ 2 ช่อง)
+    expect(depth?.type).toBe("measure-pair");
+    expect(depth?.pair?.name).toBe("floodDepthCmRaw");
+    // ช่องที่สองไม่ใช่ field แยก (ผูกใน pair) และไม่มีช่องรวม cm ที่ให้คีย์เอง
+    expect(names).not.toContain("floodDepthCmRaw");
     expect(names).not.toContain("maxFloodDepthCm");
   });
 

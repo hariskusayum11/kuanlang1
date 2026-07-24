@@ -170,6 +170,16 @@ export function EntryWizard({
       for (const f of s.fields) {
         if (!f.critical) continue;
         if (!fieldVisible(f, answers, master)) continue;
+        // measure-pair: ถือว่าตอบแล้วถ้าช่องใดช่องหนึ่งมีค่า/ถูกมาร์ก (เช่น 1 เมตร ซม.ว่าง = ตอบแล้ว)
+        if (f.pair) {
+          const answered =
+            isAnswered(answers[f.name]) ||
+            isAnswered(answers[f.pair.name]) ||
+            Boolean(marks[f.name]) ||
+            Boolean(marks[f.pair.name]);
+          if (!answered) out.push({ key: f.name, label: f.label, stepIndex: idx });
+          continue;
+        }
         if (marks[f.name]) continue; // F2/F3 = ตอบแล้ว
         if (!isAnswered(answers[f.name])) {
           out.push({ key: f.name, label: f.label, stepIndex: idx });
@@ -624,6 +634,11 @@ export function EntryWizard({
                     value={answers[f.name]}
                     mark={marks[f.name] ?? null}
                     onChange={(v) => setAnswer(f.name, v)}
+                    pairValue={f.pair ? answers[f.pair.name] : undefined}
+                    pairMark={f.pair ? (marks[f.pair.name] ?? null) : undefined}
+                    onPairChange={
+                      f.pair ? (v) => setAnswer(f.pair!.name, v) : undefined
+                    }
                   />
                 ))}
             </div>
