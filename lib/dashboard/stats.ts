@@ -34,7 +34,8 @@ export function toStatCards(counts: DashboardCounts): StatCard[] {
     { key: "communities", label: "ชุมชน", value: counts.communities, pending: false },
     { key: "tambons", label: "ตำบล", value: counts.tambons, pending: false },
     { key: "moos", label: "หมู่", value: counts.moos, pending: false },
-    { key: "households", label: "ครัวเรือน", value: counts.households, pending: true },
+    // ครัวเรือน: โมดูลคีย์+ตรวจสอบเปิดใช้แล้ว (ดูรายละเอียด Coverage ด้านล่าง) — ไม่ pending
+    { key: "households", label: "ครัวเรือน", value: counts.households, pending: false },
     { key: "evacuationSites", label: "จุดอพยพ", value: counts.evacuationSites, pending: true },
   ];
 }

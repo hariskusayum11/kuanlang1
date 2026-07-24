@@ -47,9 +47,9 @@ describe("Dashboard stats mapping (toStatCards)", () => {
     expect(cards.map((c) => c.value)).toEqual([5, 2, 5, 0, 0]);
   });
 
-  it("โมดูลที่ยังไม่เปิด (ครัวเรือน/จุดอพยพ) ติดธง pending", () => {
+  it("ครัวเรือนเปิดใช้แล้ว (ไม่ pending) · จุดอพยพยังไม่เปิด (pending)", () => {
     const cards = toStatCards(counts);
-    expect(cards.find((c) => c.key === "households")?.pending).toBe(true);
+    expect(cards.find((c) => c.key === "households")?.pending).toBe(false);
     expect(cards.find((c) => c.key === "evacuationSites")?.pending).toBe(true);
     expect(cards.find((c) => c.key === "communities")?.pending).toBe(false);
   });
