@@ -43,19 +43,11 @@ export type SheetAccess =
   /** สถานะอื่น (ENTERED_1 ฯลฯ) — ไม่ใช่งานคีย์ Entry 1 แล้ว */
   | { kind: "WRONG_STATUS"; status: SheetStatus };
 
-/**
- * เงื่อนไข community scope สำหรับ query batch
- * - Global scope → ไม่กรอง (เห็นทุกชุมชน)
- * - Scope ว่าง → null = ไม่มีสิทธิ์เห็นงานใด (ห้าม fallback เป็นทั้งระบบ)
- */
-function batchCommunityFilter(
-  ctx: AuthorizationContext,
-): { communityId?: { in: string[] } } | null {
-  if (ctx.isGlobalScope) return {};
-  if (ctx.communityIds.length === 0) return null;
-  return { communityId: { in: ctx.communityIds } };
-}
-
+// Owner Decision (2026-07-24): การ "คีย์ข้อมูล" ไม่ผูก community scope
+//   เจ้าหน้าที่คีย์เปิดใบจากรหัสบนกระดาษที่ถืออยู่ → คีย์ชุมชนไหนก็ได้
+//   ยังปลอดภัย: เห็นได้แค่ใบเดียวที่เปิด (ค้น/Export ครัวเรือนทั้งหมดไม่ได้) และ
+//   ใบ PENDING ยังไม่มีข้อมูลบุคคล ส่วน "การดูข้อมูลที่คีย์แล้ว" (Verifier/Dashboard)
+//   ยังบังคับ community scope เข้มเหมือนเดิม
 function canEnter(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.SURVEY_ENTRY);
 }
@@ -97,11 +89,10 @@ const ENTERED_STATUSES: SheetStatus[] = [
  */
 export async function getEntryOverview(ctx: AuthorizationContext) {
   if (!canEnter(ctx)) return { allowed: false as const, batches: [] };
-  const scope = batchCommunityFilter(ctx);
-  if (scope === null) return { allowed: true as const, batches: [] };
 
+  // ไม่กรอง community — คีย์ชุมชนไหนก็ได้ (Owner Decision)
   const batches = await prisma.paperBatch.findMany({
-    where: { status: { in: CLAIMABLE_BATCH_STATUSES }, ...scope },
+    where: { status: { in: CLAIMABLE_BATCH_STATUSES } },
     select: {
       id: true,
       code: true,
@@ -192,8 +183,6 @@ export async function openSheetByCode(
   batchId?: string,
 ): Promise<OpenSheetResult> {
   if (!canEnter(ctx)) return { ok: false, reason: "NOT_FOUND" };
-  const scope = batchCommunityFilter(ctx);
-  if (scope === null) return { ok: false, reason: "NOT_FOUND" };
 
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { ok: false, reason: "NOT_FOUND" };
@@ -224,11 +213,6 @@ export async function openSheetByCode(
           },
         });
   if (!sheet) return { ok: false, reason: "NOT_FOUND" };
-
-  // นอก community scope → ตอบเหมือนไม่มีใบนี้ (ห้ามยืนยันการมีอยู่)
-  const inScope =
-    ctx.isGlobalScope || ctx.communityIds.includes(sheet.batch.communityId);
-  if (!inScope) return { ok: false, reason: "NOT_FOUND" };
 
   if (!CLAIMABLE_BATCH_STATUSES.includes(sheet.batch.status)) {
     return { ok: false, reason: "BATCH_NOT_OPEN" };
@@ -285,14 +269,12 @@ export async function claimSheetById(
   sheetId: string,
 ): Promise<ClaimResult> {
   if (!canEnter(ctx)) return { ok: false, reason: "FORBIDDEN" };
-  const scope = batchCommunityFilter(ctx);
-  if (scope === null) return { ok: false, reason: "NO_WORK" };
 
   const now = new Date();
   const claimed = await prisma.paperSheet.updateMany({
     where: {
       id: sheetId,
-      batch: { status: { in: CLAIMABLE_BATCH_STATUSES }, ...scope },
+      batch: { status: { in: CLAIMABLE_BATCH_STATUSES } },
       OR: [
         { status: SheetStatus.PENDING },
         { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
@@ -378,10 +360,6 @@ export async function getSheetForEntry(
     },
   });
   if (!sheet) return { kind: "NOT_FOUND" };
-
-  const inScope =
-    ctx.isGlobalScope || ctx.communityIds.includes(sheet.batch.communityId);
-  if (!inScope) return { kind: "NOT_FOUND" };
 
   if (sheet.status === SheetStatus.PENDING) return { kind: "NOT_LOCKED" };
   if (sheet.status !== SheetStatus.LOCKED)

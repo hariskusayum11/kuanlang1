@@ -170,33 +170,34 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     expect(await getMyActiveSheet(ctxNoPerm)).toBeNull();
   });
 
-  it("2) scope ว่าง → NOT_FOUND และ overview ว่าง (ไม่ fallback เป็นทั้งระบบ)", async () => {
-    const opened = await openSheetByCode(ctxNoScope, SHEET(1, 1));
-    expect(opened).toEqual({ ok: false, reason: "NOT_FOUND" });
+  it("2) ไม่มี community scope แต่ยังคีย์ได้ (Owner Decision — คีย์ชุมชนไหนก็ได้)", async () => {
     const overview = await getEntryOverview(ctxNoScope);
     expect(overview.allowed).toBe(true);
-    expect(overview.batches).toEqual([]);
+    expect(overview.batches.map((b) => b.code)).toContain(BATCH1_CODE);
+    // เปิดใบได้แม้ไม่มี scope — ใช้ใบอื่น (ไม่ใช่ 1,1) แล้วคืนสถานะ ไม่รบกวนเทสต์ lock
+    const opened = await openSheetByCode(ctxNoScope, SHEET(1, 2));
+    expect(opened.ok).toBe(true);
+    if (opened.ok) await releaseSheet(ctxNoScope, opened.sheetId);
   });
 
-  it("3) overview เห็นเฉพาะ batch ที่เปิดคีย์ใน scope ของตน", async () => {
+  it("3) overview เห็นทุกปึกที่เปิดคีย์ (ทุกชุมชน) · ไม่เห็นปึก RECEIVED", async () => {
     const overview = await getEntryOverview(ctxA);
     const codes = overview.batches.map((b) => b.code);
     expect(codes).toContain(BATCH1_CODE);
-    expect(codes).not.toContain(BATCH2_CODE); // นอก scope
+    expect(codes).toContain(BATCH2_CODE); // ต่างชุมชนก็เห็น (Owner Decision)
     expect(codes).not.toContain(BATCH3_CODE); // RECEIVED ยังไม่เปิด
   });
 
-  it("4) รหัสไม่มีจริง / นอก scope / ปึกยังไม่เปิด → คำตอบถูกต้องไม่รั่วข้อมูล", async () => {
+  it("4) รหัสไม่มีจริง → NOT_FOUND · ใบต่างชุมชน → เปิดได้ · ปึก RECEIVED → BATCH_NOT_OPEN", async () => {
     expect(await openSheetByCode(ctxA, "TEST-SHEET-ENTRY-9-999")).toEqual({
       ok: false,
       reason: "NOT_FOUND",
     });
-    // ใบมีจริงแต่อยู่ C2 นอก scope → ตอบเหมือนไม่มี (กัน enumeration)
-    expect(await openSheetByCode(ctxA, SHEET(2, 1))).toEqual({
-      ok: false,
-      reason: "NOT_FOUND",
-    });
-    // ใบอยู่ในปึก RECEIVED (ใน scope) → บอกตรง ๆ ว่าปึกยังไม่เปิด
+    // ใบอยู่คนละชุมชน (C2) → เปิดได้ (คีย์ชุมชนไหนก็ได้) แล้วคืนสถานะ
+    const c2 = await openSheetByCode(ctxA, SHEET(2, 1));
+    expect(c2.ok).toBe(true);
+    if (c2.ok) await releaseSheet(ctxA, c2.sheetId);
+    // ใบอยู่ในปึก RECEIVED → บอกตรง ๆ ว่าปึกยังไม่เปิด
     expect(await openSheetByCode(ctxA, SHEET(3, 1))).toEqual({
       ok: false,
       reason: "BATCH_NOT_OPEN",
@@ -243,7 +244,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     });
   });
 
-  it("7) getSheetForEntry: เจ้าของ OK · คนอื่น NOT_OWNER · นอก scope NOT_FOUND (กัน IDOR)", async () => {
+  it("7) getSheetForEntry: เจ้าของ OK · คนอื่น NOT_OWNER · ใบ PENDING NOT_LOCKED · ไม่มีสิทธิ์ NOT_FOUND", async () => {
     const sheetId = sheet1Ids[SHEET(1, 1)];
     const sheet = await prisma.paperSheet.findUnique({ where: { id: sheetId } });
     const holder = sheet!.lockedById === ctxA.userId ? ctxA : ctxB;
@@ -252,8 +253,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     const ok = await getSheetForEntry(holder, sheetId);
     expect(ok.kind).toBe("OK");
     expect((await getSheetForEntry(other, sheetId)).kind).toBe("NOT_OWNER");
-    expect((await getSheetForEntry(ctxNoScope, sheetId)).kind).toBe("NOT_FOUND");
-    expect((await getSheetForEntry(ctxA, sheetC2Id)).kind).toBe("NOT_FOUND");
+    // มีสิทธิ์คีย์แต่ไม่ใช่เจ้าของ lock = NOT_OWNER (ไม่เกี่ยว scope แล้ว)
+    expect((await getSheetForEntry(ctxNoScope, sheetId)).kind).toBe("NOT_OWNER");
+    // ใบ C2 (คนละชุมชน) สถานะ PENDING → NOT_LOCKED = เข้าถึงข้ามชุมชนได้ เสนอให้ claim
+    expect((await getSheetForEntry(ctxA, sheetC2Id)).kind).toBe("NOT_LOCKED");
+    // ไม่มีสิทธิ์คีย์เลย → NOT_FOUND (กัน IDOR)
     expect((await getSheetForEntry(ctxNoPerm, sheetId)).kind).toBe("NOT_FOUND");
   });
 
@@ -328,11 +332,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     });
   });
 
-  it("12) claimSheetById (gate/resume) ยังตรวจ scope · batch → IN_PROGRESS หลังมีการเปิดใบ", async () => {
-    expect(await claimSheetById(ctxNoScope, sheet1Ids[SHEET(1, 1)])).toEqual({
-      ok: false,
-      reason: "NO_WORK",
-    });
+  it("12) claimSheetById: ไม่มี scope ก็ claim ได้ (Owner Decision) · batch = IN_PROGRESS", async () => {
+    // SHEET(1,1) เป็น PENDING ณ จุดนี้ (ถูก release ในเทสต์ก่อน)
+    const claimed = await claimSheetById(ctxNoScope, sheet1Ids[SHEET(1, 1)]);
+    expect(claimed.ok).toBe(true);
+    if (claimed.ok) await releaseSheet(ctxNoScope, sheet1Ids[SHEET(1, 1)]);
     const batch = await prisma.paperBatch.findUnique({ where: { id: batch1Id } });
     expect(batch?.status).toBe(BatchStatus.IN_PROGRESS);
   });

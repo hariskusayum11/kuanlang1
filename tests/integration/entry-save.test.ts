@@ -25,10 +25,11 @@ const prisma = new PrismaClient();
 const EMAILS = {
   keyerA: "test-esave-a@test.invalid",
   keyerB: "test-esave-b@test.invalid",
+  noScope: "test-esave-c@test.invalid",
 } as const;
 const C_CODE = "TES1";
 const BATCH_CODE = "BATCH-TES-001";
-const SHEETS = ["TES-910001", "TES-910002", "TES-910003"];
+const SHEETS = ["TES-910001", "TES-910002", "TES-910003", "TES-910004"];
 
 async function cleanupFixtures() {
   const batch = await prisma.paperBatch.findUnique({ where: { code: BATCH_CODE } });
@@ -70,6 +71,7 @@ async function cleanupFixtures() {
 describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้ารหัส)", () => {
   let ctxA: AuthorizationContext;
   let ctxB: AuthorizationContext;
+  let ctxNoScope: AuthorizationContext;
   let vulnerabilityTypeId: string;
   let namePrefixId: string;
   const sheetIds: Record<string, string> = {};
@@ -86,10 +88,13 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       prisma.user.create({ data: { email, name: `ESave Fixture ${email}` } });
     const userA = await mkUser(EMAILS.keyerA);
     const userB = await mkUser(EMAILS.keyerB);
+    // userC = DATA_ENTRY แต่ "ไม่มี" community scope (ทดสอบ Owner Decision: คีย์ชุมชนไหนก็ได้)
+    const userC = await mkUser(EMAILS.noScope);
     await prisma.userRole.createMany({
       data: [
         { userId: userA.id, role: UserRoleEnum.DATA_ENTRY, isActive: true },
         { userId: userB.id, role: UserRoleEnum.DATA_ENTRY, isActive: true },
+        { userId: userC.id, role: UserRoleEnum.DATA_ENTRY, isActive: true },
       ],
     });
     await prisma.userCommunityScope.createMany({
@@ -132,6 +137,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
     ctxA = await load(userA);
     ctxB = await load(userB);
+    ctxNoScope = await load(userC);
   });
 
   afterAll(async () => {
@@ -354,5 +360,20 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     const sheet = await prisma.paperSheet.findUniqueOrThrow({ where: { id: sheetId } });
     expect(sheet.status).toBe(SheetStatus.LOCKED);
     expect(await prisma.household.count({ where: { sheetId } })).toBe(0);
+  });
+
+  it("ผู้คีย์ไม่มี community scope เปิดใบได้ (Owner Decision — คีย์ชุมชนไหนก็ได้)", async () => {
+    // userC เป็น DATA_ENTRY แต่ไม่มี scope — เดิมจะถูกปฏิเสธ ตอนนี้เปิดใบได้
+    expect(ctxNoScope.isGlobalScope).toBe(false);
+    expect(ctxNoScope.communityIds).toEqual([]);
+
+    const opened = await openSheetByCode(ctxNoScope, SHEETS[3]);
+    expect(opened.ok).toBe(true);
+
+    const sheet = await prisma.paperSheet.findUniqueOrThrow({
+      where: { id: sheetIds[SHEETS[3]] },
+    });
+    expect(sheet.status).toBe(SheetStatus.LOCKED);
+    expect(sheet.lockedById).toBe(ctxNoScope.userId);
   });
 });
