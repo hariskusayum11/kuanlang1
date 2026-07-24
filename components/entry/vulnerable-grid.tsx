@@ -5,6 +5,7 @@ import { sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
 
 export interface VulnerableRow {
   prefix: string; // NamePrefix id (master) — plaintext, ไม่ใช่ PII
+  prefixOther: string; // ระบุคำนำหน้า เมื่อเลือก "อื่นๆ"
   firstName: string;
   lastName: string;
   age: string;
@@ -16,6 +17,7 @@ export interface VulnerableRow {
 export function emptyVulnerableRow(): VulnerableRow {
   return {
     prefix: "",
+    prefixOther: "",
     firstName: "",
     lastName: "",
     age: "",
@@ -33,6 +35,9 @@ type Props = {
 
 /** ตารางกลุ่มเปราะบาง — 1 แถวต่อ 1 คน เพิ่มแถวได้ไม่จำกัด (FR-ENT-10/11) */
 export function VulnerableGrid({ master, rows, onChange }: Props) {
+  // id ของคำนำหน้า "อื่นๆ" — ใช้เปิดช่องระบุเมื่อเลือก (ไม่ hardcode ค่า แต่เทียบด้วย code)
+  const otherPrefixId = master.namePrefixes.find((p) => p.code === "OTHER")?.id ?? null;
+
   function update(index: number, patch: Partial<VulnerableRow>) {
     onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -81,16 +86,30 @@ export function VulnerableGrid({ master, rows, onChange }: Props) {
                 <label className="text-xs font-medium text-slate-600">คำนำหน้า</label>
                 <select
                   value={row.prefix}
-                  onChange={(e) => update(i, { prefix: e.target.value })}
+                  onChange={(e) =>
+                    update(i, {
+                      prefix: e.target.value,
+                      // ล้างช่องระบุเมื่อไม่ได้เลือก "อื่นๆ" — กันค่าค้าง
+                      ...(e.target.value === otherPrefixId ? {} : { prefixOther: "" }),
+                    })
+                  }
                   className="field"
                 >
-                  <option value="">— เลือก —</option>
+                  <option value="">— ไม่ระบุ —</option>
                   {master.namePrefixes.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>
                   ))}
                 </select>
+                {otherPrefixId !== null && row.prefix === otherPrefixId && (
+                  <input
+                    value={row.prefixOther}
+                    onChange={(e) => update(i, { prefixOther: e.target.value })}
+                    placeholder="ระบุคำนำหน้า"
+                    className="field mt-1.5 animate-fade-in"
+                  />
+                )}
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">

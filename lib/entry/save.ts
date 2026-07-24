@@ -115,6 +115,7 @@ export type SubmitEntryResult =
 interface VulnerableRowMapped {
   seq: number;
   namePrefixId: string | null;
+  prefixOther: string | null;
   firstName: string | null;
   lastName: string | null;
   nameStatus: FieldStatusEnum;
@@ -130,6 +131,7 @@ export function mapVulnerableRows(rows: VulnerableRowInput[]): VulnerableRowMapp
   const nonEmpty = rows.filter(
     (r) =>
       r.prefix.trim() !== "" ||
+      r.prefixOther.trim() !== "" ||
       r.firstName.trim() !== "" ||
       r.lastName.trim() !== "" ||
       String(r.age).trim() !== "" ||
@@ -144,6 +146,7 @@ export function mapVulnerableRows(rows: VulnerableRowInput[]): VulnerableRowMapp
     return {
       seq: i + 1,
       namePrefixId: r.prefix.trim() || null,
+      prefixOther: r.prefixOther.trim() || null,
       firstName: r.firstName.trim() || null,
       lastName: r.lastName.trim() || null,
       nameStatus: hasName ? FieldStatusEnum.HAS_VALUE : FieldStatusEnum.BLANK_IN_PAPER,
@@ -203,7 +206,11 @@ export async function submitEntry(
     // ส่วนที่ 0 — ตามกระดาษ ไม่ auto-fill
     surveyNo: answerString(clean, "surveyNo"),
     communityNameOnPaper: answerString(clean, "communityNameOnPaper"),
-    surveyorNameOnPaper: answerString(clean, "surveyorNameOnPaper"),
+    // ชื่อผู้สำรวจ (staff) เก็บ plaintext — คำนำหน้าเป็น FK master (Prisma ตรวจ FK)
+    surveyorPrefixId: answerString(clean, "surveyorPrefix"),
+    surveyorPrefixOther: answerString(clean, "surveyorPrefixOther"),
+    surveyorFirstNameOnPaper: answerString(clean, "surveyorFirstNameOnPaper"),
+    surveyorLastNameOnPaper: answerString(clean, "surveyorLastNameOnPaper"),
     surveyorPhoneOnPaper: answerString(clean, "surveyorPhoneOnPaper"),
     surveyedAt: surveyedAtRaw ? parseThaiDate(surveyedAtRaw) : null, // parse ไม่ได้ → null (ดิบอยู่ใน payload)
     // ส่วนที่ 1
@@ -211,6 +218,7 @@ export async function submitEntry(
     buildingTypeOther: answerString(clean, "buildingTypeOther"),
     placeName: answerString(clean, "placeName"),
     respondentPrefixId, // FK master (plaintext) — Prisma ตรวจ FK; ไม่ถูกต้อง → P2003
+    respondentPrefixOther: answerString(clean, "respondentPrefixOther"),
     respondentFirstName: respondentFirstName
       ? encryptText(respondentFirstName, keyring, CURRENT_KEY_VERSION)
       : null,
@@ -304,6 +312,7 @@ export async function submitEntry(
             householdId: household.id,
             seq: row.seq,
             namePrefixId: row.namePrefixId, // FK master (plaintext)
+            prefixOther: row.prefixOther,
             firstName: row.firstName
               ? encryptText(row.firstName, keyring, CURRENT_KEY_VERSION)
               : null,

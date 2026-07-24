@@ -106,6 +106,7 @@ export function EntryWizard({
     if (rows.length === 0) return [emptyVulnerableRow()];
     return rows.map((r) => ({
       prefix: r.prefix,
+      prefixOther: r.prefixOther,
       firstName: r.firstName,
       lastName: r.lastName,
       age: String(r.age ?? ""),
@@ -251,6 +252,7 @@ export function EntryWizard({
       marks: cleanMarks,
       vulnerableRows: vulnerableRows.map((r) => ({
         prefix: r.prefix,
+        prefixOther: r.prefixOther,
         firstName: r.firstName,
         lastName: r.lastName,
         age: String(r.age ?? ""),

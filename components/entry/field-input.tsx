@@ -143,7 +143,7 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
             onChange={(e) => onChange(e.target.value)}
             className={`field max-w-52 ${markInput}`}
           >
-            <option value="">— เลือก —</option>
+            <option value="">— ไม่ระบุ —</option>
             {options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}

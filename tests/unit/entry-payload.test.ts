@@ -95,9 +95,9 @@ describe("answer helpers — อ่านค่าอย่างระวัง
 describe("mapVulnerableRows — ตารางกลุ่มเปราะบาง (สถานะรายช่อง BR-42/43)", () => {
   it("แถวว่างล้วนถูกตัดทิ้ง — seq เรียงตามแถวที่เหลือ", () => {
     const mapped = mapVulnerableRows([
-      { prefix: "", firstName: "", lastName: "", age: "", phone: "", vulnerabilities: [], details: {} },
-      { prefix: "", firstName: "ทดสอบ", lastName: "", age: "80", phone: "", vulnerabilities: [], details: {} },
-      { prefix: "", firstName: "", lastName: "", age: "", phone: "081", vulnerabilities: [], details: {} },
+      { prefix: "", prefixOther: "", firstName: "", lastName: "", age: "", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", prefixOther: "", firstName: "ทดสอบ", lastName: "", age: "80", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", prefixOther: "", firstName: "", lastName: "", age: "", phone: "081", vulnerabilities: [], details: {} },
     ]);
     expect(mapped).toHaveLength(2);
     expect(mapped[0].seq).toBe(1);
@@ -106,7 +106,7 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
 
   it("ช่องว่าง = BLANK_IN_PAPER, มีค่า = HAS_VALUE, อายุเป็นไปไม่ได้ = ILLEGIBLE", () => {
     const [row] = mapVulnerableRows([
-      { prefix: "", firstName: "มี", lastName: "", age: "999", phone: "", vulnerabilities: [], details: {} },
+      { prefix: "", prefixOther: "", firstName: "มี", lastName: "", age: "999", phone: "", vulnerabilities: [], details: {} },
     ]);
     expect(row.nameStatus).toBe(FieldStatusEnum.HAS_VALUE);
     expect(row.age).toBeNull();
@@ -118,7 +118,8 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
   it("detail ผูกตาม vulnerabilityTypeId และ trim ค่าว่างเป็น null", () => {
     const [row] = mapVulnerableRows([
       {
-        prefix: "",
+        prefix: "px-other",
+        prefixOther: "  พระ  ",
         firstName: "สา",
         lastName: "",
         age: "72",
@@ -127,6 +128,8 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
         details: { vt1: " ยาลิ่มเลือด ", vt2: "  " },
       },
     ]);
+    expect(row.namePrefixId).toBe("px-other");
+    expect(row.prefixOther).toBe("พระ"); // trim + เก็บค่าระบุคำนำหน้า
     expect(row.age).toBe(72);
     expect(row.vulnerabilities).toEqual([
       { typeId: "vt1", detail: "ยาลิ่มเลือด" },

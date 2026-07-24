@@ -66,6 +66,9 @@ export interface EntryStep {
 
 const YES_NO: EntryField["booleanLabels"] = { true: "มี", false: "ไม่มี", trueFirst: true };
 
+/** ข้อความช่วยเหลือช่องคำนำหน้า — แยก "กระดาษไม่ได้เขียน" ออกจาก "ยังไม่ได้คีย์" */
+const PREFIX_HINT = "ถ้ากระดาษไม่ได้เขียนคำนำหน้า ปล่อยว่างไว้ได้ (หรือกด F3 = ว่างในกระดาษ) — ไม่ต้องเดา";
+
 export const ENTRY_STEPS: EntryStep[] = [
   {
     id: "survey-info",
@@ -81,7 +84,21 @@ export const ENTRY_STEPS: EntryStep[] = [
         type: "text",
         hint: "คีย์ตามตัวอักษร — ระบบจะเทียบกับชุมชนของ Batch ให้ภายหลัง",
       },
-      { name: "surveyorNameOnPaper", label: "ชื่อ-นามสกุล ผู้สำรวจ", type: "text" },
+      {
+        name: "surveyorPrefix",
+        label: "คำนำหน้า (ผู้สำรวจ)",
+        type: "select",
+        masterKey: "namePrefixes",
+        hint: PREFIX_HINT,
+      },
+      {
+        name: "surveyorPrefixOther",
+        label: "ระบุคำนำหน้า (ผู้สำรวจ)",
+        type: "text",
+        showWhen: { field: "surveyorPrefix", equals: "OTHER" },
+      },
+      { name: "surveyorFirstNameOnPaper", label: "ชื่อ (ผู้สำรวจ)", type: "text" },
+      { name: "surveyorLastNameOnPaper", label: "นามสกุล (ผู้สำรวจ)", type: "text" },
       { name: "surveyorPhoneOnPaper", label: "เบอร์โทรศัพท์ผู้สำรวจ", type: "phone" },
       {
         name: "surveyedAt",
@@ -115,6 +132,13 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "คำนำหน้า (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
         type: "select",
         masterKey: "namePrefixes",
+        hint: PREFIX_HINT,
+      },
+      {
+        name: "respondentPrefixOther",
+        label: "ระบุคำนำหน้า (ผู้ให้ข้อมูล)",
+        type: "text",
+        showWhen: { field: "respondentPrefix", equals: "OTHER" },
       },
       {
         name: "respondentFirstName",
@@ -202,6 +226,7 @@ export const ENTRY_STEPS: EntryStep[] = [
     skipWhenNoVulnerable: true,
     fields: [
       { name: "prefix", label: "คำนำหน้า", type: "select", masterKey: "namePrefixes" },
+      { name: "prefixOther", label: "ระบุคำนำหน้า (อื่นๆ)", type: "text" },
       { name: "firstName", label: "ชื่อ", type: "text", critical: true, sensitive: true },
       { name: "lastName", label: "นามสกุล", type: "text", sensitive: true },
       { name: "age", label: "อายุ (ปี)", type: "number" },

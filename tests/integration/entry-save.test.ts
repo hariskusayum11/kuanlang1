@@ -71,6 +71,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
   let ctxA: AuthorizationContext;
   let ctxB: AuthorizationContext;
   let vulnerabilityTypeId: string;
+  let namePrefixId: string;
   const sheetIds: Record<string, string> = {};
 
   beforeAll(async () => {
@@ -120,6 +121,13 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     if (!vt) throw new Error("ต้องมี VulnerabilityType seed ใน dev DB");
     vulnerabilityTypeId = vt.id;
 
+    const np = await prisma.namePrefix.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+    });
+    if (!np) throw new Error("ต้องมี NamePrefix seed ใน dev DB");
+    namePrefixId = np.id;
+
     const load = (u: { id: string; name: string; email: string }) =>
       loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
     ctxA = await load(userA);
@@ -134,6 +142,8 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
   const draftPayload = entryPayloadSchema.parse({
     answers: {
       surveyNo: "42",
+      surveyorFirstNameOnPaper: "สมชาย",
+      surveyorLastNameOnPaper: "นักสำรวจ",
       respondentFirstName: "ทดสอบ",
       respondentLastName: "ระบบ",
       respondentPhone: "081-234-5678",
@@ -199,9 +209,15 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     const sheetId = sheetIds[SHEETS[0]];
     const payload = entryPayloadSchema.parse({
       ...draftPayload,
+      answers: {
+        ...draftPayload.answers,
+        respondentPrefix: namePrefixId, // FK master — ต้องผ่านและเก็บ plaintext
+        surveyorPrefix: namePrefixId,
+      },
       vulnerableRows: [
         {
           ...draftPayload.vulnerableRows[0],
+          prefix: namePrefixId,
           vulnerabilities: [vulnerabilityTypeId],
           details: { [vulnerabilityTypeId]: "ติดเตียง 2 ปี" },
         },
@@ -230,6 +246,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     expect(hh.respondentPhoneIdx).toBe(
       phoneBlindIndex("081-234-5678", getSearchHashKey()),
     );
+    // ชื่อผู้สำรวจ (staff) แยกส่วน + plaintext (ไม่เข้ารหัส) · คำนำหน้าเป็น FK master
+    expect(hh.surveyorFirstNameOnPaper).toBe("สมชาย");
+    expect(hh.surveyorLastNameOnPaper).toBe("นักสำรวจ");
+    expect(hh.surveyorPrefixId).toBe(namePrefixId);
+    expect(hh.respondentPrefixId).toBe(namePrefixId);
     expect(hh.houseNo).toBe("12/3");
     expect(hh.memberCount).toBe(4);
     expect(hh.hasVulnerable).toBe(true);
@@ -242,6 +263,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       where: { householdId: hh.id },
       include: { vulnerabilities: true },
     });
+    expect(person.namePrefixId).toBe(namePrefixId); // FK master (plaintext)
     expect(isEncrypted(person.firstName!)).toBe(true);
     expect(decryptText(person.firstName!, getKeyring())).toBe("ทดสอบ");
     expect(isEncrypted(person.lastName!)).toBe(true);

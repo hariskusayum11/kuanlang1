@@ -28,7 +28,7 @@
 |---|---|---|---|---|---|---|---|
 | 0.1 | ชื่อชุมชน | ช่องเขียนอิสระ (`....`) | — | — | R | — | ❌ **ไม่มีฟิลด์** (ดู QM-01) |
 | 0.2 | แบบสอบถามลำดับที่ | ช่องเขียนอิสระ | `Household.surveyNo` | String? | O | — | ⚠️ ไม่ unique (ดู QM-10) |
-| 0.3 | ชื่อ-นามสกุล ผู้สำรวจ | ช่องเขียนอิสระ | `Household.surveyorNameOnPaper` | String? | R | — | ✅ |
+| 0.3 | ชื่อ-นามสกุล ผู้สำรวจ | ช่องเขียนอิสระ | `Household.surveyorPrefixId` (FK) + `surveyorPrefixOther` + `surveyorFirstNameOnPaper` + `surveyorLastNameOnPaper` | String? | R | — | ✅ แยกคำนำหน้า+ชื่อ+สกุล (plaintext — staff) |
 | 0.4 | เบอร์โทรศัพท์ผู้สำรวจ | ช่องตัวเลข `___ ___ ___-___ ___ ___ ___ ___ ___ ___` | `Household.surveyorPhoneOnPaper` | String? | R | ⚠️ | ⚠️ เอกสารบอก "เบอร์โทรศัพท์ (**ทุกเบอร์**)" เป็น ⭐ แต่ Schema ไม่ได้ทำเครื่องหมาย ⭐ ที่ฟิลด์นี้ |
 | 0.5 | วันที่สำรวจ (วันที่/เดือน/ปี) | `.... / ........ / ......` | `Household.surveyedAt` | DateTime? | R | — | ⚠️ ปี พ.ศ./ค.ศ.? (ดู QM-02) |
 
@@ -606,7 +606,7 @@ Seed มี **7 ค่า**: BOAT, TOOLS, GENERATOR, ROPE, LIFE_JACKET, WHISTLE,
 |---|---|---|---|---|---|---|
 | 0 | 0.1 | ชื่อชุมชน | — | | | ❌ QM-01 |
 | 0 | 0.2 | `surveyNo` | Household | | | ⚠️ |
-| 0 | 0.3 | `surveyorNameOnPaper` | Household | | | ✅ |
+| 0 | 0.3 | `surveyorPrefixId`+`surveyorPrefixOther`+`surveyorFirstNameOnPaper`+`surveyorLastNameOnPaper` | Household | | | ✅ |
 | 0 | 0.4 | `surveyorPhoneOnPaper` | Household | ⚠️ | 🔒 | ⚠️ |
 | 0 | 0.5 | `surveyedAt` | Household | | | ⚠️ QM-02 |
 | 1 | 1 | `buildingTypeId`, `buildingTypeOther` | Household | | | ✅ |

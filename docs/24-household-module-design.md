@@ -37,7 +37,7 @@
 
 | ประเภท | ตัวอย่างฟิลด์ | ที่เก็บ |
 |---|---|---|
-| **กรอกครั้งเดียว (จากกระดาษ)** | surveyNo, surveyorNameOnPaper, surveyedAt, houseNo, coordinateRawText, ทุกคำตอบส่วน 1–5 | `Household` + ตารางลูก |
+| **กรอกครั้งเดียว (จากกระดาษ)** | surveyNo, surveyorPrefix/First/LastName, surveyedAt, houseNo, coordinateRawText, ทุกคำตอบส่วน 1–5 | `Household` + ตารางลูก |
 | **เปลี่ยนบ่อย (หลัง Verify)** | VulnerablePerson.isActive/deactivatedReason (ย้ายออก/เสียชีวิต), consentStatus, hasDuplicateFlag | `Household`, `VulnerablePerson` + `HouseholdVersion` snapshot |
 | **คำนวณ (Derived)** | latitude/longitude (จาก raw), maxFloodDepthCm (= m×100+cm), pregnancyWeeks, completenessScore, illegibleCount, blankCount, triageLevel, rawScore/normalizedScore (รอ BR) | คอลัมน์ Derived — ห้ามคีย์ตรง |
 | **Lookup (Master Data)** | BuildingType(6), OwnershipType(4), VulnerabilityType(9), AssistanceNeedType(6), ResourceType(7), AlertChannel(8), VolunteerSkillType(8), Moo, Tambon, Community | ตาราง Master — Seed idempotent |
@@ -152,7 +152,7 @@ Journey หลักตามโจทย์ ปรับให้ตรงก�
 
 **Step 1 — ส่วนที่ 0: ข้อมูลการสำรวจ**
 - วัตถุประสงค์: ยึดใบเข้ากับบริบทการสำรวจ
-- Fields: `surveyNo`, `communityNameOnPaper` (ดิบ — เตือนถ้าไม่ตรง community ของ Batch แต่ไม่บล็อก → ธง Verifier), `surveyorNameOnPaper`, `surveyorPhoneOnPaper`, `surveyedAt`
+- Fields: `surveyNo`, `communityNameOnPaper` (ดิบ — เตือนถ้าไม่ตรง community ของ Batch แต่ไม่บล็อก → ธง Verifier), `surveyorPrefix`(+`surveyorPrefixOther` เมื่อ "อื่นๆ")/`surveyorFirstNameOnPaper`/`surveyorLastNameOnPaper`, `surveyorPhoneOnPaper`, `surveyedAt`
 - Validation: เบอร์ 9-10 หลักขึ้นต้น 0 (warning) · **วันที่รับ พ.ศ. → แปลง ค.ศ. ก่อนเก็บ** (กฎ QM-02: ปี > 2400 ให้ −543; แสดงกลับเป็น พ.ศ.) · ห้าม default วันนี้ (BR-47)
 - Required (ธุรกิจ): surveyorName, วันที่ · ทุกช่องรับ F2/F3
 - Dependencies: ไม่มี
