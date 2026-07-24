@@ -18,7 +18,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "ชุมชน",
     href: "/communities",
     permission: PERMISSIONS.COMMUNITY_VIEW,
-    implemented: false,
+    implemented: true,
   },
   {
     label: "ครัวเรือน",
