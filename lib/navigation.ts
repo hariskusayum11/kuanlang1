@@ -42,7 +42,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "การตรวจสอบข้อมูล",
     href: "/verification",
     permission: PERMISSIONS.VERIFICATION_VIEW,
-    implemented: false,
+    implemented: true,
   },
   {
     label: "รายงาน",

@@ -139,12 +139,13 @@ describe("visibleNavItems", () => {
     expect(hrefs).toContain("/dashboard");
   });
 
-  it("เมนูที่ implemented แล้ว = /dashboard, /surveys, /batches, /admin/registrations", () => {
+  it("เมนูที่ implemented แล้ว = /dashboard, /surveys, /batches, /verification, /admin/registrations", () => {
     const implemented = NAV_ITEMS.filter((i) => i.implemented);
     expect(implemented.map((i) => i.href)).toEqual([
       "/dashboard",
       "/surveys",
       "/batches",
+      "/verification",
       "/admin/registrations",
     ]);
   });

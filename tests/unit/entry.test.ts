@@ -128,8 +128,8 @@ describe("defaultLandingPath — ครบทุก role ใน UserRoleEnum", (
     [UserRoleEnum.VOLUNTEER]: "/dashboard",
     [UserRoleEnum.RESEARCHER]: "/dashboard",
     [UserRoleEnum.DATA_ENTRY]: "/surveys",
+    [UserRoleEnum.VERIFIER]: "/verification",
     // ยังไม่มีหน้า implemented ในสิทธิ์ → null (ผู้เรียกส่งไป /access-denied — ไม่เกิด loop)
-    [UserRoleEnum.VERIFIER]: null,
     [UserRoleEnum.FIELD_SURVEYOR]: null,
   };
 
