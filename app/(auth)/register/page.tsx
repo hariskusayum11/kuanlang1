@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActiveSessionUser } from "@/lib/auth-session";
 import { APP_NAME } from "@/lib/app-config";
@@ -40,15 +41,24 @@ export default async function RegisterPage() {
       />
 
       <div className="relative w-full max-w-[480px] animate-rise">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-lg font-bold text-white shadow-lg">
+        <Link
+          href="/"
+          className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 transition-colors hover:text-white"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+            <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          กลับหน้าหลัก
+        </Link>
+        <Link href="/" className="mb-8 block text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-lg font-bold text-white shadow-lg transition-transform hover:scale-105">
             SF
           </div>
           <h1 className="text-[26px] font-bold tracking-tight text-white">{APP_NAME}</h1>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
             ลงทะเบียนขอใช้งานระบบ — เปิดใช้ได้เมื่อผู้ดูแลระบบอนุมัติ
           </p>
-        </div>
+        </Link>
 
         <div className="rounded-2xl border border-white/10 bg-white p-7 shadow-lg sm:p-8">
           <div className="mb-6">

@@ -32,13 +32,20 @@ export function AppHeader({ items, userName, userEmail }: Props) {
       <div className="flex items-center gap-3">
         <Link
           href="/"
-          title="ดูหน้าสาธารณะ"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="เปิดหน้าสาธารณะในแท็บใหม่ (ไม่ออกจากระบบ)"
           className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
         >
+          {/* ไอคอนโลก = มุมมองสาธารณะ (ไม่ใช่ไอคอนบ้าน/ออกจากระบบ) + มุมชี้ว่าเปิดแท็บใหม่ */}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-            <path d="M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a15 15 0 010 18 15 15 0 010-18z" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           หน้าสาธารณะ
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 opacity-70">
+            <path d="M14 5h5v5M19 5l-7 7M12 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </Link>
         <div className="h-6 w-px bg-slate-200" />
         <div className="hidden text-right sm:block">

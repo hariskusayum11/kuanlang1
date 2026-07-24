@@ -225,15 +225,21 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
           <div
             data-field-name={field.name}
             tabIndex={-1}
-            className="inline-flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 outline-none"
+            className="inline-flex flex-wrap gap-2 outline-none"
           >
             {order.map((v) => {
               const on = value === v;
+              // สถานะที่เลือก = เติมสีแบรนด์เต็ม + เครื่องหมายถูก ให้เห็นชัดว่ากดแล้ว
+              const onClass = mark
+                ? mark === "ILLEGIBLE"
+                  ? "border-amber-500 bg-amber-500 text-white shadow-sm"
+                  : "border-slate-400 bg-slate-500 text-white shadow-sm"
+                : "border-brand-600 bg-brand-600 text-white shadow-sm";
               return (
                 <label
                   key={String(v)}
-                  className={`cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500 ${
-                    on ? "bg-white text-brand-700 shadow-xs" : "text-slate-500 hover:text-slate-700"
+                  className={`flex cursor-pointer select-none items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500 has-[:focus-visible]:ring-offset-1 ${
+                    on ? onClass : `${optOff} hover:border-slate-400 hover:bg-slate-50`
                   }`}
                 >
                   <input
@@ -244,6 +250,15 @@ export function FieldInput({ field, master, value, mark, onChange }: Props) {
                     onChange={() => onChange(v)}
                     className="sr-only"
                   />
+                  <span
+                    className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                      on ? "border-white/70 bg-white/20 text-white" : "border-slate-300 text-transparent"
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" className="h-2.5 w-2.5">
+                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
                   {v ? labels.true : labels.false}
                 </label>
               );
