@@ -90,9 +90,9 @@ export default async function PublicHomePage() {
 
       <main className="mx-auto max-w-5xl px-4 pb-16 md:px-6">
         {/* Hero — สถานะพื้นที่ */}
-        <section className="py-10 text-center md:py-14">
-          <span className="badge badge-brand mx-auto">
-            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+        <section className="animate-slide-up py-10 text-center md:py-14">
+          <span className="badge badge-brand mx-auto animate-pop">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
             อยู่ระหว่างการสำรวจข้อมูลครัวเรือน
           </span>
           <h1 className="mx-auto mt-4 max-w-2xl text-2xl font-bold leading-snug text-slate-900 md:text-3xl">
@@ -155,7 +155,7 @@ export default async function PublicHomePage() {
           <h2 id="stats-title" className="text-[15px] font-semibold text-slate-900">
             ภาพรวมพื้นที่
           </h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="stagger mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <PublicStat label="ชุมชนในเครือข่าย" value={stats.communities} />
             <PublicStat label="ตำบลที่ครอบคลุม" value={stats.tambons} />
             <PublicStat
@@ -179,9 +179,9 @@ export default async function PublicHomePage() {
           <h2 id="prepare-title" className="text-[15px] font-semibold text-slate-900">
             เตรียมพร้อมรับมือน้ำท่วม
           </h2>
-          <div className="mt-3 grid gap-4 md:grid-cols-3">
+          <div className="stagger mt-3 grid gap-4 md:grid-cols-3">
             {PREPARE_TIPS.map((tip) => (
-              <article key={tip.title} className="card p-5">
+              <article key={tip.title} className="card card-interactive p-5">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">

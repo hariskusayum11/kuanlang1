@@ -49,13 +49,13 @@ export default async function DashboardPage() {
 
       {/* สถิติหลัก */}
       <section>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="stagger grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
           {cards.map((card) => {
             const muted = card.pending && card.value === 0;
             return (
               <div
                 key={card.key}
-                className="group card p-5 transition-shadow hover:shadow-md"
+                className="group card p-5 hover:shadow-md"
               >
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-slate-500">{card.label}</p>

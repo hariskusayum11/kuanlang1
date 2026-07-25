@@ -24,7 +24,7 @@ export default async function VerificationPage() {
       </div>
 
       {/* ตัวเลข aggregate + denominator (Coverage การตรวจสอบ) */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="stagger grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatCard label="รอตรวจสอบ" value={overview.waiting} tone="warning" />
         <StatCard label="ยืนยันแล้ว" value={overview.verified} tone="success" />
         <div className="card p-5 sm:col-span-1">

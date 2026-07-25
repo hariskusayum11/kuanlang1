@@ -36,7 +36,7 @@ export default async function CommunitiesPage() {
           ไม่มีชุมชนในขอบเขตของคุณ
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="stagger space-y-4">
           {communities.map((c) => {
             const verified = pct(c.coverage?.verifiedCoverage);
             const survey = pct(c.coverage?.surveyCoverage);

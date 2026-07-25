@@ -44,9 +44,15 @@
   --shadow-lg:
     0 18px 40px -12px rgb(17 26 43 / 0.18), 0 6px 16px -6px rgb(17 26 43 / 0.09);
 
-  --animate-fade-in: fade-in 0.2s ease-out;
-  --animate-step-in: step-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-rise: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  /* Easing — โทนพรีเมียม: ออกตัวเร็ว หน่วงนุ่มตอนจบ + สปริงเบา ๆ สำหรับ feedback */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+
+  --animate-fade-in: fade-in 0.24s var(--ease-out-soft) both;
+  --animate-step-in: step-in 0.28s var(--ease-out-soft) both;
+  --animate-rise: rise 0.34s var(--ease-out-soft) both;
+  --animate-pop: pop 0.32s var(--ease-spring) both;
+  --animate-slide-up: slide-up 0.5s var(--ease-out-soft) both;
   --animate-shimmer: shimmer 1.4s ease-in-out infinite;
 }
 
@@ -62,10 +68,24 @@
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.9); }
+  60% { transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes shimmer {
   0% { opacity: 0.55; }
   50% { opacity: 1; }
   100% { opacity: 0.55; }
+}
+/* สแกนแสงพาดผ่าน (skeleton/loading ระดับพรีเมียม) */
+@keyframes sheen {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
 @layer base {
@@ -134,10 +154,15 @@
 @layer components {
   /* --- Surfaces --- */
   .card {
-    @apply rounded-xl border border-slate-200/70 bg-white shadow-sm;
+    @apply rounded-xl border border-slate-200/70 bg-white shadow-sm
+      transition-[box-shadow,transform,border-color] duration-200 ease-out;
   }
   .card-flush {
     @apply rounded-xl border border-slate-200/70 bg-white;
+  }
+  /* การ์ดที่คลิกได้ — ยกลอยนุ่ม ๆ เมื่อ hover (opt-in) */
+  .card-interactive {
+    @apply cursor-pointer hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md;
   }
 
   /* --- Buttons --- */
@@ -157,11 +182,11 @@
   }
   .btn-primary {
     @apply bg-brand-600 text-white shadow-xs
-      hover:bg-brand-700 active:bg-brand-800 active:scale-[0.99];
+      hover:bg-brand-700 hover:shadow-sm active:bg-brand-800 active:scale-[0.98];
   }
   .btn-secondary {
     @apply border border-slate-300 bg-white text-slate-700 shadow-xs
-      hover:border-slate-400 hover:bg-slate-50 active:scale-[0.99];
+      hover:border-slate-400 hover:bg-slate-50 hover:shadow-sm active:scale-[0.98];
   }
   .btn-ghost {
     @apply text-slate-600 hover:bg-slate-100 active:scale-[0.99];
@@ -195,11 +220,34 @@
   .badge-danger { @apply bg-red-50 text-red-700; }
   .badge-neutral { @apply bg-slate-100 text-slate-600; }
 
-  /* --- Skeleton --- */
+  /* --- Skeleton (แสงพาดผ่าน) --- */
   .skeleton {
-    @apply rounded-md bg-slate-200/70;
-    animation: var(--animate-shimmer);
+    @apply relative overflow-hidden rounded-md bg-slate-200/70;
   }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.65),
+      transparent
+    );
+    animation: sheen 1.6s ease-in-out infinite;
+  }
+
+  /* --- Staggered entrance — เรียงเข้าทีละชิ้น (ใช้กับ container ของ list/grid) --- */
+  .stagger > * {
+    animation: rise 0.42s var(--ease-out-soft) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0.03s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.07s; }
+  .stagger > *:nth-child(3) { animation-delay: 0.11s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.15s; }
+  .stagger > *:nth-child(5) { animation-delay: 0.19s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.23s; }
+  .stagger > *:nth-child(7) { animation-delay: 0.27s; }
+  .stagger > *:nth-child(8) { animation-delay: 0.31s; }
 
   /* --- Keyboard hint --- */
   .kbd {
@@ -216,4 +264,10 @@
 }
 @utility animate-rise {
   animation: var(--animate-rise);
+}
+@utility animate-pop {
+  animation: var(--animate-pop);
+}
+@utility animate-slide-up {
+  animation: var(--animate-slide-up);
 }
