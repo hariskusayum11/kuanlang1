@@ -475,6 +475,48 @@ A ถอด Role ADMIN ของ B พร้อมกับ B ปิดบัญ
 * ต้องการอ่าน "สิทธิ์ที่บัญชีหนึ่งเคยมี" เพื่อแสดงในหน้าแอดมิน ให้ใช้ `listUsers()`
   **ห้าม**ใช้ Authorization Context ซึ่งมีไว้สำหรับผู้ทำคำขอเท่านั้น
 
+### #R6-D — ยุบ COORDINATOR + VERIFIER เข้า OFFICER
+
+| # | คำตัดสิน |
+|---|---|
+| #R6-22 | **Role ที่ใช้งานจริง = `ADMIN` · `EXECUTIVE` · `OFFICER` · `DATA_ENTRY`** |
+| #R6-23 | `COORDINATOR` และ `VERIFIER` **คงอยู่ใน PostgreSQL enum** เพื่อให้บัญชีเก่าอ่านได้ แต่ **เลิกใช้ในชั้นแอปพลิเคชัน** — มอบหมายใหม่ไม่ได้ทั้งจาก UI และจากการเรียก Server Action ตรง |
+| #R6-24 | OFFICER ครอบคลุมหน้าที่เดิมทั้งสอง: จัดการ/ดู Batch · ติดตามการคีย์ · Verification Queue · ตรวจ/ขอแก้/ยืนยันข้อมูล · ทำงานตาม Community Scope |
+| #R6-25 | **OFFICER ห้ามได้ Global Scope จากชื่อ Role** — เห็นทุกชุมชนได้เฉพาะเมื่อบัญชีนั้นมี `hasGlobalCommunityScope=true` (ต่อจาก #R6-A) |
+| #R6-26 | ห้ามลด Permission ที่ OFFICER เดิมมีอยู่ · ADMIN ยังคง `ALL_PERMISSIONS` |
+| #R6-27 | บทบาทเดิมที่ **ติดมากับบัญชีอยู่แล้ว ห้ามถูกถอดโดยผลข้างเคียง** ของการกดบันทึกบทบาทอื่น — การย้ายต้องทำผ่าน Data Migration เท่านั้น |
+| #R6-28 | `FIELD_SURVEYOR` **ยังไม่แตะ** ในรอบนี้ — แยกไป Commit ถัดไป |
+
+**Permission ก่อน/หลัง (ตรวจของจริงก่อนแก้ — ไม่ได้เดา):**
+
+| Role | Permission |
+|---|---|
+| COORDINATOR (เดิม) | `dashboard.view` `community.view` `community.manage` `batch.manage` `report.view` |
+| VERIFIER (เดิม) | `verification.view` |
+| OFFICER (ก่อนและหลัง — **ไม่เปลี่ยน**) | `dashboard.view` `community.view` `community.manage` `household.view` `batch.manage` `verification.view` `report.view` |
+
+> **OFFICER ⊇ COORDINATOR ∪ VERIFIER อยู่แล้วตั้งแต่ต้น** จึงไม่ต้องเพิ่ม Permission ใด
+> งานจริงของรอบนี้อยู่ที่ **ชั้นมอบหมายบทบาทและ UI** ไม่ใช่ตาราง Permission
+> (มีเทสต์ล็อกว่า OFFICER = union พอดี ไม่ขาดและไม่เกิน)
+
+**สถานะ Role check ในโค้ด:** ตรวจทั้ง repository แล้ว **ไม่มี production code ที่ตัดสินสิทธิ์จากชื่อ Role เลย**
+ทุกจุดผ่าน `hasPermission(ctx, …)` และ Community Scope — จึงไม่ต้องแก้ Route Guard ใด
+
+**Migration Logic ที่เตรียมไว้สำหรับ Commit ถัดไป (ยังไม่รันในรอบนี้):**
+
+```
+COORDINATOR → OFFICER
+VERIFIER    → OFFICER + hasGlobalCommunityScope = true
+```
+
+* `VERIFIER` ต้องได้ธงรายบัญชี เพราะบัญชีเดิมเคยเห็นทุกชุมชน — ต้องคงพฤติกรรมเดิมไว้
+  ผ่านธง **ไม่ใช่ผ่านชื่อ Role**
+* รองรับผู้ใช้หลายบทบาท และ **ห้ามเกิด Role ซ้ำ**:
+  `[COORDINATOR, DATA_ENTRY] → [OFFICER, DATA_ENTRY]` ·
+  `[VERIFIER, OFFICER] → [OFFICER] + flag`
+* ฐานของการย้ายอยู่ที่ `LEGACY_ROLE_REPLACEMENT` (`lib/authz/role-labels.ts`) — มีเทสต์ล็อกว่า
+  legacy role ทุกตัวระบุปลายทางได้
+
 ---
 
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)

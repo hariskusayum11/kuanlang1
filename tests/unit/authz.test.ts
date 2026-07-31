@@ -13,6 +13,7 @@ import {
 } from "../../lib/authz/role-permissions";
 import {
   ACTIVE_ROLES,
+  LEGACY_ROLES,
   RESERVED_ROLES,
   ROLE_HINTS,
   ROLE_LABELS,
@@ -34,8 +35,9 @@ describe("permissions constants", () => {
     }
   });
 
-  it("ACTIVE_ROLES + RESERVED_ROLES ต้องครอบคลุมทุก role ครบและไม่ทับกัน", () => {
-    const grouped = [...ACTIVE_ROLES, ...RESERVED_ROLES];
+  it("ACTIVE + RESERVED + LEGACY ต้องครอบคลุมทุก role ครบและไม่ทับกัน", () => {
+    // LEGACY = บทบาทที่เลิกใช้ในชั้นแอป แต่ยังต้องแสดงผลได้เพราะบัญชีเก่ายังถืออยู่
+    const grouped = [...ACTIVE_ROLES, ...RESERVED_ROLES, ...LEGACY_ROLES];
     expect(grouped.length).toBe(new Set(grouped).size); // ไม่ทับกัน
     expect([...grouped].sort()).toEqual([...Object.values(UserRoleEnum)].sort());
     // ทุก role ต้องมีคำอธิบายให้แอดมินอ่าน ไม่งั้นเลือกผิดได้

@@ -10,6 +10,8 @@ const ERRORS: Record<string, string> = {
   NOT_ALLOWED: "ไม่มีสิทธิ์จัดการบทบาทผู้ใช้",
   USER_NOT_FOUND: "ไม่พบผู้ใช้รายนี้",
   INVALID_ROLE: "บทบาทไม่ถูกต้อง",
+  LEGACY_ROLE_NOT_ASSIGNABLE:
+    "บทบาทเดิมของระบบมอบหมายใหม่ไม่ได้ — ใช้ “เจ้าหน้าที่” แทน",
   SELF_ADMIN_REMOVAL:
     "ถอดสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้ — ให้แอดมินอีกคนเป็นผู้ถอดให้",
   LAST_ADMIN: "นี่คือผู้ดูแลระบบคนสุดท้าย — ถอดสิทธิ์ไม่ได้ ระบบจะไม่เหลือคนดูแล",
@@ -27,6 +29,7 @@ export function UserRoleEditor({
   currentGlobalScope,
   activeRoles,
   reservedRoles,
+  legacyRoles,
   roleLabels,
   roleHints,
   isSelf,
@@ -40,20 +43,25 @@ export function UserRoleEditor({
   activeRoles: UserRoleEnum[];
   /** บทบาทที่ประกาศไว้แต่ยังไม่มีโมดูลรองรับ — แยกกลุ่มกันแอดมินเลือกผิด */
   reservedRoles: UserRoleEnum[];
+  /** บทบาทเดิมที่เลิกใช้แล้ว — แสดงอย่างเดียว มอบหมายใหม่ไม่ได้ */
+  legacyRoles: UserRoleEnum[];
   roleLabels: Record<string, string>;
   roleHints: Record<string, string>;
   isSelf: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<UserRoleEnum[]>(currentRoles);
+  // บทบาทเดิมไม่เข้ามาในชุดที่แก้ได้ — ฝั่ง server คงของเดิมไว้ให้เองจนกว่าจะ migrate
+  const assignable = currentRoles.filter((r) => !legacyRoles.includes(r));
+  const currentLegacy = currentRoles.filter((r) => legacyRoles.includes(r));
+  const [selected, setSelected] = useState<UserRoleEnum[]>(assignable);
   const [globalScope, setGlobalScope] = useState(currentGlobalScope);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const rolesDirty =
-    selected.length !== currentRoles.length ||
-    selected.some((r) => !currentRoles.includes(r));
+    selected.length !== assignable.length ||
+    selected.some((r) => !assignable.includes(r));
   const scopeDirty = globalScope !== currentGlobalScope;
   const dirty = rolesDirty || scopeDirty;
 
@@ -64,7 +72,7 @@ export function UserRoleEditor({
   }
 
   function openEditor() {
-    setSelected(currentRoles);
+    setSelected(assignable);
     setGlobalScope(currentGlobalScope);
     setError(null);
     setOpen(true);
@@ -149,6 +157,27 @@ export function UserRoleEditor({
                     reserved
                   />
                 ))}
+              </div>
+            </>
+          )}
+
+          {currentLegacy.length > 0 && (
+            <>
+              <p className="eyebrow mt-5">บทบาทเดิมของระบบ</p>
+              <div className="mt-2 rounded-xl border-2 border-sun-200 bg-sun-50 px-3.5 py-3">
+                <p className="flex flex-wrap items-center gap-1.5">
+                  {currentLegacy.map((role) => (
+                    <span key={role} className="badge badge-warning">
+                      {roleLabels[role] ?? role}
+                    </span>
+                  ))}
+                </p>
+                <p className="mt-2 text-[11px] font-medium leading-relaxed text-sun-800">
+                  บทบาทเหล่านี้ถูกยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้
+                  บัญชีนี้ต้องถูกย้ายไปเป็น “เจ้าหน้าที่” ด้วยขั้นตอนย้ายข้อมูล
+                  ซึ่งจะตั้งสิทธิ์พื้นที่ให้ถูกต้องพร้อมกัน — การถอดทิ้งเองที่นี่
+                  จะทำให้ผู้ใช้เสียสิทธิ์เดิมโดยไม่ตั้งใจ ระบบจึงคงไว้ให้จนกว่าจะย้าย
+                </p>
               </div>
             </>
           )}

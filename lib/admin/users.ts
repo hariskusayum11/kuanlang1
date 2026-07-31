@@ -13,6 +13,7 @@ import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
+import { isLegacyRole } from "../authz/role-labels";
 import type { AuthorizationContext } from "../authz/types";
 
 export interface AdminUserRow {
@@ -119,6 +120,7 @@ export type SetRolesResult =
         | "NOT_ALLOWED"
         | "USER_NOT_FOUND"
         | "INVALID_ROLE"
+        | "LEGACY_ROLE_NOT_ASSIGNABLE"
         | "SELF_ADMIN_REMOVAL"
         | "LAST_ADMIN"
         | "ERROR";
@@ -130,6 +132,12 @@ export type SetRolesResult =
  * กันล็อกเอาต์ตัวเองและกันระบบไม่เหลือแอดมิน:
  *  - ห้ามถอด ADMIN ของตัวเอง (กันเผลอตัดสิทธิ์ตัวเองจนเข้าหน้าแอดมินไม่ได้อีก)
  *  - ห้ามถอด ADMIN คนสุดท้ายของระบบ
+ *
+ * บทบาทเดิมที่เลิกใช้แล้ว (COORDINATOR / VERIFIER — Owner Decision #R6-D):
+ *  - **มอบหมายใหม่ไม่ได้** แม้เรียก Server Action ตรง (การซ่อน checkbox ไม่ใช่ Authorization)
+ *  - แต่ของที่บัญชีมีอยู่แล้ว **ห้ามถูกถอดโดยผลข้างเคียง** ของการกดบันทึกบทบาทอื่น
+ *    เพราะการถอด VERIFIER ทิ้งเฉย ๆ จะทำให้ผู้ใช้เสียสิทธิ์เห็นทุกชุมชนเงียบ ๆ
+ *    การย้ายต้องทำผ่าน Data Migration ที่ตั้ง hasGlobalCommunityScope ให้ด้วย (Commit ถัดไป)
  */
 export async function setUserRoles(
   ctx: AuthorizationContext,
@@ -154,6 +162,17 @@ export async function setUserRoles(
   if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
 
   const before = target.userRoles.map((r) => r.role);
+
+  // ห้ามมอบหมายบทบาทเดิมที่เลิกใช้แล้ว — ยกเว้นบทบาทที่บัญชีนี้ "มีอยู่ก่อนแล้ว"
+  // (ปล่อยผ่านเพื่อให้การกดบันทึกโดยไม่ตั้งใจไม่ถอดของเดิมทิ้ง)
+  const newLegacy = next.filter((r) => isLegacyRole(r) && !before.includes(r));
+  if (newLegacy.length > 0) {
+    return { ok: false, reason: "LEGACY_ROLE_NOT_ASSIGNABLE" };
+  }
+  // บทบาทเดิมที่ติดมากับบัญชี — คงไว้เสมอจนกว่า Data Migration จะย้ายให้
+  const keptLegacy = before.filter((r) => isLegacyRole(r));
+  const preserved = [...new Set([...next, ...keptLegacy])];
+
   const hadAdmin = before.includes(UserRoleEnum.ADMIN);
   const keepsAdmin = next.includes(UserRoleEnum.ADMIN);
 
@@ -176,10 +195,10 @@ export async function setUserRoles(
       }
       // ปิดบทบาทที่ไม่ได้อยู่ในชุดใหม่ (ไม่ลบทิ้ง — คงประวัติการมอบหมายไว้)
       await tx.userRole.updateMany({
-        where: { userId, isActive: true, role: { notIn: next } },
+        where: { userId, isActive: true, role: { notIn: preserved } },
         data: { isActive: false },
       });
-      for (const role of next) {
+      for (const role of preserved) {
         await tx.userRole.upsert({
           where: { userId_role: { userId, role } },
           create: { userId, role, assignedBy: ctx.userId },
@@ -199,10 +218,10 @@ export async function setUserRoles(
     entityType: "UserRole",
     entityId: userId,
     // เก็บค่าก่อน/หลัง — บทบาทไม่ใช่ PII จึงบันทึกตรงได้
-    changes: { before: before.sort(), after: [...next].sort() },
+    changes: { before: before.sort(), after: [...preserved].sort() },
   });
 
-  return { ok: true, roles: next };
+  return { ok: true, roles: preserved };
 }
 
 export type SetGlobalScopeResult =

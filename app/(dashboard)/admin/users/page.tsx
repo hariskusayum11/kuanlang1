@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import {
   ACTIVE_ROLES,
+  LEGACY_ROLES,
   RESERVED_ROLES,
   ROLE_HINTS,
   ROLE_LABELS,
@@ -131,6 +132,7 @@ export default async function AdminUsersPage() {
                           currentGlobalScope={u.hasGlobalCommunityScope}
                           activeRoles={[...ACTIVE_ROLES]}
                           reservedRoles={[...RESERVED_ROLES]}
+                          legacyRoles={[...LEGACY_ROLES]}
                           roleLabels={ROLE_LABELS}
                           roleHints={ROLE_HINTS}
                           isSelf={isSelf}

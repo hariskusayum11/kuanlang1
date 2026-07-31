@@ -21,10 +21,34 @@ export const ACTIVE_ROLES: readonly UserRoleEnum[] = [
   UserRoleEnum.ADMIN,
   UserRoleEnum.EXECUTIVE,
   UserRoleEnum.OFFICER,
-  UserRoleEnum.COORDINATOR,
-  UserRoleEnum.VERIFIER,
   UserRoleEnum.DATA_ENTRY,
 ];
+
+/**
+ * บทบาทที่ **เลิกใช้ในชั้นแอปพลิเคชันแล้ว** (Owner Decision 2026-07-31 #R6-D)
+ *
+ * ยังคงอยู่ใน PostgreSQL enum เพื่อให้บัญชีเก่าอ่านได้จนกว่าจะรัน Data Migration
+ * แต่ **ห้ามมอบหมายใหม่** — ทั้งจากหน้าจัดการผู้ใช้และจากการเรียก Server Action ตรง
+ *
+ *  - COORDINATOR → ยุบเข้า OFFICER (permission ของ OFFICER ครอบคลุมอยู่แล้ว)
+ *  - VERIFIER    → ยุบเข้า OFFICER + ต้องได้ `hasGlobalCommunityScope=true`
+ *                  เพื่อคงพฤติกรรมเดิมที่เห็นคิวทุกชุมชน (ผ่านธงรายบัญชี ไม่ใช่ชื่อ Role)
+ */
+export const LEGACY_ROLES: readonly UserRoleEnum[] = [
+  UserRoleEnum.COORDINATOR,
+  UserRoleEnum.VERIFIER,
+];
+
+/** บทบาทนี้ถูกเลิกใช้แล้วหรือไม่ — ใช้ตรวจทั้งฝั่ง server และตอนเรนเดอร์ UI */
+export function isLegacyRole(role: UserRoleEnum): boolean {
+  return LEGACY_ROLES.includes(role);
+}
+
+/** บทบาทที่ควรย้ายไปแทน — ใช้แสดงคำแนะนำและเป็นฐานของ Migration ใน commit ถัดไป */
+export const LEGACY_ROLE_REPLACEMENT: Record<string, UserRoleEnum> = {
+  [UserRoleEnum.COORDINATOR]: UserRoleEnum.OFFICER,
+  [UserRoleEnum.VERIFIER]: UserRoleEnum.OFFICER,
+};
 
 /**
  * บทบาทที่ประกาศไว้ตาม requirement แต่ยังไม่มีโมดูลรองรับ (มอบหมายได้แต่ยังทำอะไรไม่ได้)
@@ -44,16 +68,18 @@ export const ROLE_HINTS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.ADMIN]: "ทั้งระบบ + จัดการผู้ใช้และบทบาท",
   [UserRoleEnum.EXECUTIVE]: "ดูภาพรวมทั้งระบบ อ่านอย่างเดียว แก้ข้อมูลไม่ได้",
   [UserRoleEnum.OFFICER]: "จัดการชุมชน/ปึกที่รับผิดชอบ + ตรวจสอบข้อมูลได้",
-  [UserRoleEnum.COORDINATOR]: "จัดการชุมชน/ปึกที่รับผิดชอบ (ไม่รวมการตรวจสอบ)",
-  [UserRoleEnum.VERIFIER]: "ตรวจสอบใบที่คีย์แล้ว — เห็นคิวทั้งระบบ",
+  [UserRoleEnum.COORDINATOR]: "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้",
+  [UserRoleEnum.VERIFIER]:
+    "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้ (ผู้ที่ต้องเห็นทุกชุมชนให้เปิดสิทธิ์พื้นที่รายบัญชี)",
   [UserRoleEnum.DATA_ENTRY]: "คีย์แบบสอบถาม เปิดใบจากรหัสบนกระดาษได้ทุกชุมชน",
   [UserRoleEnum.FIELD_SURVEYOR]: "รอโมดูลตอบคำถามกลับ — ยังไม่มีสิทธิ์ใด ๆ",
   [UserRoleEnum.VOLUNTEER]: "รอโมดูลเหตุการณ์/ภารกิจกู้ภัย — ปัจจุบันเห็นแค่ภาพรวม",
   [UserRoleEnum.RESEARCHER]: "รอโมดูลรายงาน — ปัจจุบันเห็นแค่ภาพรวม",
 };
 
-/** ลำดับที่แสดงในหน้าจัดการผู้ใช้ — ใช้งานได้จริงก่อน แล้วค่อยกลุ่มที่ยังรอโมดูล */
+/** ลำดับที่แสดงในหน้าจัดการผู้ใช้ — ใช้งานได้จริง → รอโมดูล → บทบาทเดิมที่เลิกใช้ */
 export const ROLE_DISPLAY_ORDER: readonly UserRoleEnum[] = [
   ...ACTIVE_ROLES,
   ...RESERVED_ROLES,
+  ...LEGACY_ROLES,
 ];

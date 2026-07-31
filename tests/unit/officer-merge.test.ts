@@ -1,0 +1,183 @@
+import { describe, expect, it } from "vitest";
+import { UserRoleEnum } from "@prisma/client";
+import { buildAuthorization } from "../../lib/authz/access";
+import { PERMISSIONS } from "../../lib/authz/permissions";
+import { GLOBAL_SCOPE_ROLES, ROLE_PERMISSIONS } from "../../lib/authz/role-permissions";
+import {
+  ACTIVE_ROLES,
+  LEGACY_ROLES,
+  LEGACY_ROLE_REPLACEMENT,
+  RESERVED_ROLES,
+  ROLE_DISPLAY_ORDER,
+  ROLE_HINTS,
+  ROLE_LABELS,
+  isLegacyRole,
+} from "../../lib/authz/role-labels";
+import { REQUESTABLE_ROLES } from "../../lib/registration/validation";
+import { NAV_ITEMS, visibleNavItems } from "../../lib/navigation";
+
+// Owner Decision 2026-07-31 #R6-D: ยุบ COORDINATOR + VERIFIER เข้า OFFICER
+// Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY
+// (FIELD_SURVEYOR ยังไม่แตะใน commit นี้)
+
+describe("OFFICER ครอบคลุมหน้าที่ของ COORDINATOR และ VERIFIER", () => {
+  const officer = ROLE_PERMISSIONS[UserRoleEnum.OFFICER];
+
+  it("1) OFFICER ได้ permission เดิมของ COORDINATOR ครบทุกข้อ", () => {
+    for (const p of ROLE_PERMISSIONS[UserRoleEnum.COORDINATOR]) {
+      expect(officer).toContain(p);
+    }
+  });
+
+  it("2) OFFICER ได้ permission เดิมของ VERIFIER ครบทุกข้อ", () => {
+    for (const p of ROLE_PERMISSIONS[UserRoleEnum.VERIFIER]) {
+      expect(officer).toContain(p);
+    }
+  });
+
+  it("OFFICER = union พอดี ไม่ขาดและไม่เกินจากที่ตั้งใจ", () => {
+    // union ที่คาดไว้ = COORDINATOR ∪ VERIFIER ∪ สิทธิ์ที่ OFFICER ต้องมีเพิ่มเอง
+    const expected = new Set([
+      ...ROLE_PERMISSIONS[UserRoleEnum.COORDINATOR],
+      ...ROLE_PERMISSIONS[UserRoleEnum.VERIFIER],
+      PERMISSIONS.HOUSEHOLD_VIEW, // ดูข้อมูลครัวเรือนที่คีย์แล้ว (OFFICER เดิมมีอยู่)
+    ]);
+    expect([...officer].sort()).toEqual([...expected].sort());
+  });
+
+  it("ห้ามลด permission ที่ OFFICER เดิมมีอยู่", () => {
+    for (const p of [
+      PERMISSIONS.DASHBOARD_VIEW,
+      PERMISSIONS.COMMUNITY_VIEW,
+      PERMISSIONS.COMMUNITY_MANAGE,
+      PERMISSIONS.HOUSEHOLD_VIEW,
+      PERMISSIONS.BATCH_MANAGE,
+      PERMISSIONS.VERIFICATION_VIEW,
+      PERMISSIONS.REPORT_VIEW,
+    ]) {
+      expect(officer).toContain(p);
+    }
+  });
+
+  it("OFFICER ต้องไม่ได้สิทธิ์ระดับผู้ดูแลระบบติดมาด้วย", () => {
+    expect(officer).not.toContain(PERMISSIONS.USER_MANAGE);
+    expect(officer).not.toContain(PERMISSIONS.SETTINGS_VIEW);
+  });
+
+  it("3) OFFICER ไม่เป็น Global จากชื่อ Role", () => {
+    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.OFFICER);
+    expect(buildAuthorization([UserRoleEnum.OFFICER]).isGlobalScope).toBe(false);
+  });
+
+  it("4) OFFICER ที่ hasGlobalCommunityScope=true เป็น Global", () => {
+    const authz = buildAuthorization([UserRoleEnum.OFFICER], {
+      hasGlobalCommunityScope: true,
+    });
+    expect(authz.isGlobalScope).toBe(true);
+    // ให้ scope กว้างขึ้น ต้องไม่ทำให้ permission เปลี่ยน
+    expect([...authz.permissions].sort()).toEqual(
+      [...buildAuthorization([UserRoleEnum.OFFICER]).permissions].sort(),
+    );
+  });
+
+  it("16) Global Scope ต้องไม่ถูกอนุมานจาก VERIFIER ใน flow ใหม่", () => {
+    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.VERIFIER);
+    expect(buildAuthorization([UserRoleEnum.VERIFIER]).isGlobalScope).toBe(false);
+    expect(
+      buildAuthorization([UserRoleEnum.VERIFIER, UserRoleEnum.OFFICER]).isGlobalScope,
+    ).toBe(false);
+  });
+});
+
+describe("บทบาทเดิมถูกเลิกใช้ในชั้นแอปพลิเคชัน", () => {
+  it("5) COORDINATOR ไม่อยู่ในรายการที่มอบหมายได้", () => {
+    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.COORDINATOR);
+    expect(RESERVED_ROLES).not.toContain(UserRoleEnum.COORDINATOR);
+    expect(isLegacyRole(UserRoleEnum.COORDINATOR)).toBe(true);
+  });
+
+  it("6) VERIFIER ไม่อยู่ในรายการที่มอบหมายได้", () => {
+    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.VERIFIER);
+    expect(RESERVED_ROLES).not.toContain(UserRoleEnum.VERIFIER);
+    expect(isLegacyRole(UserRoleEnum.VERIFIER)).toBe(true);
+  });
+
+  it("Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY", () => {
+    expect([...ACTIVE_ROLES].sort()).toEqual(
+      [
+        UserRoleEnum.ADMIN,
+        UserRoleEnum.EXECUTIVE,
+        UserRoleEnum.OFFICER,
+        UserRoleEnum.DATA_ENTRY,
+      ].sort(),
+    );
+  });
+
+  it("FIELD_SURVEYOR ยังไม่ถูกเลิกใช้ใน commit นี้ (ทำใน commit ถัดไป)", () => {
+    expect(isLegacyRole(UserRoleEnum.FIELD_SURVEYOR)).toBe(false);
+    expect(RESERVED_ROLES).toContain(UserRoleEnum.FIELD_SURVEYOR);
+  });
+
+  it("ทุก role ในเอนัมยังต้องมีป้ายและคำอธิบาย — บัญชีเก่าต้องแสดงผลได้", () => {
+    for (const role of Object.values(UserRoleEnum)) {
+      expect(ROLE_LABELS[role]).toBeTruthy();
+      expect(ROLE_HINTS[role]).toBeTruthy();
+    }
+    // จัดกลุ่มครบ ไม่ทับกัน
+    const grouped = [...ACTIVE_ROLES, ...RESERVED_ROLES, ...LEGACY_ROLES];
+    expect(grouped.length).toBe(new Set(grouped).size);
+    expect([...grouped].sort()).toEqual([...Object.values(UserRoleEnum)].sort());
+    expect([...ROLE_DISPLAY_ORDER].sort()).toEqual([...grouped].sort());
+  });
+
+  it("บทบาทเดิมทุกตัวต้องระบุได้ว่าย้ายไปเป็นอะไร (ฐานของ Data Migration)", () => {
+    for (const role of LEGACY_ROLES) {
+      expect(LEGACY_ROLE_REPLACEMENT[role]).toBe(UserRoleEnum.OFFICER);
+    }
+  });
+
+  it("8-9) คำขอสมัครไม่รับ COORDINATOR และ VERIFIER", () => {
+    const requestable = REQUESTABLE_ROLES as readonly UserRoleEnum[];
+    expect(requestable).not.toContain(UserRoleEnum.COORDINATOR);
+    expect(requestable).not.toContain(UserRoleEnum.VERIFIER);
+    // และต้องไม่มี legacy role ใดหลุดเข้ามาในอนาคต
+    for (const role of LEGACY_ROLES) {
+      expect(requestable).not.toContain(role);
+    }
+  });
+});
+
+describe("10) Navigation ของ OFFICER หลังยุบบทบาท", () => {
+  const { permissions } = buildAuthorization([UserRoleEnum.OFFICER]);
+  const hrefs = visibleNavItems(permissions).map((i) => i.href);
+
+  it("เห็นเมนูที่รวมงานของ COORDINATOR และ VERIFIER ไว้ด้วยกัน", () => {
+    expect(hrefs).toContain("/dashboard");
+    expect(hrefs).toContain("/communities"); // เดิมของ COORDINATOR
+    expect(hrefs).toContain("/batches"); // เดิมของ COORDINATOR
+    expect(hrefs).toContain("/verification"); // เดิมของ VERIFIER
+  });
+
+  it("ไม่เห็นเมนูจัดการผู้ใช้ (ยังเป็นของ ADMIN เท่านั้น)", () => {
+    expect(hrefs).not.toContain("/admin/users");
+    expect(hrefs).not.toContain("/admin/registrations");
+  });
+
+  it("เมนูทุกตัวตัดสินด้วย permission ไม่ใช่ชื่อ Role", () => {
+    for (const item of NAV_ITEMS) {
+      expect(item.permission).toBeTruthy();
+    }
+  });
+
+  it("OFFICER เห็นเมนูครอบคลุมของ COORDINATOR รวมกับ VERIFIER เสมอ", () => {
+    const coordinatorHrefs = visibleNavItems(
+      ROLE_PERMISSIONS[UserRoleEnum.COORDINATOR],
+    ).map((i) => i.href);
+    const verifierHrefs = visibleNavItems(
+      ROLE_PERMISSIONS[UserRoleEnum.VERIFIER],
+    ).map((i) => i.href);
+    for (const href of [...coordinatorHrefs, ...verifierHrefs]) {
+      expect(hrefs).toContain(href);
+    }
+  });
+});
