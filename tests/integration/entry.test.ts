@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, SheetStatus, BatchStatus, UserRoleEnum } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import {
   claimSheetById,
@@ -147,7 +147,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     const users = [userA, userB, userNoScope, userNoPerm];
     [ctxA, ctxB, ctxNoScope, ctxNoPerm] = await Promise.all(
       users.map((u) =>
-        loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email }),
+        loadContextOrThrow({ id: u.id, name: u.name, email: u.email }),
       ),
     );
   });

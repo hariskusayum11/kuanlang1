@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { auth } from "../../lib/auth";
 import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import {
   approveRegistration,
@@ -88,7 +89,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
     await prisma.userRole.create({
       data: { userId: admin.id, role: UserRoleEnum.ADMIN, isActive: true },
     });
-    adminCtx = await loadAuthorizationForUser({
+    adminCtx = await loadContextOrThrow({
       id: admin.id,
       name: admin.name,
       email: admin.email,
@@ -176,15 +177,27 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
       data!.pending.some((r) => r.user.email === EMAILS.applicant1),
     ).toBe(true);
 
+    // ผู้สมัครที่ยังไม่ถูกอนุมัติเป็นบัญชี inactive → โหลด Authorization Context ไม่ได้เลย
+    // (แข็งแรงกว่าเดิมที่เคยได้ context ว่าง ๆ แล้วค่อยไปโดนปฏิเสธที่ปลายทาง)
     const applicant = await prisma.user.findUniqueOrThrow({
       where: { email: EMAILS.applicant1 },
     });
-    const applicantCtx = await loadAuthorizationForUser({
-      id: applicant.id,
-      name: applicant.name,
-      email: applicant.email,
-    });
-    expect(await listRegistrationRequests(applicantCtx)).toBeNull();
+    expect(
+      await loadAuthorizationForUser({
+        id: applicant.id,
+        name: applicant.name,
+        email: applicant.email,
+      }),
+    ).toBeNull();
+
+    // และต่อให้มี context ที่ active แต่ไม่มีสิทธิ์ ก็ต้องถูกปฏิเสธ (RBAC ไม่ใช่แค่สถานะบัญชี)
+    const powerless: AuthorizationContext = {
+      ...adminCtx,
+      userId: applicant.id,
+      permissions: [],
+      roles: [],
+    };
+    expect(await listRegistrationRequests(powerless)).toBeNull();
   });
 
   it("approveRegistration → activate + มอบ role/scope + audit APPROVE — แล้ว login ได้จริง", async () => {
@@ -300,16 +313,27 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
     const request = await prisma.registrationRequest.findUniqueOrThrow({
       where: { userId: applicant.id },
     });
-    const applicantCtx = await loadAuthorizationForUser({
-      id: applicant.id,
-      name: applicant.name,
-      email: applicant.email,
-    });
-    expect(await approveRegistration(applicantCtx, request.id)).toEqual({
+    // บัญชี inactive ไม่มี context ให้ใช้ตั้งแต่แรก
+    expect(
+      await loadAuthorizationForUser({
+        id: applicant.id,
+        name: applicant.name,
+        email: applicant.email,
+      }),
+    ).toBeNull();
+
+    // ตรวจ RBAC แยกจากสถานะบัญชี: context ที่ active แต่ไม่มี registration.manage
+    const powerless: AuthorizationContext = {
+      ...adminCtx,
+      userId: applicant.id,
+      permissions: [],
+      roles: [],
+    };
+    expect(await approveRegistration(powerless, request.id)).toEqual({
       ok: false,
       reason: "FORBIDDEN",
     });
-    expect(await rejectRegistration(applicantCtx, request.id, "เหตุผล")).toEqual({
+    expect(await rejectRegistration(powerless, request.id, "เหตุผล")).toEqual({
       ok: false,
       reason: "FORBIDDEN",
     });

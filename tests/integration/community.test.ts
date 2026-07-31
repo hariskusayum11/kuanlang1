@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, UserRoleEnum } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import { listCommunities, updatePopulation } from "../../lib/community/core";
 
@@ -60,7 +60,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Community management", () => {
     });
 
     const load = (u: { id: string; name: string; email: string }) =>
-      loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
+      loadContextOrThrow({ id: u.id, name: u.name, email: u.email });
     ctxOfficer = await load(officer);
     ctxExec = await load(exec);
   });

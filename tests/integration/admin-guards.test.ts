@@ -6,7 +6,7 @@ import {
   SheetStatus,
   UserRoleEnum,
 } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import { ALL_PERMISSIONS, PERMISSIONS } from "../../lib/authz/permissions";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import { encryptText } from "../../lib/crypto/encryption";
@@ -100,7 +100,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     admin2Id = admin2.id;
     soleAdminId = soleAdmin.id;
 
-    ctxAdmin = await loadAuthorizationForUser({
+    ctxAdmin = await loadContextOrThrow({
       id: admin.id,
       name: admin.name,
       email: admin.email,

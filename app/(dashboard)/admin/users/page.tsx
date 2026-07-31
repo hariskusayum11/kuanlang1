@@ -7,7 +7,13 @@ import {
   ROLE_LABELS,
 } from "@/lib/authz/role-labels";
 import { listUsers } from "@/lib/admin/users";
+import {
+  ACCOUNT_STATUS_LABELS,
+  canToggleActivation,
+  type AccountStatus,
+} from "@/domain/admin/account-status";
 import { UserRoleEditor } from "@/components/admin/user-role-editor";
+import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ผู้ใช้และบทบาท" };
@@ -59,6 +65,7 @@ export default async function AdminUsersPage() {
               <thead>
                 <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
                   <th className="py-3 pl-6 pr-4">ผู้ใช้</th>
+                  <th className="py-3 pr-4">สถานะบัญชี</th>
                   <th className="py-3 pr-4">บทบาท</th>
                   <th className="py-3 pr-4">ชุมชนในสิทธิ์</th>
                   <th className="py-3 pr-4">เข้าใช้ล่าสุด</th>
@@ -74,11 +81,11 @@ export default async function AdminUsersPage() {
                         <p className="flex items-center gap-2 font-semibold text-slate-900">
                           {u.name}
                           {isSelf && <span className="badge badge-brand">คุณ</span>}
-                          {!u.isActive && (
-                            <span className="badge badge-neutral">ปิดใช้งาน</span>
-                          )}
                         </p>
                         <p className="text-xs text-slate-500">{u.email}</p>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <AccountStatusBadge status={u.accountStatus} />
                       </td>
                       <td className="py-3 pr-4">
                         {u.roles.length === 0 ? (
@@ -115,7 +122,8 @@ export default async function AdminUsersPage() {
                             })
                           : "—"}
                       </td>
-                      <td className="py-3 pr-6 text-right">
+                      <td className="py-3 pr-6">
+                        <div className="flex items-center justify-end gap-2">
                         <UserRoleEditor
                           userId={u.id}
                           userName={u.name}
@@ -127,6 +135,15 @@ export default async function AdminUsersPage() {
                           roleHints={ROLE_HINTS}
                           isSelf={isSelf}
                         />
+                        {canToggleActivation(u.accountStatus) && (
+                          <UserActivationToggle
+                            userId={u.id}
+                            userName={u.name}
+                            accountStatus={u.accountStatus}
+                            isSelf={isSelf}
+                          />
+                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -138,4 +155,20 @@ export default async function AdminUsersPage() {
       </section>
     </div>
   );
+}
+
+/** ป้ายสถานะบัญชี — สีต้องสื่อความหมายตามกฎ design system
+ *  รออนุมัติ = sun (รอดำเนินการ) · ปิดใช้งาน/ยกเลิก = slate (ไม่มี/ไม่ใช้งาน)
+ *  ถูกปฏิเสธ = red (จบด้วยการปฏิเสธ) · ใช้งานอยู่ = mint (สำเร็จ)
+ *  ห้ามใช้ป้ายเดียวกันกับ "รออนุมัติ" และ "ปิดใช้งาน" เพราะสั่งงานคนละแบบ
+ */
+function AccountStatusBadge({ status }: { status: AccountStatus }) {
+  const tone: Record<AccountStatus, string> = {
+    ACTIVE: "badge-success",
+    PENDING_APPROVAL: "badge-warning",
+    REJECTED: "badge-danger",
+    CANCELLED: "badge-neutral",
+    DEACTIVATED: "badge-neutral",
+  };
+  return <span className={`badge ${tone[status]}`}>{ACCOUNT_STATUS_LABELS[status]}</span>;
 }

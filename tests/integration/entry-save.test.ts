@@ -6,7 +6,7 @@ import {
   SheetStatus,
   UserRoleEnum,
 } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import { decryptText, isEncrypted, phoneBlindIndex } from "../../lib/crypto/encryption";
 import { getKeyring, getSearchHashKey } from "../../lib/crypto/keys";
@@ -134,7 +134,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     namePrefixId = np.id;
 
     const load = (u: { id: string; name: string; email: string }) =>
-      loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
+      loadContextOrThrow({ id: u.id, name: u.name, email: u.email });
     ctxA = await load(userA);
     ctxB = await load(userB);
     ctxNoScope = await load(userC);

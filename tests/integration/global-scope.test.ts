@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, UserRoleEnum } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import { setUserGlobalScope, listUsers } from "../../lib/admin/users";
 import { fetchCommunityCoverage } from "../../lib/dashboard/get-coverage";
 import type { AuthorizationContext } from "../../lib/authz/types";
@@ -65,7 +65,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
     noScopeId = noScope.id;
 
     const admin = await mk(EMAILS.admin, UserRoleEnum.ADMIN);
-    adminCtx = await loadAuthorizationForUser(sessionUser(admin));
+    adminCtx = await loadContextOrThrow(sessionUser(admin));
   });
 
   afterAll(async () => {
@@ -75,7 +75,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
 
   it("1) OFFICER ที่มี Community Scope เห็นเฉพาะพื้นที่ของตน", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: scopedId } });
-    const ctx = await loadAuthorizationForUser(sessionUser(u));
+    const ctx = await loadContextOrThrow(sessionUser(u));
     expect(ctx.isGlobalScope).toBe(false);
     expect(ctx.communityIds).toEqual([communityIds[0]]);
 
@@ -89,7 +89,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
 
   it("2) OFFICER ที่เป็น Global เห็นทุกพื้นที่ แม้ไม่ได้ผูก UserCommunityScope เลย", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: globalId } });
-    const ctx = await loadAuthorizationForUser(sessionUser(u));
+    const ctx = await loadContextOrThrow(sessionUser(u));
     expect(ctx.isGlobalScope).toBe(true);
     expect(ctx.communityIds).toEqual([]); // ไม่ได้ผูกชุมชนใดเลย
 
@@ -102,7 +102,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
 
   it("3) OFFICER ที่ไม่มี Scope และไม่ Global เห็น 0 พื้นที่ (ห้าม fallback เป็นทั้งระบบ)", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: noScopeId } });
-    const ctx = await loadAuthorizationForUser(sessionUser(u));
+    const ctx = await loadContextOrThrow(sessionUser(u));
     expect(ctx.isGlobalScope).toBe(false);
     expect(ctx.communityIds).toEqual([]);
 
@@ -117,7 +117,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
     const [g, s, n] = await Promise.all(
       [globalId, scopedId, noScopeId].map(async (id) => {
         const u = await prisma.user.findUniqueOrThrow({ where: { id } });
-        return loadAuthorizationForUser(sessionUser(u));
+        return loadContextOrThrow(sessionUser(u));
       }),
     );
     expect(g.isGlobalScope).toBe(true);
@@ -127,7 +127,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
 
   it("11) Global Scope แก้ได้เฉพาะผู้มี user.manage — OFFICER แก้ไม่ได้", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: scopedId } });
-    const officerCtx = await loadAuthorizationForUser(sessionUser(u));
+    const officerCtx = await loadContextOrThrow(sessionUser(u));
     const result = await setUserGlobalScope(officerCtx, noScopeId, true);
     expect(result).toEqual({ ok: false, reason: "NOT_ALLOWED" });
 
@@ -171,7 +171,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
 
     // มีผลทันทีในรอบ request ถัดไป โดยไม่ต้อง logout
     const u = await prisma.user.findUniqueOrThrow({ where: { id: noScopeId } });
-    const ctx = await loadAuthorizationForUser(sessionUser(u));
+    const ctx = await loadContextOrThrow(sessionUser(u));
     expect(ctx.isGlobalScope).toBe(true);
   });
 

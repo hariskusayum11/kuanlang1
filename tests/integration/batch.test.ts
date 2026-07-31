@@ -6,7 +6,7 @@ import {
   SheetStatus,
   UserRoleEnum,
 } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import {
   closeBatch,
@@ -104,7 +104,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Batch Management", () => {
     });
 
     const load = (u: { id: string; name: string; email: string }) =>
-      loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
+      loadContextOrThrow({ id: u.id, name: u.name, email: u.email });
     managerCtx = await load(manager);
     keyerCtx = await load(keyer);
     noPermCtx = await load(noPerm);

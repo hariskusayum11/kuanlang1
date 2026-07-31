@@ -7,8 +7,10 @@ import { UserRoleEnum } from "@prisma/client";
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
+  setUserActive,
   setUserGlobalScope,
   setUserRoles,
+  type SetActiveResult,
   type SetGlobalScopeResult,
   type SetRolesResult,
 } from "./users";
@@ -57,4 +59,25 @@ export async function setUserGlobalScopeAction(
     parsed.data.userId,
     parsed.data.hasGlobalCommunityScope,
   );
+}
+
+const setActiveSchema = z.object({
+  userId: z.string().min(1).max(64),
+  isActive: z.boolean(),
+});
+
+export type SetUserActiveActionResult =
+  | SetActiveResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+export async function setUserActiveAction(
+  input: unknown,
+): Promise<SetUserActiveActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = setActiveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return setUserActive(ctx, parsed.data.userId, parsed.data.isActive);
 }

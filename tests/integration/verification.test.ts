@@ -6,7 +6,7 @@ import {
   SheetStatus,
   UserRoleEnum,
 } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import { decryptText, encryptText, phoneBlindIndex } from "../../lib/crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../../lib/crypto/keys";
@@ -143,7 +143,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     namePrefixId = np.id;
 
     const load = (u: { id: string; name: string; email: string }) =>
-      loadAuthorizationForUser({ id: u.id, name: u.name, email: u.email });
+      loadContextOrThrow({ id: u.id, name: u.name, email: u.email });
     ctxVerifier = await load(verifier);
     ctxKeyer = await load(keyer);
     ctxOutsider = await load(outsider);

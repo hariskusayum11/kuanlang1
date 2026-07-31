@@ -3,7 +3,12 @@
 // RBAC: ต้องมี user.manage (ADMIN) เท่านั้น — ตรวจฝั่ง server ทุกครั้ง
 // ทุกการเปลี่ยนบทบาทต้องมี Audit Log เก็บค่าก่อน/หลัง (CLAUDE.md)
 
-import { AuditAction, UserRoleEnum } from "@prisma/client";
+import { AuditAction, Prisma, UserRoleEnum } from "@prisma/client";
+import {
+  canToggleActivation,
+  deriveAccountStatus,
+  type AccountStatus,
+} from "../../domain/admin/account-status";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -15,6 +20,8 @@ export interface AdminUserRow {
   name: string;
   email: string;
   isActive: boolean;
+  /** สถานะที่แสดงต่อแอดมิน — แยก "รออนุมัติ" ออกจาก "ถูกปิดบัญชี" */
+  accountStatus: AccountStatus;
   roles: UserRoleEnum[];
   communityNames: string[];
   /** true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope (ธงระดับบัญชี) */
@@ -24,6 +31,48 @@ export interface AdminUserRow {
 
 function canManage(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.USER_MANAGE);
+}
+
+/**
+ * Key คงที่ของ advisory lock ที่ป้องกัน invariant "ต้องมี ADMIN ที่ยังใช้งานอยู่ ≥ 1"
+ *
+ * ค่านี้ต้องเป็นค่าเดียวกันทุกจุดที่แตะจำนวน Active ADMIN — ถ้าใช้คนละ key
+ * สองเส้นทาง (ถอด Role / ปิดบัญชี) จะไม่ serialize กัน แล้วช่องโหว่กลับมาเหมือนเดิม
+ */
+const ADMIN_INVARIANT_LOCK_KEY = 728_451_001;
+
+/**
+ * จองสิทธิ์แต่ผู้เดียวในการเปลี่ยนแปลงที่กระทบจำนวน Active ADMIN
+ *
+ * ทำไมต้องมี: การนับแล้วค่อยเขียนภายใต้ READ COMMITTED ป้องกัน **write skew** ไม่ได้
+ * ทรานแซกชัน A (ปิด B) และ B (ปิด A) ต่างอ่านเห็นว่า "อีกฝ่ายยัง active" จึงผ่าน guard
+ * ทั้งคู่ แล้วเขียนคนละแถวจนเหลือ Active ADMIN = 0 เงื่อนไข `where isActive: true`
+ * ช่วยไม่ได้เพราะแต่ละฝ่ายเขียนคนละแถว ไม่มีแถวไหนถูกแย่งกัน
+ *
+ * advisory lock ระดับทรานแซกชันบังคับให้ "นับ → ตรวจ → เขียน" เกิดทีละหนึ่งราย
+ * ผู้มาทีหลังจึงนับหลังจากผู้มาก่อน commit แล้ว และเห็นสภาพจริงว่าเหลือคนสุดท้าย
+ * ปล่อยล็อกอัตโนมัติเมื่อ commit/rollback จึงไม่มีล็อกค้างแม้เกิด error
+ *
+ * เลือกแนวทางนี้แทน Serializable + retry เพราะไม่ต้องมี retry loop ให้พลาด
+ * และงานจัดการบัญชีมีปริมาณน้อยมาก การ serialize จึงไม่กระทบประสิทธิภาพ
+ */
+async function lockAdminInvariant(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_INVARIANT_LOCK_KEY}::bigint)`;
+}
+
+/** จำนวนบัญชีที่ยังใช้งานอยู่และมีบทบาท ADMIN — อ่านภายใต้ล็อกเท่านั้น */
+async function countOtherActiveAdmins(
+  tx: Prisma.TransactionClient,
+  exceptUserId: string,
+): Promise<number> {
+  return tx.userRole.count({
+    where: {
+      role: UserRoleEnum.ADMIN,
+      isActive: true,
+      userId: { not: exceptUserId },
+      user: { isActive: true },
+    },
+  });
 }
 
 /** รายชื่อผู้ใช้ทั้งหมดพร้อมบทบาทที่ใช้งานอยู่ */
@@ -39,6 +88,8 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       lastLoginAt: true,
       hasGlobalCommunityScope: true,
       userRoles: { where: { isActive: true }, select: { role: true } },
+      // 1 คำขอต่อบัญชี (RegistrationRequest.userId เป็น @unique)
+      registrationRequest: { select: { status: true } },
       communityScopes: {
         select: { community: { select: { nameTh: true } } },
       },
@@ -49,6 +100,10 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
     name: u.name,
     email: u.email,
     isActive: u.isActive,
+    accountStatus: deriveAccountStatus(
+      u.isActive,
+      u.registrationRequest?.status ?? null,
+    ),
     lastLoginAt: u.lastLoginAt,
     hasGlobalCommunityScope: u.hasGlobalCommunityScope,
     roles: u.userRoles.map((r) => r.role),
@@ -102,21 +157,23 @@ export async function setUserRoles(
   const hadAdmin = before.includes(UserRoleEnum.ADMIN);
   const keepsAdmin = next.includes(UserRoleEnum.ADMIN);
 
-  if (hadAdmin && !keepsAdmin) {
-    if (userId === ctx.userId) return { ok: false, reason: "SELF_ADMIN_REMOVAL" };
-    const otherAdmins = await prisma.userRole.count({
-      where: {
-        role: UserRoleEnum.ADMIN,
-        isActive: true,
-        userId: { not: userId },
-        user: { isActive: true },
-      },
-    });
-    if (otherAdmins === 0) return { ok: false, reason: "LAST_ADMIN" };
+  if (hadAdmin && !keepsAdmin && userId === ctx.userId) {
+    return { ok: false, reason: "SELF_ADMIN_REMOVAL" };
   }
 
+  // ถอด ADMIN ออกจากใครสักคน = ลดจำนวน Active ADMIN → ต้อง serialize กับการปิดบัญชี
+  // ด้วยล็อกตัวเดียวกัน มิฉะนั้น A ถอด Role ของ B พร้อมกับ B ปิดบัญชีของ A
+  // จะผ่าน guard ทั้งคู่แล้วระบบไม่เหลือแอดมิน
+  const removesAdmin = hadAdmin && !keepsAdmin;
+
   try {
-    await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
+      if (removesAdmin) {
+        await lockAdminInvariant(tx);
+        if ((await countOtherActiveAdmins(tx, userId)) === 0) {
+          return "LAST_ADMIN" as const;
+        }
+      }
       // ปิดบทบาทที่ไม่ได้อยู่ในชุดใหม่ (ไม่ลบทิ้ง — คงประวัติการมอบหมายไว้)
       await tx.userRole.updateMany({
         where: { userId, isActive: true, role: { notIn: next } },
@@ -129,7 +186,9 @@ export async function setUserRoles(
           update: { isActive: true, assignedBy: ctx.userId },
         });
       }
+      return "OK" as const;
     });
+    if (outcome === "LAST_ADMIN") return { ok: false, reason: "LAST_ADMIN" };
   } catch {
     return { ok: false, reason: "ERROR" };
   }
@@ -203,4 +262,108 @@ export async function setUserGlobalScope(
   });
 
   return { ok: true, hasGlobalCommunityScope };
+}
+
+export type SetActiveResult =
+  | { ok: true; isActive: boolean; changed: boolean }
+  | {
+      ok: false;
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "SELF_DEACTIVATION"
+        | "LAST_ACTIVE_ADMIN"
+        | "NOT_TOGGLEABLE"
+        | "ERROR";
+    };
+
+/**
+ * เปิด/ปิดบัญชีผู้ใช้ (Owner Decision 2026-07-31 #R6-C)
+ *
+ * ใช้คอลัมน์เดิม `User.isActive` — ไม่สร้างระบบสถานะซ้ำ
+ * ผลมีทันทีในรอบ request ถัดไป เพราะ getActiveSessionUser() อ่าน isActive
+ * จากฐานข้อมูลทุกครั้ง (lib/auth-session.ts) ไม่ได้เชื่อ session cookie
+ *
+ * ข้อกำหนดด้านความปลอดภัย:
+ *  - ตรวจ user.manage ฝั่ง server เสมอ (การซ่อนปุ่มไม่ใช่ Authorization)
+ *  - ห้ามปิดบัญชีตนเอง — กันล็อกตัวเองออกจากระบบโดยไม่ตั้งใจ
+ *  - ต้องเหลือ ADMIN ที่ยัง active อย่างน้อย 1 บัญชีเสมอ
+ *    ตรวจ**ภายใน transaction** ไม่ใช่เชื่อค่าที่ UI ส่งมา
+ *  - ห้ามแตะ Role/Scope — เปิดบัญชีกลับต้องได้สิทธิ์เดิมคืนพอดี ไม่มากไม่น้อย
+ *  - สั่งค่าเดิมซ้ำ = ไม่เปลี่ยนอะไร และไม่เขียน Audit Log ซ้ำ
+ */
+export async function setUserActive(
+  ctx: AuthorizationContext,
+  userId: string,
+  isActive: boolean,
+): Promise<SetActiveResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (userId === ctx.userId && !isActive) {
+    return { ok: false, reason: "SELF_DEACTIVATION" };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      isActive: true,
+      registrationRequest: { select: { status: true } },
+    },
+  });
+  if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+
+  if (target.isActive === isActive) {
+    return { ok: true, isActive, changed: false };
+  }
+
+  // บัญชีที่ยังไม่ผ่านการอนุมัติต้องใช้เส้นทางอนุมัติ (ซึ่งมอบ Role/Scope ให้ด้วย)
+  // ถ้าเปิดตรงนี้ ผู้ใช้จะ login ได้แต่ไม่มีสิทธิ์ใดเลย แล้วไปเจอ /access-denied
+  const status = deriveAccountStatus(
+    target.isActive,
+    target.registrationRequest?.status ?? null,
+  );
+  if (!canToggleActivation(status)) return { ok: false, reason: "NOT_TOGGLEABLE" };
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      if (!isActive) {
+        // ต้องจองล็อก **ก่อนอ่าน** — ถ้าอ่านก่อนล็อก ค่าที่นับได้จะเก่าไปแล้ว
+        await lockAdminInvariant(tx);
+        const isTargetAdmin = await tx.userRole.count({
+          where: { userId, role: UserRoleEnum.ADMIN, isActive: true },
+        });
+        if (isTargetAdmin > 0 && (await countOtherActiveAdmins(tx, userId)) === 0) {
+          return "LAST_ACTIVE_ADMIN" as const;
+        }
+      }
+      // อัปเดตแบบมีเงื่อนไขค่าเดิม — กันเขียนทับเมื่อมีคนตั้งค่าเดียวกันไปแล้ว
+      // (คนละเรื่องกับ invariant ข้ามแถวข้างบน ซึ่งเงื่อนไขนี้ป้องกันไม่ได้)
+      const updated = await tx.user.updateMany({
+        where: { id: userId, isActive: !isActive },
+        data: { isActive },
+      });
+      if (updated.count !== 1) return "RACE" as const;
+      return "OK" as const;
+    });
+
+    if (result === "LAST_ACTIVE_ADMIN") {
+      return { ok: false, reason: "LAST_ACTIVE_ADMIN" };
+    }
+    // แพ้ race = มีคนตั้งค่าเดียวกันไปแล้ว ผลลัพธ์สุดท้ายตรงกับที่ขอ
+    if (result === "RACE") return { ok: true, isActive, changed: false };
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "User",
+    entityId: userId,
+    // รูปแบบเดียวกับการเปลี่ยน Role/Global Scope — ไม่มี PII, ไม่มี token/รหัสผ่าน
+    changes: { field: "isActive", before: !isActive, after: isActive },
+    reason: isActive ? "account-activated" : "account-deactivated",
+  });
+
+  return { ok: true, isActive, changed: true };
 }

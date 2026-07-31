@@ -399,6 +399,82 @@ model FloodRiskProfile {
 > คำตัดสินนี้บันทึกไว้ก่อนตามคำสั่งเจ้าของ · การแก้ Schema/Workflow ให้เสนอเป็น **งานแยก**
 > ห้ามรวมเข้ากับงานปรับโครงสร้าง Role
 
+### #R6-C — ADMIN = Full System Administrator + การเปิด/ปิดบัญชี
+
+| # | คำตัดสิน |
+|---|---|
+| #R6-13 | **ADMIN = Full System Administrator** — คง `ALL_PERMISSIONS` + Global Scope ไว้ **ห้ามลดสิทธิ์** และห้ามบังคับให้ ADMIN ต้องได้ Role เพิ่ม (เช่น `ADMIN + OFFICER`) เพราะจะเกิด ADMIN หลายรูปแบบโดยพฤติกรรม |
+| #R6-14 | กฎ **Separation of Duties ยังบังคับกับ ADMIN** เหมือน Role อื่น — `verifiedByUserId != enteredById` · ADMIN ที่คีย์ใบใด ยืนยัน/แก้ใบนั้นไม่ได้ (`SELF_VERIFY` / `SELF_EDIT`) |
+| #R6-15 | ADMIN เปิด/ปิดบัญชีผู้ใช้ผ่านระบบได้ **ใช้คอลัมน์เดิม `User.isActive`** ห้ามสร้างระบบสถานะซ้ำ |
+| #R6-16 | **ห้ามปิดบัญชีตนเอง** (`SELF_DEACTIVATION`) และต้องเหลือ ADMIN ที่ยัง Active อย่างน้อย 1 บัญชีเสมอ (`LAST_ACTIVE_ADMIN`) — ตรวจใน Transaction **พร้อม advisory lock** (ดู #R6-21) ห้ามเชื่อค่าจาก UI |
+| #R6-21 | ทุกเส้นทางที่ลดจำนวน **Active ADMIN** (ปิดบัญชี / ถอด Role ADMIN) ต้องจอง `pg_advisory_xact_lock` ด้วย **key เดียวกัน** ก่อนนับและเขียน |
+| #R6-17 | การเปิดบัญชีกลับ **ไม่เปลี่ยน Role หรือ Scope อัตโนมัติ** — คืนสิทธิ์เดิมของบัญชีพอดี |
+| #R6-18 | บัญชีที่ยัง **ไม่ผ่านการอนุมัติ** เปิดตรง ๆ ไม่ได้ (`NOT_TOGGLEABLE`) ต้องใช้เส้นทางอนุมัติคำขอ ซึ่งมอบ Role/Scope ให้พร้อมกัน |
+| #R6-19 | สั่งค่าเดิมซ้ำ = ไม่เปลี่ยนอะไรและ **ไม่เขียน Audit Log ซ้ำ** (idempotent) |
+| #R6-20 | Audit ของการเปลี่ยนสถานะบัญชีใช้**มาตรฐานเดิม** `AuditAction.UPDATE` + `entityType: "User"` + `changes: { field, before, after }` — ไม่เพิ่มค่า enum ใหม่ให้ซ้ำซ้อนกับรูปแบบที่ใช้อยู่กับ Role/Scope |
+
+**การแยกความหมายของ `isActive = false` (ไม่ต้องเพิ่มคอลัมน์):**
+`RegistrationRequest.userId` เป็น `@unique` (1 คำขอต่อบัญชี) จึงใช้สถานะคำขอชี้ขาดได้ —
+ดู `domain/admin/account-status.ts`
+
+| `isActive` | คำขอสมัคร | สถานะที่แสดง |
+|---|---|---|
+| `true` | ใด ๆ | ใช้งานอยู่ |
+| `false` | `PENDING` | **รออนุมัติ** |
+| `false` | `REJECTED` | ถูกปฏิเสธ |
+| `false` | `CANCELLED` | ยกเลิกคำขอ |
+| `false` | `APPROVED` | **ปิดใช้งาน** (เคยเปิดแล้วถูกปิดภายหลัง) |
+| `false` | ไม่มี (script/seed) | ปิดใช้งาน |
+
+> **ห้ามแสดงบัญชีรออนุมัติเป็น "ถูกปิดใช้งาน"** — สองสถานะนี้สั่งงานคนละแบบ
+> (อย่างแรกต้องไปกดอนุมัติ อย่างหลังคือคนที่ถูกตัดสิทธิ์โดยตั้งใจ)
+> ก่อนหน้านี้หน้าจัดการผู้ใช้แสดงผิดจริง — แก้แล้วใน commit #R6-C
+
+> **สมมติฐานของตารางนี้:** ผู้ใช้ที่**ไม่มี** `RegistrationRequest` คือบัญชีที่ ADMIN สร้างให้ /
+> Seed / Legacy **ไม่ใช่** ผู้สมัครที่รออนุมัติ — เพราะเส้นทางสมัครสร้าง `User` กับ
+> `RegistrationRequest` คู่กันเสมอ (`lib/registration/core.ts`) มีเทสต์ล็อกสมมติฐานนี้ไว้แล้ว
+
+### Write skew ของ invariant "ต้องมี Active ADMIN ≥ 1" (#R6-21)
+
+การนับแล้วค่อยเขียนภายใน Transaction **ไม่พอ** ภายใต้ `READ COMMITTED` ซึ่งเป็นค่าเริ่มต้นของ PostgreSQL:
+
+```
+Tx A (ปิด B): นับเห็น A ยัง active → ผ่าน guard
+Tx B (ปิด A): นับเห็น B ยัง active → ผ่าน guard
+A เขียนแถว B = inactive · B เขียนแถว A = inactive
+ผล: Active ADMIN = 0
+```
+
+เงื่อนไข `updateMany where isActive: true` ช่วยไม่ได้ เพราะแต่ละทรานแซกชันเขียน **คนละแถว**
+ไม่มีแถวไหนถูกแย่งกัน จึงไม่มีใครแพ้
+
+**วิธีแก้ที่ใช้: PostgreSQL advisory transaction lock (ทางเลือก A)**
+`SELECT pg_advisory_xact_lock(<key คงที่>)` ก่อน "นับ → ตรวจ → เขียน" ทุกครั้ง
+บังคับให้เกิดทีละราย ผู้มาทีหลังจึงนับ**หลังจาก**ผู้มาก่อน commit แล้ว และเห็นสภาพจริง
+ล็อกปล่อยอัตโนมัติเมื่อ commit/rollback จึงไม่ค้างแม้เกิด error
+
+เลือกแทน Serializable + retry เพราะไม่ต้องมี retry loop ให้พลาด และงานจัดการบัญชีมีน้อยมาก
+การ serialize จึงไม่กระทบประสิทธิภาพ
+
+**สำคัญ:** `setUserActive` และ `setUserRoles` ต้องใช้ **key เดียวกัน** — ถ้าใช้คนละ key
+A ถอด Role ADMIN ของ B พร้อมกับ B ปิดบัญชีของ A จะผ่านทั้งคู่ ช่องโหว่กลับมาเหมือนเดิม
+
+พิสูจน์ด้วยการปิดล็อกชั่วคราวแล้วรันเทสต์ concurrency จริง → ได้ Active ADMIN = 0 ทั้งสองเคส
+
+**พฤติกรรม Session หลังปิดบัญชี (ตรวจแล้ว ไม่ใช่การสมมติ):**
+
+* Login ใหม่ถูกบล็อกที่ `databaseHooks.session.create.before` (`lib/auth.ts`) → โยน `FORBIDDEN`
+* Session ที่ค้างอยู่ถูกตัดสิทธิ์ใน **คำขอถัดไป** เพราะ `getActiveSessionUser()`
+  (`lib/auth-session.ts`) อ่าน `isActive` จากฐานข้อมูล**ทุกคำขอ** ไม่ได้เชื่อคุกกี้
+  (`cookieCache` ของ Better Auth ไม่ bypass การตรวจนี้)
+* **ระบบไม่มีการ revoke session** — แถว `Session` ยังอยู่จนหมดอายุเอง
+  ยอมรับได้เพราะการตรวจรายคำขอทำให้ session นั้นใช้ทำอะไรไม่ได้อยู่แล้ว
+* `loadAuthorizationForUser()` **ตรวจ `isActive` เอง** และคืน `null` เมื่อบัญชีถูกปิด
+  (แก้แล้ว — เดิมคำนวณสิทธิ์จาก Role/Scope อย่างเดียว เป็น footgun ที่โค้ดใหม่เรียกตรง
+  แล้วข้าม `getActiveSessionUser()` ได้เงียบ ๆ) ความปลอดภัยจึงไม่ฝากไว้กับวินัยของ caller
+* ต้องการอ่าน "สิทธิ์ที่บัญชีหนึ่งเคยมี" เพื่อแสดงในหน้าแอดมิน ให้ใช้ `listUsers()`
+  **ห้าม**ใช้ Authorization Context ซึ่งมีไว้สำหรับผู้ทำคำขอเท่านั้น
+
 ---
 
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)

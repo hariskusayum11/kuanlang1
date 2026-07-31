@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, UserRoleEnum } from "@prisma/client";
-import { loadAuthorizationForUser } from "../../lib/authz/load-authorization";
+import { loadContextOrThrow } from "../helpers/authz";
 import { PERMISSIONS } from "../../lib/authz/permissions";
 import { canAccessCommunity } from "../../lib/authz/access";
 import { fetchScopedDashboardCounts } from "../../lib/dashboard/get-dashboard-stats";
@@ -74,7 +74,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
 
   it("1) user ไม่มี role → permissions ว่าง, ไม่ global", async () => {
     const u = await createFixtureUser(FIXTURE_EMAILS.noRole);
-    const ctx = await loadAuthorizationForUser(toSessionUser(u));
+    const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.roles).toEqual([]);
     expect(ctx.permissions).toEqual([]);
     expect(ctx.isGlobalScope).toBe(false);
@@ -85,7 +85,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     await prisma.userRole.create({
       data: { userId: u.id, role: UserRoleEnum.OFFICER, isActive: false },
     });
-    const ctx = await loadAuthorizationForUser(toSessionUser(u));
+    const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.roles).toEqual([]);
     expect(ctx.permissions).toEqual([]);
   });
@@ -95,7 +95,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     await prisma.userRole.create({
       data: { userId: u.id, role: UserRoleEnum.ADMIN, isActive: true },
     });
-    const ctx = await loadAuthorizationForUser(toSessionUser(u));
+    const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.isGlobalScope).toBe(true);
     expect(ctx.permissions).toContain(PERMISSIONS.USER_MANAGE);
     expect(ctx.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);
@@ -109,7 +109,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
         { userId: u.id, role: UserRoleEnum.DATA_ENTRY, isActive: true },
       ],
     });
-    const ctx = await loadAuthorizationForUser(toSessionUser(u));
+    const ctx = await loadContextOrThrow(toSessionUser(u));
     expect([...ctx.permissions].sort()).toEqual(
       [PERMISSIONS.VERIFICATION_VIEW, PERMISSIONS.SURVEY_ENTRY].sort(),
     );
@@ -124,7 +124,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     await prisma.userCommunityScope.create({
       data: { userId: u.id, communityId: tk01Id },
     });
-    const ctx = await loadAuthorizationForUser(toSessionUser(u));
+    const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.communityIds).toEqual([tk01Id]);
     expect(ctx.isGlobalScope).toBe(false);
     expect(ctx.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);
@@ -134,7 +134,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     const u = await prisma.user.findUnique({
       where: { email: FIXTURE_EMAILS.scoped },
     });
-    const ctx = await loadAuthorizationForUser(toSessionUser(u!));
+    const ctx = await loadContextOrThrow(toSessionUser(u!));
     expect(canAccessCommunity(ctx, tk01Id)).toBe(true);
     expect(canAccessCommunity(ctx, otherCommunityId)).toBe(false);
   });
