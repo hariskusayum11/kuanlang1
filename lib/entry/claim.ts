@@ -76,6 +76,62 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
   };
 }
 
+/**
+ * ใบที่ "คีย์ค้างไว้" ของผู้ใช้ — ยึดจาก **ร่างที่บันทึกไว้** ไม่ใช่จาก lock
+ *
+ * เหตุผล (บั๊กที่เคยเกิด): เดิมหน้าคีย์ดูจาก lock อย่างเดียว พอผู้คีย์กด
+ * "ออกจากแบบฟอร์ม" ระบบจะคืนใบเป็น PENDING และล้าง lock → ใบที่คีย์ค้างหายไป
+ * จากหน้าจอทั้งที่ร่างยังอยู่ครบ ผู้คีย์ต้องไปค้นรหัสใบใหม่เองทุกครั้ง
+ *
+ * เกณฑ์: มี EntryAttempt ที่ยังไม่ส่ง (submittedAt = null) ของผู้ใช้คนนี้
+ * และใบยังคีย์ต่อได้ (PENDING หรือ LOCKED โดยตัวเอง — ถ้าคนอื่นถืออยู่จะไม่แสดง)
+ */
+export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
+  if (!canEnter(ctx)) return [];
+  const now = new Date();
+  const drafts = await prisma.entryAttempt.findMany({
+    where: {
+      enteredById: ctx.userId,
+      submittedAt: null,
+      sheet: {
+        OR: [
+          { status: SheetStatus.PENDING },
+          { status: SheetStatus.LOCKED, lockedById: ctx.userId },
+        ],
+      },
+    },
+    select: {
+      startedAt: true,
+      sheet: {
+        select: {
+          id: true,
+          sheetNo: true,
+          status: true,
+          lockedById: true,
+          lockExpiresAt: true,
+          batch: { select: { code: true, community: { select: { nameTh: true } } } },
+        },
+      },
+    },
+    orderBy: { startedAt: "desc" },
+    take: limit,
+  });
+
+  return drafts.map((d) => {
+    const heldByMe =
+      d.sheet.status === SheetStatus.LOCKED && d.sheet.lockedById === ctx.userId;
+    return {
+      id: d.sheet.id,
+      sheetNo: d.sheet.sheetNo,
+      batchCode: d.sheet.batch.code,
+      communityName: d.sheet.batch.community.nameTh,
+      startedAt: d.startedAt,
+      /** ต้องกดจองใบก่อนถึงคีย์ต่อได้ (ปล่อยใบไปแล้ว หรือ lock หมดอายุ) */
+      needsClaim: !heldByMe || isLockExpired(d.sheet.lockExpiresAt, now),
+    };
+  });
+}
+
 const ENTERED_STATUSES: SheetStatus[] = [
   SheetStatus.ENTERED_1,
   SheetStatus.ENTERED_2,

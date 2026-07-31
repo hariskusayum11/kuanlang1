@@ -1,8 +1,9 @@
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { getEntryOverview, getMyActiveSheet } from "@/lib/entry/claim";
+import { getEntryOverview, getMyDraftSheets } from "@/lib/entry/claim";
 import { SheetOpenForm } from "@/components/entry/sheet-open-form";
 import { ResumeRow } from "@/components/entry/resume-card";
+import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "คีย์แบบสอบถาม" };
 export const dynamic = "force-dynamic";
@@ -17,9 +18,9 @@ const BATCH_STATUS: Record<string, { label: string; cls: string }> = {
 export default async function SurveysPage() {
   // RBAC ฝั่ง server — ไม่มี survey.entry → /access-denied
   const ctx = await requirePermission(PERMISSIONS.SURVEY_ENTRY);
-  const [overview, mySheet] = await Promise.all([
+  const [overview, myDrafts] = await Promise.all([
     getEntryOverview(ctx),
-    getMyActiveSheet(ctx),
+    getMyDraftSheets(ctx),
   ]);
 
   const totals = overview.batches.reduce(
@@ -32,22 +33,33 @@ export default async function SurveysPage() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 animate-fade-in">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">คีย์แบบสอบถาม</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          หยิบกระดาษใบถัดไปจากปึกของคุณ แล้วพิมพ์รหัสใบเพื่อเปิดแบบฟอร์ม
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-7 animate-fade-in">
+      <PageHero
+        title="คีย์แบบสอบถาม"
+        tone="brand"
+        description="หยิบกระดาษใบถัดไปจากปึกของคุณ แล้วพิมพ์รหัสใบเพื่อเปิดแบบฟอร์ม"
+        badge={
+          <>
+            <span className="live-dot" />
+            คงเหลือ {totals.remaining.toLocaleString("th-TH")} ใบในพื้นที่ของคุณ
+          </>
+        }
+      />
 
-      {/* ใบที่คีย์ค้างอยู่ — แถวเล็ก ไม่ใช่จุดเด่นของหน้า */}
-      {mySheet && (
-        <ResumeRow
-          sheetId={mySheet.id}
-          sheetNo={mySheet.sheetNo}
-          communityName={mySheet.communityName}
-          expired={mySheet.expired}
-        />
+      {/* ใบที่คีย์ค้างอยู่ — ยึดจากร่างที่บันทึกไว้ ไม่ใช่จาก lock
+          จึงยังเห็นแม้เคยกด "ออกจากแบบฟอร์ม" ไปแล้ว (ไม่ต้องค้นรหัสใบใหม่) */}
+      {myDrafts.length > 0 && (
+        <div className="space-y-2">
+          {myDrafts.map((d) => (
+            <ResumeRow
+              key={d.id}
+              sheetId={d.id}
+              sheetNo={d.sheetNo}
+              communityName={d.communityName}
+              needsClaim={d.needsClaim}
+            />
+          ))}
+        </div>
       )}
 
       {/* Primary Action: เปิดใบจากรหัสบนกระดาษ */}
@@ -63,25 +75,41 @@ export default async function SurveysPage() {
 
       {/* ความคืบหน้าปึกในพื้นที่ (aggregate เท่านั้น — ไม่มีข้อมูลบุคคล) */}
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h3 className="text-[15px] font-semibold text-slate-900">
-            ความคืบหน้าปึกในพื้นที่ของคุณ
-          </h3>
-          {overview.batches.length > 0 && (
-            <span className="text-xs tabular-nums text-slate-500">
-              คีย์แล้ว {totals.entered.toLocaleString("th-TH")} /{" "}
-              {totals.total.toLocaleString("th-TH")} ใบ · คงเหลือ{" "}
-              {totals.remaining.toLocaleString("th-TH")}
-            </span>
-          )}
+        <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
+          <SectionTitle
+            title="ความคืบหน้าปึกในพื้นที่ของคุณ"
+            tone="mint"
+            aside={
+              overview.batches.length > 0 ? (
+                <span className="badge badge-neutral tabular-nums">
+                  คีย์แล้ว {totals.entered.toLocaleString("th-TH")} /{" "}
+                  {totals.total.toLocaleString("th-TH")} ใบ · คงเหลือ{" "}
+                  {totals.remaining.toLocaleString("th-TH")}
+                </span>
+              ) : undefined
+            }
+          />
         </div>
         {overview.batches.length === 0 ? (
-          <EmptyBatches allowed={overview.allowed} />
+          <EmptyState
+            mood="sleep"
+            tone={overview.allowed ? "sun" : "brand"}
+            title={
+              overview.allowed
+                ? "ยังไม่มีปึกกระดาษที่เปิดให้คีย์"
+                : "ไม่มีขอบเขตชุมชนที่คุณเข้าถึงได้"
+            }
+            description={
+              overview.allowed
+                ? "เมื่อหัวหน้างานรับปึกกระดาษและเปิดให้คีย์ ความคืบหน้าจะแสดงที่นี่"
+                : "กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดชุมชนที่คุณรับผิดชอบ"
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px] text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
+                <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
                   <th className="py-3 pl-6 pr-4">ปึก (Batch)</th>
                   <th className="py-3 pr-4">ชุมชน</th>
                   <th className="py-3 pr-4">สถานะ</th>
@@ -91,7 +119,7 @@ export default async function SurveysPage() {
                   <th className="py-3 pr-6">ความคืบหน้า</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y-2 divide-slate-50">
                 {overview.batches.map((b) => {
                   const done =
                     b.totalSheets > 0 ? Math.round((b.entered / b.totalSheets) * 100) : 0;
@@ -100,11 +128,11 @@ export default async function SurveysPage() {
                     cls: "badge-neutral",
                   };
                   return (
-                    <tr key={b.id} className="transition-colors hover:bg-slate-50/60">
-                      <td className="py-3 pl-6 pr-4 font-mono text-xs font-medium text-slate-700">
+                    <tr key={b.id} className="transition-colors hover:bg-alert-50/50">
+                      <td className="py-3 pl-6 pr-4 font-mono text-xs font-bold text-slate-700">
                         {b.code}
                       </td>
-                      <td className="py-3 pr-4 text-slate-700">{b.communityName}</td>
+                      <td className="py-3 pr-4 font-medium text-slate-700">{b.communityName}</td>
                       <td className="py-3 pr-4">
                         <span className={`badge ${status.cls}`}>{status.label}</span>
                       </td>
@@ -119,13 +147,13 @@ export default async function SurveysPage() {
                       </td>
                       <td className="py-3 pr-6">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-2.5 w-24 overflow-hidden rounded-full bg-slate-200/70">
                             <div
-                              className="h-full rounded-full bg-emerald-500 transition-all"
+                              className="h-full rounded-full bg-emerald-400 transition-all duration-500"
                               style={{ width: `${done}%` }}
                             />
                           </div>
-                          <span className="w-9 text-right text-xs tabular-nums text-slate-500">
+                          <span className="w-9 text-right text-xs font-semibold tabular-nums text-slate-600">
                             {done}%
                           </span>
                         </div>
@@ -138,27 +166,6 @@ export default async function SurveysPage() {
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function EmptyBatches({ allowed }: { allowed: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-300">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-          <path d="M8 4h9a1 1 0 011 1v15l-3-2-3 2-3-2V5a1 1 0 011-1z" strokeLinejoin="round" />
-          <path d="M9 9h6M9 13h4" strokeLinecap="round" />
-        </svg>
-      </div>
-      <p className="mt-4 text-sm font-medium text-slate-700">
-        {allowed ? "ยังไม่มีปึกกระดาษที่เปิดให้คีย์" : "ไม่มีขอบเขตชุมชนที่คุณเข้าถึงได้"}
-      </p>
-      <p className="mt-1 max-w-sm text-xs text-slate-500">
-        {allowed
-          ? "เมื่อหัวหน้างานรับปึกกระดาษและเปิดให้คีย์ ความคืบหน้าจะแสดงที่นี่"
-          : "กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดชุมชนที่คุณรับผิดชอบ"}
-      </p>
     </div>
   );
 }
