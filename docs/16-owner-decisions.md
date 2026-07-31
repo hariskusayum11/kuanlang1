@@ -528,6 +528,50 @@ VERIFIER    → OFFICER + hasGlobalCommunityScope = true
 * ฐานของการย้ายอยู่ที่ `LEGACY_ROLE_REPLACEMENT` (`lib/authz/role-labels.ts`) — มีเทสต์ล็อกว่า
   legacy role ทุกตัวระบุปลายทางได้
 
+### Data Migration ของ #R6-D — วิธีรันและข้อจำกัด
+
+| หัวข้อ | รายละเอียด |
+|---|---|
+| ชื่อ | `migrate-legacy-roles` (Data Migration ไม่ใช่ DDL) |
+| วันที่ / Version | 2026-07-31 · อ้าง Owner Decision #R6-D |
+| ตรรกะ | `COORDINATOR → OFFICER` · `VERIFIER → OFFICER + hasGlobalCommunityScope=true` |
+| โค้ด | `lib/admin/migrate-legacy-roles.ts` (core) · `scripts/migrate-legacy-roles.ts` (CLI) |
+| ตรวจนับ | `scripts/audit-legacy-roles.ts` — รายงานเป็นจำนวนเท่านั้น **ไม่มี PII** |
+
+**คำสั่ง (ทุก environment):**
+
+```
+node --env-file=.env --import tsx scripts/audit-legacy-roles.ts       # ดูของจริงก่อน
+node --env-file=.env --import tsx scripts/migrate-legacy-roles.ts --dry-run
+node --env-file=.env --import tsx scripts/migrate-legacy-roles.ts     # เขียนจริง
+```
+
+**ทำไมเป็นสคริปต์ ไม่ใช่ `migration.sql`:** นี่คือ Data Migration ที่ต้องพิสูจน์ตรรกะการแปลง
+กับข้อมูลหลายรูปแบบ (หลายบทบาท · มี OFFICER อยู่แล้ว · ธง global เดิมเป็น true)
+เขียนเป็นฟังก์ชันจึงทดสอบได้จริงบน PostgreSQL — ไฟล์ `.sql` ทดสอบแบบนั้นไม่ได้
+และ **ห้ามทำใน seed** เพราะ Production ไม่ได้รัน seed
+
+**Transaction และ Idempotency:** ทั้งหมดอยู่ใน `$transaction` เดียว — ถ้าล้มกลางทางต้องไม่เหลือ
+สภาพครึ่ง ๆ กลาง ๆ เช่นปิด `VERIFIER` ไปแล้วแต่ยังไม่ได้ตั้งธง global (ผู้ใช้จะเสียขอบเขต
+การมองเห็นทันที) · ลำดับบังคับ: **ตั้งธง global ก่อนปิดบทบาท** เพราะต้องอ่านให้ได้ก่อนว่าใครเป็น
+`VERIFIER` · รันซ้ำได้เพราะทุกขั้นกรองด้วย `isActive: true` และใช้ `upsert` บน
+`@@unique([userId, role])` จึงไม่มีทางเกิด Role ซ้ำ
+
+**Rollback — Forward-only:**
+หลังรวมเป็น `OFFICER` แล้ว **ข้อมูลปลายทางอย่างเดียวบอกไม่ได้** ว่า `OFFICER` คนไหนเดิมเป็น
+`COORDINATOR` / `VERIFIER` / `OFFICER` อยู่แล้ว → **ห้ามเขียน Down Migration ที่เปลี่ยน
+`OFFICER` ทุกคนกลับเป็น Legacy Role** เพราะจะแจกบทบาทผิดให้คนที่เป็น `OFFICER` มาแต่ต้น
+
+สิ่งที่ทำแทน:
+
+1. **สำรองฐานข้อมูลก่อนรันทุกครั้ง** — เป็นเส้นทางคืนค่าหลัก
+2. Migration **ปิด** แถวบทบาทเดิม (`isActive=false`) **ไม่ลบทิ้ง** — แถวที่ปิดไว้คือ
+   หลักฐานว่าใครเคยเป็นอะไร ทำให้ย้อนกลับด้วยมือแบบมีข้อมูลจริงได้ ไม่ต้องเดา
+3. **ข้อจำกัดที่เหลือ:** ค่า `hasGlobalCommunityScope` *ก่อน* ย้ายไม่ได้ถูกบันทึกแยก
+   การย้อนกลับจึงแยกไม่ออกว่าใครมีธงอยู่ก่อนแล้วกับใครได้ธงจาก migration
+   (สคริปต์ `audit-legacy-roles.ts` รายงาน `verifierAlreadyGlobal` ไว้ — ต้องเก็บค่านี้
+   ก่อนรันถ้าต้องการย้อนกลับให้แม่นยำ)
+
 ---
 
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)
