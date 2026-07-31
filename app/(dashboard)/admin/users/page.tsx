@@ -99,7 +99,9 @@ export default async function AdminUsersPage() {
                         )}
                       </td>
                       <td className="py-3 pr-4 text-xs text-slate-600">
-                        {u.communityNames.length === 0 ? (
+                        {u.hasGlobalCommunityScope ? (
+                          <span className="badge badge-accent">ทุกชุมชน</span>
+                        ) : u.communityNames.length === 0 ? (
                           <span className="badge badge-warning">ยังไม่ได้ผูกชุมชน</span>
                         ) : (
                           u.communityNames.join(", ")
@@ -118,6 +120,7 @@ export default async function AdminUsersPage() {
                           userId={u.id}
                           userName={u.name}
                           currentRoles={u.roles}
+                          currentGlobalScope={u.hasGlobalCommunityScope}
                           activeRoles={[...ACTIVE_ROLES]}
                           reservedRoles={[...RESERVED_ROLES]}
                           roleLabels={ROLE_LABELS}

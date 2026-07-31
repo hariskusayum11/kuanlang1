@@ -8,7 +8,13 @@ export async function loadAuthorizationForUser(user: {
   name: string;
   email: string;
 }): Promise<AuthorizationContext> {
-  const [userRoles, scopes] = await Promise.all([
+  const [account, userRoles, scopes] = await Promise.all([
+    // ธง Global Community Scope ระดับบัญชี — อ่านสดทุก request ไม่เก็บใน session
+    // (เพิกถอนสิทธิ์แล้วต้องมีผลทันที ไม่ต้องรอผู้ใช้ logout)
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: { hasGlobalCommunityScope: true },
+    }),
     prisma.userRole.findMany({
       where: { userId: user.id, isActive: true },
       select: { role: true },
@@ -20,7 +26,9 @@ export async function loadAuthorizationForUser(user: {
   ]);
 
   const roles = userRoles.map((r) => r.role);
-  const { permissions, isGlobalScope } = buildAuthorization(roles);
+  const { permissions, isGlobalScope } = buildAuthorization(roles, {
+    hasGlobalCommunityScope: account?.hasGlobalCommunityScope ?? false,
+  });
 
   return {
     userId: user.id,

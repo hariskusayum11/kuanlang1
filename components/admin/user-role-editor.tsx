@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { UserRoleEnum } from "@prisma/client";
-import { setUserRolesAction } from "@/lib/admin/actions";
+import { setUserGlobalScopeAction, setUserRolesAction } from "@/lib/admin/actions";
 import { Modal } from "@/components/ui/modal";
 
 const ERRORS: Record<string, string> = {
@@ -13,6 +13,8 @@ const ERRORS: Record<string, string> = {
   SELF_ADMIN_REMOVAL:
     "ถอดสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้ — ให้แอดมินอีกคนเป็นผู้ถอดให้",
   LAST_ADMIN: "นี่คือผู้ดูแลระบบคนสุดท้าย — ถอดสิทธิ์ไม่ได้ ระบบจะไม่เหลือคนดูแล",
+  SELF_SCOPE_CHANGE:
+    "แก้สิทธิ์พื้นที่ของตัวเองไม่ได้ — ให้แอดมินอีกคนเป็นผู้กำหนดให้",
   UNAUTHENTICATED: "เซสชันหมดอายุ — เข้าสู่ระบบใหม่",
   INVALID: "คำขอไม่ถูกต้อง",
   ERROR: "เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่",
@@ -22,6 +24,7 @@ export function UserRoleEditor({
   userId,
   userName,
   currentRoles,
+  currentGlobalScope,
   activeRoles,
   reservedRoles,
   roleLabels,
@@ -31,6 +34,8 @@ export function UserRoleEditor({
   userId: string;
   userName: string;
   currentRoles: UserRoleEnum[];
+  /** ธง Global Community Scope ปัจจุบันของบัญชีนี้ */
+  currentGlobalScope: boolean;
   /** บทบาทที่ใช้งานได้จริงแล้ว (มี permission + มีหน้าจอ) */
   activeRoles: UserRoleEnum[];
   /** บทบาทที่ประกาศไว้แต่ยังไม่มีโมดูลรองรับ — แยกกลุ่มกันแอดมินเลือกผิด */
@@ -42,12 +47,15 @@ export function UserRoleEditor({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<UserRoleEnum[]>(currentRoles);
+  const [globalScope, setGlobalScope] = useState(currentGlobalScope);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const dirty =
+  const rolesDirty =
     selected.length !== currentRoles.length ||
     selected.some((r) => !currentRoles.includes(r));
+  const scopeDirty = globalScope !== currentGlobalScope;
+  const dirty = rolesDirty || scopeDirty;
 
   function toggle(role: UserRoleEnum) {
     setSelected((prev) =>
@@ -57,6 +65,7 @@ export function UserRoleEditor({
 
   function openEditor() {
     setSelected(currentRoles);
+    setGlobalScope(currentGlobalScope);
     setError(null);
     setOpen(true);
   }
@@ -66,11 +75,25 @@ export function UserRoleEditor({
     setBusy(true);
     setError(null);
 
-    const result = await setUserRolesAction({ userId, roles: selected });
-    if (!result.ok) {
-      setError(ERRORS[result.reason] ?? ERRORS.ERROR);
-      setBusy(false);
-      return;
+    if (rolesDirty) {
+      const result = await setUserRolesAction({ userId, roles: selected });
+      if (!result.ok) {
+        setError(ERRORS[result.reason] ?? ERRORS.ERROR);
+        setBusy(false);
+        return;
+      }
+    }
+    if (scopeDirty) {
+      const result = await setUserGlobalScopeAction({
+        userId,
+        hasGlobalCommunityScope: globalScope,
+      });
+      if (!result.ok) {
+        setError(ERRORS[result.reason] ?? ERRORS.ERROR);
+        setBusy(false);
+        router.refresh(); // role อาจถูกบันทึกไปแล้ว — โหลดค่าจริงกลับมา
+        return;
+      }
     }
     setOpen(false);
     setBusy(false);
@@ -130,10 +153,53 @@ export function UserRoleEditor({
             </>
           )}
 
+          <p className="eyebrow mt-5">สิทธิ์พื้นที่</p>
+          <div className="mt-2">
+            <label
+              className={`flex select-none items-start gap-2.5 rounded-xl border-2 px-3.5 py-2.5 text-sm transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400 ${
+                isSelf
+                  ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
+                  : globalScope
+                    ? "cursor-pointer border-alert-400 bg-alert-50 text-alert-800"
+                    : "cursor-pointer border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={globalScope}
+                disabled={isSelf}
+                onChange={() => setGlobalScope((v) => !v)}
+                className="sr-only"
+              />
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+                  globalScope
+                    ? "border-alert-500 bg-alert-500 text-white"
+                    : "border-slate-300"
+                }`}
+              >
+                {globalScope && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" className="h-3 w-3">
+                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className={`block ${globalScope ? "font-bold" : "font-medium"}`}>
+                  เห็นทุกชุมชน (Global Scope)
+                </span>
+                <span className="mt-0.5 block text-[11px] font-medium leading-relaxed text-slate-500">
+                  เปิด = ไม่ต้องผูกชุมชนทีละแห่ง · ปิด = เห็นเฉพาะชุมชนที่ได้รับมอบหมาย
+                  (ถ้าไม่ได้ผูกชุมชนใดเลยจะเห็น 0 ชุมชน)
+                </span>
+              </span>
+            </label>
+          </div>
+
           {isSelf && (
             <p className="mt-4 rounded-xl border-2 border-sun-200 bg-sun-50 px-3.5 py-2.5 text-xs font-medium text-sun-800">
-              นี่คือบัญชีของคุณเอง — ถอดสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้
-              ต้องให้แอดมินอีกคนเป็นผู้ถอดให้
+              นี่คือบัญชีของคุณเอง — ถอดสิทธิ์ผู้ดูแลระบบและแก้สิทธิ์พื้นที่ของตัวเองไม่ได้
+              ต้องให้แอดมินอีกคนเป็นผู้กำหนดให้
             </p>
           )}
 

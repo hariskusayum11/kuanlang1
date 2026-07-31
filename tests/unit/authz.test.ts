@@ -94,6 +94,51 @@ describe("buildAuthorization", () => {
     expect(authz.permissions).not.toContain(PERMISSIONS.DASHBOARD_VIEW);
   });
 
+  it("ไม่มี role ใดนอกจาก ADMIN/EXECUTIVE ที่เป็น global จากชื่อ Role", () => {
+    // Legacy role ที่ยังค้างใน enum ห้ามถูกใช้เป็นกลไกให้ Global Scope
+    // ใครต้องเห็นทั้งระบบให้เปิดธง hasGlobalCommunityScope รายบัญชีแทน
+    for (const role of Object.values(UserRoleEnum)) {
+      if (role === UserRoleEnum.ADMIN || role === UserRoleEnum.EXECUTIVE) continue;
+      expect(buildAuthorization([role]).isGlobalScope).toBe(false);
+    }
+  });
+
+  it("ธง Global Community Scope ระดับบัญชี ทำให้ OFFICER เห็นทุกชุมชนได้", () => {
+    const scoped = buildAuthorization([UserRoleEnum.OFFICER]);
+    const global = buildAuthorization([UserRoleEnum.OFFICER], {
+      hasGlobalCommunityScope: true,
+    });
+    expect(scoped.isGlobalScope).toBe(false);
+    expect(global.isGlobalScope).toBe(true);
+    // ให้ scope เพิ่ม ต้องไม่ทำให้ permission เปลี่ยน
+    expect([...global.permissions].sort()).toEqual([...scoped.permissions].sort());
+  });
+
+  it("ธงระดับบัญชีเป็นของใครของมัน — ไม่ทำให้ OFFICER คนอื่นเป็น global", () => {
+    // จำลอง 2 บัญชีที่มี role เดียวกัน ต่างกันแค่ธง
+    const officerA = buildAuthorization([UserRoleEnum.OFFICER], {
+      hasGlobalCommunityScope: true,
+    });
+    const officerB = buildAuthorization([UserRoleEnum.OFFICER], {
+      hasGlobalCommunityScope: false,
+    });
+    expect(officerA.isGlobalScope).toBe(true);
+    expect(officerB.isGlobalScope).toBe(false);
+    // ยืนยันว่า OFFICER ไม่เคยถูกใส่ใน GLOBAL_SCOPE_ROLES (กันแก้ผิดทาง)
+    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.OFFICER);
+  });
+
+  it("ไม่ส่ง account options = ไม่ global (ค่าเริ่มต้นต้องปลอดภัยเสมอ)", () => {
+    expect(buildAuthorization([UserRoleEnum.OFFICER]).isGlobalScope).toBe(false);
+    expect(buildAuthorization([UserRoleEnum.DATA_ENTRY], {}).isGlobalScope).toBe(false);
+  });
+
+  it("OFFICER ยังคง community scope ตามเดิม — ไม่ใช่ global แม้มี verification.view", () => {
+    const authz = buildAuthorization([UserRoleEnum.OFFICER]);
+    expect(authz.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
+    expect(authz.isGlobalScope).toBe(false);
+  });
+
   it("EXECUTIVE ดูได้แต่ไม่มีสิทธิ์จัดการผู้ใช้/ตั้งค่า", () => {
     const authz = buildAuthorization([UserRoleEnum.EXECUTIVE]);
     expect(authz.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);

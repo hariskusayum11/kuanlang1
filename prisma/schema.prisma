@@ -259,6 +259,13 @@ model User {
   isActive      Boolean   @default(true)
   lastLoginAt   DateTime?
 
+  /// Global Community Scope ระดับ "บัญชี" (Owner Decision 2026-07-26)
+  /// true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope ทีละแห่ง
+  /// ใช้แทนการยก Role ทั้งใบให้เป็น global (เช่น OFFICER บางคนต้องตรวจทุกชุมชน
+  /// แต่ OFFICER คนอื่นต้องเห็นเฉพาะพื้นที่ตน) — ห้ามใส่ OFFICER ใน GLOBAL_SCOPE_ROLES
+  /// การเปิด/ปิดต้องผ่าน server-side authorization + เขียน Audit Log เสมอ
+  hasGlobalCommunityScope Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

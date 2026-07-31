@@ -17,6 +17,8 @@ export interface AdminUserRow {
   isActive: boolean;
   roles: UserRoleEnum[];
   communityNames: string[];
+  /** true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope (ธงระดับบัญชี) */
+  hasGlobalCommunityScope: boolean;
   lastLoginAt: Date | null;
 }
 
@@ -35,6 +37,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       email: true,
       isActive: true,
       lastLoginAt: true,
+      hasGlobalCommunityScope: true,
       userRoles: { where: { isActive: true }, select: { role: true } },
       communityScopes: {
         select: { community: { select: { nameTh: true } } },
@@ -47,6 +50,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
     email: u.email,
     isActive: u.isActive,
     lastLoginAt: u.lastLoginAt,
+    hasGlobalCommunityScope: u.hasGlobalCommunityScope,
     roles: u.userRoles.map((r) => r.role),
     communityNames: u.communityScopes.map((s) => s.community.nameTh),
   }));
@@ -140,4 +144,63 @@ export async function setUserRoles(
   });
 
   return { ok: true, roles: next };
+}
+
+export type SetGlobalScopeResult =
+  | { ok: true; hasGlobalCommunityScope: boolean }
+  | {
+      ok: false;
+      reason: "NOT_ALLOWED" | "USER_NOT_FOUND" | "SELF_SCOPE_CHANGE" | "ERROR";
+    };
+
+/**
+ * เปิด/ปิด Global Community Scope ระดับบัญชี (Owner Decision 2026-07-31 #R6-A)
+ *
+ * ข้อกำหนดด้านความปลอดภัย:
+ *  - ตรวจสิทธิ์ฝั่ง server เสมอ (การซ่อนปุ่มไม่ใช่ Authorization)
+ *  - ห้ามผู้ใช้แก้ Global Scope ของ "ตัวเอง" — กันการยกระดับสิทธิ์ตนเอง
+ *    (แม้จะมี user.manage อยู่แล้วก็ตาม ต้องให้แอดมินอีกคนเป็นผู้ให้)
+ *  - เขียน Audit Log ค่าก่อน/หลังทุกครั้ง
+ */
+export async function setUserGlobalScope(
+  ctx: AuthorizationContext,
+  userId: string,
+  hasGlobalCommunityScope: boolean,
+): Promise<SetGlobalScopeResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (userId === ctx.userId) return { ok: false, reason: "SELF_SCOPE_CHANGE" };
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, hasGlobalCommunityScope: true },
+  });
+  if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+
+  // ไม่มีอะไรเปลี่ยน → ไม่เขียน Audit Log ซ้ำโดยไม่จำเป็น
+  if (target.hasGlobalCommunityScope === hasGlobalCommunityScope) {
+    return { ok: true, hasGlobalCommunityScope };
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { hasGlobalCommunityScope },
+    });
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "UserCommunityScope",
+    entityId: userId,
+    changes: {
+      field: "hasGlobalCommunityScope",
+      before: target.hasGlobalCommunityScope,
+      after: hasGlobalCommunityScope,
+    },
+  });
+
+  return { ok: true, hasGlobalCommunityScope };
 }
