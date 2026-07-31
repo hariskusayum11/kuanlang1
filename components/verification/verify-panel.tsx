@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { verifyHouseholdAction } from "@/lib/verification/actions";
+import { Mascot } from "@/components/brand/mascot";
+import { Modal } from "@/components/ui/modal";
 
 type Props = {
   householdId: string;
@@ -48,22 +50,29 @@ export function VerifyPanel({ householdId, sheetNo }: Props) {
         ยืนยันข้อมูลถูกต้อง
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md animate-rise rounded-2xl bg-white p-7 shadow-lg">
-            <h3 className="text-lg font-bold text-slate-900">ยืนยันการตรวจสอบ</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+      <Modal open={open} onClose={() => !busy && setOpen(false)} labelledBy="verify-title">
+          <div className="animate-rise rounded-3xl border-2 border-slate-200/80 bg-white p-7 shadow-lg">
+            <div className="flex items-start gap-3.5">
+              <Mascot role="verify" mood="wink" motion="wiggle" size={56} decorative className="shrink-0" />
+              <div className="min-w-0">
+                <h3 id="verify-title" className="text-lg font-bold text-slate-900">ยืนยันการตรวจสอบ</h3>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  ใบ <span className="font-mono font-bold text-slate-700">{sheetNo}</span>
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-relaxed text-slate-600">
               ยืนยันว่าข้อมูลใบ{" "}
-              <span className="font-mono font-medium">{sheetNo}</span>{" "}
+              <span className="font-mono font-bold">{sheetNo}</span>{" "}
               ถูกต้องตรงกับกระดาษ — ใบจะเปลี่ยนเป็นสถานะ &ldquo;ตรวจสอบแล้ว&rdquo; (VERIFIED)
               และนำไปใช้คำนวณความเสี่ยง/Dashboard ได้
             </p>
-            <p className="mt-3 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-500">
+            <p className="mt-3 rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-xs font-medium leading-relaxed text-slate-500">
               ระบบจะบันทึกผู้ตรวจ เวลา และเก็บสำเนาข้อมูล (version) ไว้ตรวจสอบย้อนหลัง
               — หากพบข้อผิดพลาด ควรแก้ก่อนยืนยัน (การแก้ไขจะเปิดใช้ในเวอร์ชันถัดไป)
             </p>
             {error && (
-              <p role="alert" className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p role="alert" className="mt-3 animate-pop rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
                 {error}
               </p>
             )}
@@ -80,14 +89,13 @@ export function VerifyPanel({ householdId, sheetNo }: Props) {
                 type="button"
                 onClick={() => void confirm()}
                 disabled={busy}
-                className="btn btn-primary btn-md"
+                className="btn btn-accent btn-md"
               >
                 {busy ? "กำลังยืนยัน…" : "ยืนยัน VERIFIED"}
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 }

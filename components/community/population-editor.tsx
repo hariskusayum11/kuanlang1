@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { sanitizeIntString } from "@/lib/entry/input-format";
 import { updatePopulationAction } from "@/lib/community/actions";
+import { Mascot } from "@/components/brand/mascot";
+import { Modal } from "@/components/ui/modal";
 
 type Props = {
   communityId: string;
@@ -56,11 +58,15 @@ export function PopulationEditor(props: Props) {
         ตั้งค่าประชากร
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md animate-rise rounded-2xl bg-white p-7 shadow-lg">
-            <h3 className="text-lg font-bold text-slate-900">ข้อมูลประชากรของชุมชน</h3>
-            <p className="mt-1 text-sm text-slate-500">{props.communityName}</p>
+      <Modal open={open} onClose={() => !busy && setOpen(false)} labelledBy="pop-editor-title">
+        <div className="animate-rise rounded-3xl border-2 border-slate-200/80 bg-white p-7 shadow-lg">
+            <div className="flex items-start gap-3.5">
+              <Mascot role="field" mood="happy" motion="wiggle" size={56} decorative className="shrink-0" />
+              <div className="min-w-0">
+                <h3 id="pop-editor-title" className="text-lg font-bold text-slate-900">ข้อมูลประชากรของชุมชน</h3>
+                <p className="mt-0.5 text-sm font-medium text-slate-500">{props.communityName}</p>
+              </div>
+            </div>
 
             <div className="mt-5 space-y-4">
               <div className="space-y-1.5">
@@ -75,7 +81,7 @@ export function PopulationEditor(props: Props) {
                   placeholder="เว้นว่าง = ยังไม่ทราบ"
                   className="field"
                 />
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] font-medium text-slate-400">
                   ตัวหารของ Coverage — เว้นว่างถ้ายังไม่ทราบ (ห้ามใส่ 0)
                 </p>
               </div>
@@ -91,7 +97,7 @@ export function PopulationEditor(props: Props) {
                   onChange={(e) => setTarget(sanitizeIntString(e.target.value, 100))}
                   className="field max-w-28"
                 />
-                <p className="text-[11px] text-slate-400">ผ่านเป้าเมื่อ Coverage &gt; ค่านี้ (ค่าเริ่มต้น 60)</p>
+                <p className="text-[11px] font-medium text-slate-400">ผ่านเป้าเมื่อ Coverage &gt; ค่านี้ (ค่าเริ่มต้น 60)</p>
               </div>
 
               <div className="space-y-1.5">
@@ -122,7 +128,7 @@ export function PopulationEditor(props: Props) {
             </div>
 
             {error && (
-              <p role="alert" className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p role="alert" className="mt-4 animate-pop rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
                 {error}
               </p>
             )}
@@ -131,13 +137,12 @@ export function PopulationEditor(props: Props) {
               <button type="button" onClick={() => setOpen(false)} disabled={busy} className="btn btn-ghost btn-md">
                 ยกเลิก
               </button>
-              <button type="button" onClick={() => void save()} disabled={busy} className="btn btn-primary btn-md">
+              <button type="button" onClick={() => void save()} disabled={busy} className="btn btn-accent btn-md">
                 {busy ? "กำลังบันทึก…" : "บันทึก"}
               </button>
             </div>
-          </div>
         </div>
-      )}
+      </Modal>
     </>
   );
 }
