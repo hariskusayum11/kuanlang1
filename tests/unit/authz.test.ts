@@ -71,6 +71,28 @@ describe("buildAuthorization", () => {
     expect(authz.isGlobalScope).toBe(true);
   });
 
+  it("ADMIN = Full System Administrator — เพิ่ม permission ใหม่ต้องตกถึง ADMIN เสมอ", () => {
+    // Owner Decision 2026-07-31: ไม่แยก ADMIN เป็นผู้ดูแลสิทธิ์จำกัด
+    // เทสต์นี้จับกรณีที่มีคนเพิ่ม permission ใหม่แล้วลืมให้ ADMIN
+    const authz = buildAuthorization([UserRoleEnum.ADMIN]);
+    for (const permission of ALL_PERMISSIONS) {
+      expect(authz.permissions).toContain(permission);
+    }
+    // ...และห้ามมี role อื่นที่กว้างเท่า ADMIN โดยไม่ตั้งใจ
+    for (const role of Object.values(UserRoleEnum)) {
+      if (role === UserRoleEnum.ADMIN) continue;
+      expect(ROLE_PERMISSIONS[role].length).toBeLessThan(ALL_PERMISSIONS.length);
+    }
+  });
+
+  it("ADMIN เป็น global จาก Role — ธงรายบัญชี false ต้องไม่ลดสิทธิ์", () => {
+    // ธง hasGlobalCommunityScope เป็น "ทางเพิ่ม" เท่านั้น ห้ามใช้เป็นทางลด
+    const authz = buildAuthorization([UserRoleEnum.ADMIN], {
+      hasGlobalCommunityScope: false,
+    });
+    expect(authz.isGlobalScope).toBe(true);
+  });
+
   it("FIELD_SURVEYOR ไม่มี permission ใดเลย", () => {
     const authz = buildAuthorization([UserRoleEnum.FIELD_SURVEYOR]);
     expect(authz.permissions).toEqual([]);
