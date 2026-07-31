@@ -57,6 +57,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: true,
   },
   {
+    label: "ผู้ใช้และบทบาท",
+    href: "/admin/users",
+    permission: PERMISSIONS.USER_MANAGE,
+    implemented: true,
+  },
+  {
     label: "ตั้งค่าระบบ",
     href: "/settings",
     permission: PERMISSIONS.SETTINGS_VIEW,

@@ -11,6 +11,12 @@ import {
   GLOBAL_SCOPE_ROLES,
   ROLE_PERMISSIONS,
 } from "../../lib/authz/role-permissions";
+import {
+  ACTIVE_ROLES,
+  RESERVED_ROLES,
+  ROLE_HINTS,
+  ROLE_LABELS,
+} from "../../lib/authz/role-labels";
 import { NAV_ITEMS, visibleNavItems } from "../../lib/navigation";
 
 describe("permissions constants", () => {
@@ -25,6 +31,23 @@ describe("permissions constants", () => {
       for (const p of perms) {
         expect(ALL_PERMISSIONS).toContain(p);
       }
+    }
+  });
+
+  it("ACTIVE_ROLES + RESERVED_ROLES ต้องครอบคลุมทุก role ครบและไม่ทับกัน", () => {
+    const grouped = [...ACTIVE_ROLES, ...RESERVED_ROLES];
+    expect(grouped.length).toBe(new Set(grouped).size); // ไม่ทับกัน
+    expect([...grouped].sort()).toEqual([...Object.values(UserRoleEnum)].sort());
+    // ทุก role ต้องมีคำอธิบายให้แอดมินอ่าน ไม่งั้นเลือกผิดได้
+    for (const role of grouped) {
+      expect(ROLE_HINTS[role]).toBeTruthy();
+      expect(ROLE_LABELS[role]).toBeTruthy();
+    }
+  });
+
+  it("role ที่ยังไม่มี permission ต้องไม่ถูกจัดอยู่กลุ่ม 'ใช้งานได้แล้ว'", () => {
+    for (const role of ACTIVE_ROLES) {
+      expect(ROLE_PERMISSIONS[role].length).toBeGreaterThan(0);
     }
   });
 
@@ -139,7 +162,7 @@ describe("visibleNavItems", () => {
     expect(hrefs).toContain("/dashboard");
   });
 
-  it("เมนูที่ implemented แล้ว = /dashboard, /communities, /surveys, /batches, /verification, /admin/registrations", () => {
+  it("เมนูที่ implemented แล้ว ตรงกับหน้าที่สร้างจริง", () => {
     const implemented = NAV_ITEMS.filter((i) => i.implemented);
     expect(implemented.map((i) => i.href)).toEqual([
       "/dashboard",
@@ -148,6 +171,19 @@ describe("visibleNavItems", () => {
       "/batches",
       "/verification",
       "/admin/registrations",
+      "/admin/users",
     ]);
+  });
+
+  it("หน้าจัดการผู้ใช้ต้องใช้สิทธิ์ user.manage เท่านั้น", () => {
+    const item = NAV_ITEMS.find((i) => i.href === "/admin/users");
+    expect(item?.permission).toBe(PERMISSIONS.USER_MANAGE);
+    // VERIFIER/DATA_ENTRY ต้องไม่เห็นเมนูนี้
+    expect(
+      visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.VERIFIER]).map((i) => i.href),
+    ).not.toContain("/admin/users");
+    expect(
+      visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.DATA_ENTRY]).map((i) => i.href),
+    ).not.toContain("/admin/users");
   });
 });
