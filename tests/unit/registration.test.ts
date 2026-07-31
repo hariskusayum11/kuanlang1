@@ -48,17 +48,24 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     }
   });
 
-  it("whitelist = VOLUNTEER, FIELD_SURVEYOR, DATA_ENTRY เท่านั้น และมี label ไทยครบ", () => {
+  it("whitelist = VOLUNTEER, DATA_ENTRY เท่านั้น และมี label ไทยครบ", () => {
     expect([...REQUESTABLE_ROLES].sort()).toEqual(
-      [
-        UserRoleEnum.VOLUNTEER,
-        UserRoleEnum.FIELD_SURVEYOR,
-        UserRoleEnum.DATA_ENTRY,
-      ].sort(),
+      [UserRoleEnum.VOLUNTEER, UserRoleEnum.DATA_ENTRY].sort(),
     );
     for (const role of REQUESTABLE_ROLES) {
       expect(REQUESTABLE_ROLE_LABELS[role]).toBeTruthy();
     }
+  });
+
+  it("FIELD_SURVEYOR สมัครเองไม่ได้ (Owner Decision 2026-07-26 — ยังไม่มีโมดูลให้ใช้)", () => {
+    expect([...REQUESTABLE_ROLES]).not.toContain(UserRoleEnum.FIELD_SURVEYOR);
+    // ส่งมาทาง payload ตรง ๆ ก็ต้องถูกปฏิเสธที่ schema ไม่ใช่แค่ซ่อนใน dropdown
+    expect(
+      registrationSchema.safeParse({
+        ...VALID_INPUT,
+        requestedRole: UserRoleEnum.FIELD_SURVEYOR,
+      }).success,
+    ).toBe(false);
   });
 
   it("รหัสผ่านสั้นกว่า 8 ตัว / อีเมลผิดรูปแบบ / ชื่อสั้นเกิน ถูกปฏิเสธ", () => {

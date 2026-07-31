@@ -5,10 +5,15 @@ import { z } from "zod";
  * บทบาทที่ยื่นขอเองได้จากหน้า public (Hybrid — docs/26 §5)
  * บทบาทอำนาจสูง (OFFICER/COORDINATOR/VERIFIER/RESEARCHER/EXECUTIVE/ADMIN)
  * แอดมินสร้างให้เองเท่านั้น — ห้ามเพิ่มใน list นี้โดยไม่มี Owner Decision
+ *
+ * Owner Decision (2026-07-26): ถอด `FIELD_SURVEYOR` ออกจากรายการที่สมัครเองได้
+ * เหตุผล: กระบวนการเป็น Paper-first — ผู้สำรวจกรอกลงกระดาษ ไม่ได้กรอกในระบบ
+ * และโมดูลเดียวที่เขาต้องใช้ (`FieldQuery` — ตอบกลับเมื่อคนคีย์อ่านลายมือไม่ออก)
+ * ยังไม่ได้สร้าง จึงมี 0 permission → สมัครแล้ว login เข้ามาเจอ /access-denied ทันที
+ * เดิมเป็นทางตันจริงในระบบ (พบจากการทดสอบ 2026-07-26)
  */
 export const REQUESTABLE_ROLES = [
   UserRoleEnum.VOLUNTEER,
-  UserRoleEnum.FIELD_SURVEYOR,
   UserRoleEnum.DATA_ENTRY,
 ] as const satisfies readonly UserRoleEnum[];
 
@@ -16,7 +21,6 @@ export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
 
 export const REQUESTABLE_ROLE_LABELS: Record<RequestableRole, string> = {
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
-  [UserRoleEnum.FIELD_SURVEYOR]: "ผู้สำรวจภาคสนาม",
   [UserRoleEnum.DATA_ENTRY]: "เจ้าหน้าที่คีย์ข้อมูล",
 };
 
