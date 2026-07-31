@@ -27,15 +27,18 @@ export function AppHeader({ items, userName, userEmail }: Props) {
     items.find((item) => pathname.startsWith(item.href))?.label ?? APP_NAME;
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200/70 bg-white/85 px-5 pl-16 backdrop-blur-md md:px-8 md:pl-8">
-      <h1 className="truncate text-[17px] font-semibold text-slate-900">{title}</h1>
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b-2 border-slate-200/70 bg-white/90 px-5 pl-16 backdrop-blur-md md:px-8 md:pl-8">
+      <h1 className="flex min-w-0 items-center gap-2.5 text-[17px] font-bold text-slate-900">
+        <span className="h-5 w-1.5 shrink-0 rounded-full bg-alert-400" aria-hidden="true" />
+        <span className="truncate">{title}</span>
+      </h1>
       <div className="flex items-center gap-3">
         <Link
           href="/"
           target="_blank"
           rel="noopener noreferrer"
           title="เปิดหน้าสาธารณะในแท็บใหม่ (ไม่ออกจากระบบ)"
-          className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
+          className="hidden items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 sm:inline-flex"
         >
           {/* ไอคอนโลก = มุมมองสาธารณะ (ไม่ใช่ไอคอนบ้าน/ออกจากระบบ) + มุมชี้ว่าเปิดแท็บใหม่ */}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
@@ -49,11 +52,11 @@ export function AppHeader({ items, userName, userEmail }: Props) {
         </Link>
         <div className="h-6 w-px bg-slate-200" />
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold leading-tight text-slate-800">{userName}</p>
+          <p className="text-sm font-bold leading-tight text-slate-800">{userName}</p>
           <p className="text-xs text-slate-500">{userEmail}</p>
         </div>
         <div
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700"
+          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-alert-100 text-xs font-bold text-alert-700"
           title={userName}
           aria-hidden="true"
         >

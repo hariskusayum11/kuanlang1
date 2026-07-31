@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { APP_NAME } from "@/lib/app-config";
+import { LogoMark } from "@/components/brand/logo-mark";
 
 // รายการเมนูถูกกรองตาม permission จากฝั่ง Server (lib/navigation.ts) แล้ว
 // Component นี้เป็นแค่ตัวแสดงผล — ไม่ใช่ Authorization
@@ -70,19 +71,25 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-150 ${
                 active
-                  ? "bg-white/10 text-white"
-                  : "text-slate-300/90 hover:bg-white/[0.06] hover:text-white"
+                  ? "bg-brand-500 text-white shadow-[0_3px_0_0_var(--color-brand-700)]"
+                  : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white"
               }`}
             >
-              {active && (
-                <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-400" />
-              )}
-              <span className={active ? "text-brand-300" : "text-slate-400 group-hover:text-slate-200"}>
+              <span
+                className={
+                  active
+                    ? "text-white"
+                    : "text-brand-300/70 group-hover:text-brand-200"
+                }
+              >
                 <NavIcon href={item.href} />
               </span>
               {item.label}
+              {active && (
+                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sun-400" />
+              )}
             </Link>
           );
         }
@@ -90,15 +97,15 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
           <span
             key={item.href}
             aria-disabled="true"
-            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500"
+            className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/35"
           >
             <span className="flex items-center gap-3">
-              <span className="text-slate-600">
+              <span className="text-white/25">
                 <NavIcon href={item.href} />
               </span>
               {item.label}
             </span>
-            <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
               เร็ว ๆ นี้
             </span>
           </span>
@@ -113,7 +120,7 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-3 z-30 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur md:hidden"
+        className="fixed left-4 top-3 z-30 inline-flex items-center gap-2 rounded-xl border-2 border-slate-200 bg-white/95 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur md:hidden"
         aria-label="เปิดเมนู"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
@@ -132,28 +139,26 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-ink-900 transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col band-ink transition-transform duration-200 md:static md:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-[18px]">
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-4">
           <Link
             href="/dashboard"
             onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-90"
+            className="group flex items-center gap-2.5 rounded-xl transition-transform hover:scale-[1.02]"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white shadow-sm">
-              SF
-            </div>
+            <LogoMark size={32} className="text-white" />
             <div>
               <p className="text-[15px] font-bold leading-tight text-white">{APP_NAME}</p>
-              <p className="text-[11px] text-slate-400">จัดการภัยพิบัติชุมชน</p>
+              <p className="text-[11px] font-medium text-brand-200/70">จัดการภัยพิบัติชุมชน</p>
             </div>
           </Link>
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="rounded-md p-1 text-slate-400 transition-colors hover:text-white md:hidden"
+            className="rounded-lg p-1 text-white/50 transition-colors hover:text-white md:hidden"
             aria-label="ปิดเมนู"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
@@ -162,9 +167,9 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
           </button>
         </div>
         {nav}
-        <div className="border-t border-white/[0.06] px-5 py-3">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        <div className="border-t border-white/10 px-5 py-3">
+          <span className="inline-flex items-center gap-2 text-[11px] font-medium text-white/45">
+            <span className="live-dot" />
             Development Environment
           </span>
         </div>
