@@ -31,8 +31,8 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Test coverage
-coverage/
+# Test coverage (root only — `coverage/` เปล่า ๆ จะกลืน domain/coverage/ ไปด้วย)
+/coverage/
 
 # TypeScript
 *.tsbuildinfo
