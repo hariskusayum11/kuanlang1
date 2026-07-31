@@ -25,13 +25,20 @@ export const auth = betterAuth({
   // การแยกอายุ session ต่อบทบาท (เช่น back-office ยาวกว่า volunteer มือถือ)
   // ต้องทำเป็น validation layer เพิ่ม — เลื่อนไปทำภายหลัง (ดู docs/26 §4)
   session: {
-    expiresIn: 60 * 60 * 12, // 12 ชม. — ครอบคลุมวันทำงานเต็มวันโดยไม่ต้อง login ซ้ำ แต่หมดอายุข้ามคืน
-    updateAge: 60 * 60, // ต่ออายุอัตโนมัติเมื่อยัง active ภายใน 1 ชม.
+    // Idle timeout แบบเลื่อนตามการใช้งาน (Owner Decision 2026-07-26):
+    //   ไม่แตะระบบ 30 นาที → เซสชันหมดอายุเอง ต้อง Login ใหม่
+    //   ใช้งานอยู่ = ต่ออายุให้อัตโนมัติ จึงไม่หลุดกลางคันระหว่างคีย์
+    // เหตุผล: เครื่องคีย์ข้อมูลมักเป็นเครื่องกลาง วางทิ้งไว้แล้วเดินออกได้
+    // และระบบมีข้อมูลสุขภาพ/กลุ่มเปราะบาง จึงไม่ควรค้าง session ข้ามวัน
+    expiresIn: 60 * 30,
+    // 0 = ต่ออายุทุก request ที่แตะ DB → หน้าต่าง 30 นาทีเลื่อนตามการใช้งานจริง
+    updateAge: 0,
     cookieCache: {
-      // cache session ใน cookie 5 นาที ลดภาระ DB
+      // cache session ใน cookie สั้น ๆ ลดภาระ DB
+      // ต้องสั้นกว่า expiresIn มาก มิฉะนั้น cache จะยืดอายุเกินที่ตั้งใจ
       // (การบังคับ isActive ราย request ยังทำแยกใน getActiveSessionUser — ไม่ถูก bypass)
       enabled: true,
-      maxAge: 5 * 60,
+      maxAge: 60,
     },
   },
   // Rate limit — กัน brute-force การเดารหัสผ่าน
