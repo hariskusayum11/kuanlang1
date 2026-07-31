@@ -144,14 +144,20 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     expect(sessions).toBe(0);
   });
 
-  it("Dashboard data layer: fetchDashboardCounts ตรงกับ Dev Seed (5/2/5/0/0)", async () => {
-    const counts = await fetchDashboardCounts();
+  // Master data ยืนยันตัวเลขตายตัวได้ (มาจากซีด) — ส่วน household มาจากการคีย์จริง
+  // จึงเทียบกับค่าใน DB ณ ขณะนั้น เพื่อตรวจว่า "data layer นับถูก" ไม่ใช่ "DB ต้องว่าง"
+  it("Dashboard data layer: fetchDashboardCounts นับตรงกับ DB", async () => {
+    const [counts, households, evacuationSites] = await Promise.all([
+      fetchDashboardCounts(),
+      prisma.household.count({ where: { deletedAt: null } }),
+      prisma.evacuationSite.count(),
+    ]);
     expect(counts).toEqual({
       communities: 5,
       tambons: 2,
       moos: 5,
-      households: 0,
-      evacuationSites: 0,
+      households,
+      evacuationSites,
     });
   });
 

@@ -54,10 +54,16 @@ describe.skipIf(!isLocalDevDb)("Integration (local Dev DB — PostgreSQL/PostGIS
     expect(ks?.communityTambons.every((t) => t.isPrimary === false)).toBe(true);
   });
 
-  // PII guard: Phase 1 Dev Seed ต้องไม่มีข้อมูลบุคคลจริง (ไม่ seed household)
-  it("PII: ไม่มี Household (ไม่มีข้อมูลบุคคลจริงใน Dev Seed)", async () => {
-    const households = await prisma.household.count();
-    expect(households).toBe(0);
+  // PII guard: Dev Seed ต้องไม่สร้าง Household เอง
+  // หมายเหตุ: ทดสอบ "ที่มา" ไม่ใช่ "จำนวน" — เพราะการคีย์ผ่านหน้าจอในเครื่อง dev
+  // สร้าง Household ได้ตามปกติ (ซึ่งไม่ใช่ข้อมูลจากซีด) ถ้ายืนยันแค่ count===0
+  // เทสจะแดงทุกครั้งที่มีคนลองใช้ระบบ ทั้งที่ซีดยังสะอาดอยู่
+  it("PII: ทุก Household ต้องมาจากการคีย์จริง — ซีดไม่สร้างข้อมูลบุคคล", async () => {
+    // สคริปต์ที่ยัด Household ตรง ๆ จะไม่มี EntryAttempt ผูกกับใบ — ตรวจที่ร่องรอยนี้
+    const notFromEntry = await prisma.household.count({
+      where: { sheet: { entryAttempts: { none: {} } } },
+    });
+    expect(notFromEntry).toBe(0);
   });
 
   // Phase 2 guard: EvacuationSite ยังไม่เปิดใช้งานใน Phase 1 (ไม่มี Seed)
