@@ -50,10 +50,16 @@ export interface CoverageSummary {
   passedCommunities: number;
 }
 
-/** สรุปข้ามชุมชน — Verified Coverage รวมคิดจากเฉพาะชุมชนที่มี denominator (เป้ารวมใช้ 60) */
+/**
+ * เป้าหมาย Coverage รวมข้ามชุมชน — ค่าเริ่มต้นตาม Business Rule ("มากกว่าร้อยละ 60")
+ * เป้าของ "แต่ละชุมชน" ยังอ่านจาก Community.targetCoveragePercent ในฐานข้อมูลตามเดิม
+ */
+export const AGGREGATE_TARGET_COVERAGE_PERCENT = 60;
+
+/** สรุปข้ามชุมชน — Verified Coverage รวมคิดจากเฉพาะชุมชนที่มี denominator */
 export function summarizeCoverage(
   rows: CommunityCoverageRow[],
-  aggregateTargetPercent = 60,
+  aggregateTargetPercent = AGGREGATE_TARGET_COVERAGE_PERCENT,
 ): CoverageSummary {
   const known = rows.filter((r) => r.totalHouseholds != null && r.totalHouseholds > 0);
   const totalHouseholdsKnown = known.reduce((a, r) => a + (r.totalHouseholds as number), 0);
