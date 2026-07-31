@@ -18,11 +18,16 @@ import {
   phoneBlindIndex,
 } from "../crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../crypto/keys";
+import {
+  coordinateForStorage,
+  parseCoordinateText,
+} from "../../domain/geo/coordinate";
 import { getSheetForEntry } from "./claim";
 import {
   answerBoolean,
   answerCount,
   answerString,
+  assistanceNeedsFromPayload,
   entryPayloadSchema,
   parseThaiDate,
   sanitizeEntryPayload,
@@ -192,11 +197,19 @@ export async function submitEntry(
     ? phoneBlindIndex(respondentPhone, searchKey)
     : null;
   const surveyedAtRaw = answerString(clean, "surveyedAt");
+  const coordinateRawText = answerString(clean, "coordinateRawText");
+  const parsedCoordinate = coordinateForStorage(parseCoordinateText(coordinateRawText));
   const marks = Object.entries(clean.marks).filter(([, v]) => v != null);
   const illegibleCount = marks.filter(([, v]) => v === "ILLEGIBLE").length;
   const blankCount = marks.filter(([, v]) => v === "BLANK_IN_PAPER").length;
   const vulnerableRows = mapVulnerableRows(clean.vulnerableRows);
   const hasVulnerable = answerBoolean(clean, "hasVulnerable");
+  // ความต้องการช่วยเหลือรายข้อ — detail เป็นข้อมูลอ่อนไหว 🔒 จึงเข้ารหัสก่อนเก็บ
+  const assistanceNeeds = assistanceNeedsFromPayload(clean).map((a) => ({
+    needTypeId: a.needTypeId,
+    personCount: a.personCount,
+    detail: a.detail ? encryptText(a.detail, keyring, CURRENT_KEY_VERSION) : null,
+  }));
   const enc = encryptJson(clean, keyring, CURRENT_KEY_VERSION);
 
   const householdData = {
@@ -234,7 +247,12 @@ export async function submitEntry(
     soi: answerString(clean, "soi"),
     road: answerString(clean, "road"),
     tambonId: answerString(clean, "tambonId"),
-    coordinateRawText: answerString(clean, "coordinateRawText"), // เก็บตรง (R5 — GIS)
+    // ต้นฉบับเก็บตรงตามกระดาษเสมอ (R5 — GIS / QM-04)
+    coordinateRawText: coordinateRawText,
+    // Derived: เขียนเฉพาะเมื่อ parse ได้อย่างมั่นใจ (อยู่ในกรอบประเทศไทย)
+    // สลับแกน/นอกกรอบ/อ่านไม่ออก → ปล่อย null ให้ผู้ตรวจตัดสินจากค่าดิบ ไม่เดาแทน
+    latitude: parsedCoordinate?.lat ?? null,
+    longitude: parsedCoordinate?.lng ?? null,
     memberCount: answerCount(clean, "memberCount"),
     ownershipTypeId: answerString(clean, "ownershipTypeId"),
     ownershipOther: answerString(clean, "ownershipOther"),
@@ -304,6 +322,18 @@ export async function submitEntry(
       const household = await tx.household.create({
         data: { ...householdData, hasDuplicateFlag: duplicateSuspected },
       });
+
+      // 4.1) ความต้องการช่วยเหลือรายข้อ (ส่วนที่ 2 ข้อ 3) — จำนวนคน/รายละเอียดตามกระดาษ
+      if (assistanceNeeds.length > 0) {
+        await tx.assistanceNeed.createMany({
+          data: assistanceNeeds.map((a) => ({
+            householdId: household.id,
+            needTypeId: a.needTypeId,
+            personCount: a.personCount,
+            detail: a.detail,
+          })),
+        });
+      }
 
       // 5) กลุ่มเปราะบางรายบุคคล + ลักษณะความเปราะบาง (ชื่อ/เบอร์/รายละเอียดเข้ารหัส)
       for (const row of vulnerableRows) {

@@ -12,7 +12,11 @@ import { ENTRY_STEPS } from "./steps";
 export const KNOWN_FIELD_NAMES: ReadonlySet<string> = new Set(
   ENTRY_STEPS.flatMap((s) =>
     s.kind === "fields"
-      ? s.fields.flatMap((f) => (f.pair ? [f.name, f.pair.name] : [f.name]))
+      ? s.fields.flatMap((f) => [
+          f.name,
+          ...(f.pair ? [f.pair.name] : []),
+          ...(f.extraKeys ?? []),
+        ])
       : [],
   ),
 );
@@ -22,6 +26,8 @@ const answerValueSchema = z.union([
   z.number().finite(),
   z.boolean(),
   z.array(z.string().max(64)).max(50),
+  // จำนวน/รายละเอียดรายข้อของความต้องการช่วยเหลือ: { [needTypeId]: "ค่า" }
+  z.record(z.string().max(64), z.string().max(500)),
 ]);
 
 export const fieldMarkSchema = z.enum(["ILLEGIBLE", "BLANK_IN_PAPER"]);
@@ -106,4 +112,50 @@ export function answerCount(payload: EntryPayload, name: string): number | null 
   const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
   if (!Number.isInteger(n) || n < 0 || n > 100000) return null;
   return n;
+}
+
+/** รายการ id ที่ติ๊กไว้ (checkbox-group / assistance-needs) */
+export function answerIdList(payload: EntryPayload, name: string): string[] {
+  const v = payload.answers[name];
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** answer key ที่เก็บเป็น { [id]: "ค่า" } เช่น จำนวน/รายละเอียดรายข้อ */
+export function answerRecord(
+  payload: EntryPayload,
+  name: string,
+): Record<string, string> {
+  const v = payload.answers[name];
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === "string" && val.trim() !== "") out[k] = val.trim();
+  }
+  return out;
+}
+
+export interface AssistanceNeedInput {
+  needTypeId: string;
+  personCount: number | null;
+  detail: string | null;
+}
+
+/**
+ * ความต้องการช่วยเหลือที่ติ๊กไว้ พร้อมจำนวนคน/รายละเอียดรายข้อ
+ * Pure — ไม่ตัดสินว่าข้อไหนบังคับ (validation แยกอยู่ที่ lib/entry/validation.ts)
+ */
+export function assistanceNeedsFromPayload(
+  payload: EntryPayload,
+): AssistanceNeedInput[] {
+  const counts = answerRecord(payload, "assistanceNeedCounts");
+  const details = answerRecord(payload, "assistanceNeedDetails");
+  return answerIdList(payload, "assistanceNeeds").map((needTypeId) => {
+    const raw = counts[needTypeId];
+    const n = raw === undefined ? NaN : Number(raw);
+    return {
+      needTypeId,
+      personCount: Number.isInteger(n) && n >= 0 && n <= 100000 ? n : null,
+      detail: details[needTypeId] ?? null,
+    };
+  });
 }

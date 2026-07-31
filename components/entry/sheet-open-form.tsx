@@ -85,6 +85,24 @@ export function SheetOpenForm({ batches }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="chip chip-lg chip-accent shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-7 w-7">
+            <path
+              d="M8 4h9a1 1 0 011 1v15l-3-2-3 2-3-2V5a1 1 0 011-1zM9 9h6M9 13h4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">เปิดใบจากรหัสบนกระดาษ</h3>
+          <p className="text-sm text-slate-500">
+            พิมพ์รหัสที่หัวกระดาษของใบที่ถืออยู่ แล้วกด Enter
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3 lg:flex-row">
         {batches.length > 1 && (
           <div className="lg:w-64">
@@ -128,13 +146,13 @@ export function SheetOpenForm({ batches }: Props) {
                 if (error) setError(null);
               }}
               disabled={pending || disabled}
-              className="field font-mono uppercase placeholder:font-sans placeholder:normal-case"
+              className="field font-mono text-lg font-bold uppercase tracking-wide placeholder:text-base placeholder:font-normal placeholder:font-sans placeholder:normal-case placeholder:tracking-normal"
               aria-describedby={error ? "sheet-code-error" : undefined}
             />
             <button
               type="submit"
               disabled={pending || disabled}
-              className="btn btn-primary btn-md shrink-0"
+              className="btn btn-accent btn-lg shrink-0"
             >
               {pending ? (
                 <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none">
@@ -156,9 +174,9 @@ export function SheetOpenForm({ batches }: Props) {
         <p
           id="sheet-code-error"
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 animate-fade-in"
+          className="flex items-start gap-2 rounded-xl border-2 border-sun-200 bg-sun-50 px-3.5 py-2.5 text-sm font-medium text-sun-800 animate-pop"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="mt-0.5 h-4 w-4 shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 h-4 w-4 shrink-0">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
           </svg>

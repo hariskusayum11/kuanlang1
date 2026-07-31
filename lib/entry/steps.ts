@@ -28,7 +28,11 @@ export type FieldType =
   | "boolean"
   | "textarea"
   // 2 ช่องตัวเลขบนคำถามเดียว ตรงตามกระดาษ (เช่น "___ เมตร ___ ซม." — QM-08)
-  | "measure-pair";
+  | "measure-pair"
+  // พิกัดช่องเดียวตามกระดาษ + แสดงผล parse ให้ผู้คีย์ทานทันที (QM-04)
+  | "coordinate"
+  // เลือกได้หลายข้อ + ช่องจำนวนคน/รายละเอียดรายข้อ ตาม requiresCount/requiresDetail ของ master
+  | "assistance-needs";
 
 export interface EntryField {
   /** ชื่อฟิลด์ตรงกับ Prisma schema (Household.* / FloodRiskProfile.* ฯลฯ) */
@@ -49,6 +53,13 @@ export interface EntryField {
   unit?: string;
   /** measure-pair: ช่องที่สองบนคำถามเดียว (เก็บเป็น answer key แยกของตัวเอง) */
   pair?: { name: string; unit: string; max?: number };
+  /**
+   * ต้องตอบก่อนส่งใบ — "ตอบ" หมายถึงมีค่า **หรือ** ถูกมาร์ก F2/F3
+   * (CLAUDE.md: ห้ามบังคับให้ผู้คีย์เดาค่าที่อ่านไม่ออก — F2/F3 คือคำตอบที่ถูกต้อง)
+   */
+  required?: boolean;
+  /** answer key เสริมของฟิลด์นี้ (เช่น จำนวน/รายละเอียดรายข้อ) — ต้องอยู่ใน whitelist ด้วย */
+  extraKeys?: string[];
   /** Critical Field ⭐ — Entry 2 ต้องคีย์ซ้ำ (อ้าง docs/03) */
   critical?: boolean;
   /** ข้อมูลอ่อนไหว 🔒 (L3/L4) */
@@ -83,7 +94,7 @@ export const ENTRY_STEPS: EntryStep[] = [
     description: "ข้อมูลสำหรับผู้บันทึก — คีย์ตามที่เขียนบนกระดาษ ห้ามเติมเอง",
     kind: "fields",
     fields: [
-      { name: "surveyNo", label: "แบบสอบถามลำดับที่", type: "text" },
+      { name: "surveyNo", label: "แบบสอบถามลำดับที่", type: "text", required: true },
       {
         name: "communityNameOnPaper",
         label: "ชื่อชุมชน (ตามที่ผู้สำรวจเขียน)",
@@ -109,6 +120,7 @@ export const ENTRY_STEPS: EntryStep[] = [
       {
         name: "surveyedAt",
         label: "วันที่สำรวจ (วันที่/เดือน/ปี ตามกระดาษ)",
+        required: true,
         type: "date",
         hint: "ห้ามใส่วันที่วันนี้แทนค่าว่าง (BR-47) — กระดาษเขียน พ.ศ. ให้คีย์ตามกระดาษ",
       },
@@ -150,6 +162,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "respondentFirstName",
         label: "ชื่อ (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
         type: "text",
+        required: true,
         sensitive: true,
       },
       {
@@ -173,23 +186,24 @@ export const ENTRY_STEPS: EntryStep[] = [
     title: "ที่ตั้ง พิกัด และผู้อยู่อาศัย",
     kind: "fields",
     fields: [
-      { name: "houseNo", label: "เลขที่", type: "text", critical: true },
-      { name: "mooId", label: "หมู่ที่", type: "radio", masterKey: "moos", critical: true },
+      { name: "houseNo", label: "เลขที่", type: "text", critical: true, required: true },
+      { name: "mooId", label: "หมู่ที่", type: "radio", masterKey: "moos", critical: true, required: true },
       { name: "soi", label: "ซอย", type: "text" },
       { name: "road", label: "ถนน", type: "text" },
-      { name: "tambonId", label: "ตำบล", type: "radio", masterKey: "tambons" },
+      { name: "tambonId", label: "ตำบล", type: "radio", masterKey: "tambons", required: true },
       {
         name: "coordinateRawText",
         label: "พิกัด GPS / ละติจูด-ลองจิจูด (ตามที่เขียนบนกระดาษ)",
-        type: "text",
+        type: "coordinate",
         critical: true,
         sensitive: true,
-        hint: "คีย์ตามตัวอักษร ห้ามแปลงเอง — ระบบจะ parse เป็น lat/lng ภายหลัง (QM-04)",
+        hint: "คีย์ตามตัวอักษรที่เขียนมา ห้ามจัดรูปแบบใหม่ — ระบบจะอ่านค่าให้ทานเองด้านล่าง (QM-04)",
       },
       {
         name: "memberCount",
         label: "จำนวนสมาชิกในครัวเรือน/หน่วยงาน (คน)",
         type: "number",
+        required: true,
         integer: true,
         max: 5000,
       },
@@ -219,6 +233,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "hasVulnerable",
         label: "ในครัวเรือน/สถานประกอบการนี้ มีบุคคลกลุ่มเปราะบางหรือไม่",
         type: "boolean",
+        required: true,
         booleanLabels: { true: "มี (กรอกตาราง)", false: "ติ๊ก ☑ ไม่มีกลุ่มเปราะบาง", trueFirst: true },
       },
     ],
@@ -264,8 +279,9 @@ export const ENTRY_STEPS: EntryStep[] = [
       {
         name: "assistanceNeeds",
         label: "ความต้องการ (เลือกได้หลายข้อ พร้อมจำนวนคน/รายละเอียดตามข้อ)",
-        type: "checkbox-group",
+        type: "assistance-needs",
         masterKey: "assistanceNeedTypes",
+        extraKeys: ["assistanceNeedCounts", "assistanceNeedDetails"],
         sensitive: true,
       },
     ],

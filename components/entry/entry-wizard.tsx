@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { visibleSteps, type EntryField } from "@/lib/entry/steps";
+import { collectMissing, missingCountByStep } from "@/lib/entry/validation";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import type { EntryPayload } from "@/lib/entry/payload";
 import {
@@ -18,6 +19,8 @@ import {
   emptyVulnerableRow,
   type VulnerableRow,
 } from "./vulnerable-grid";
+import { Mascot } from "@/components/brand/mascot";
+import { Modal } from "@/components/ui/modal";
 
 type SheetInfo = {
   id: string;
@@ -25,15 +28,6 @@ type SheetInfo = {
   batchCode: string;
   communityName: string;
 };
-
-/** ฟิลด์ถือว่า "ตอบแล้ว" เมื่อมีค่า (หรือถูกทำเครื่องหมาย F2/F3 ที่ระดับ caller) */
-function isAnswered(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (typeof value === "string") return value.trim() !== "";
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "number") return Number.isFinite(value);
-  return true; // boolean = ตอบแล้วเสมอ (true/false ต่างมีความหมาย)
-}
 
 type Props = {
   sheet: SheetInfo;
@@ -144,50 +138,42 @@ export function EntryWizard({
   const lockExpired = remainingMs <= 0;
   const lowLock = !lockExpired && remainingMs < 2 * 60 * 1000;
 
-  // ฟิลด์สำคัญ ⭐ ที่ยังไม่ได้กรอกก่อนส่ง (นับ F2/F3 ว่าตอบแล้ว — ไม่บังคับเดาค่า)
-  const missingCritical = useMemo(() => {
-    const out: { key: string; label: string; stepIndex: number }[] = [];
-    steps.forEach((s, idx) => {
-      if (s.kind === "vulnerable-grid") {
-        vulnerableRows.forEach((row, ri) => {
-          const started =
-            row.prefix.trim() !== "" ||
-            row.firstName.trim() !== "" ||
-            row.lastName.trim() !== "" ||
-            row.phone.trim() !== "" ||
-            row.age.trim() !== "" ||
-            row.vulnerabilities.length > 0;
-          if (started && row.firstName.trim() === "") {
-            out.push({
-              key: `vg-${ri}`,
-              label: `กลุ่มเปราะบาง คนที่ ${ri + 1}: ชื่อ`,
-              stepIndex: idx,
-            });
-          }
-        });
-        return;
-      }
-      for (const f of s.fields) {
-        if (!f.critical) continue;
-        if (!fieldVisible(f, answers, master)) continue;
-        // measure-pair: ถือว่าตอบแล้วถ้าช่องใดช่องหนึ่งมีค่า/ถูกมาร์ก (เช่น 1 เมตร ซม.ว่าง = ตอบแล้ว)
-        if (f.pair) {
-          const answered =
-            isAnswered(answers[f.name]) ||
-            isAnswered(answers[f.pair.name]) ||
-            Boolean(marks[f.name]) ||
-            Boolean(marks[f.pair.name]);
-          if (!answered) out.push({ key: f.name, label: f.label, stepIndex: idx });
-          continue;
-        }
-        if (marks[f.name]) continue; // F2/F3 = ตอบแล้ว
-        if (!isAnswered(answers[f.name])) {
-          out.push({ key: f.name, label: f.label, stepIndex: idx });
-        }
-      }
-    });
-    return out;
-  }, [steps, answers, marks, master, vulnerableRows]);
+  /**
+   * รายการที่ยังไม่ถูกตอบทั้งใบ — คำนวณด้วย Pure Function (lib/entry/validation.ts)
+   * กติกา: ทุกช่องที่มองเห็นต้องมีค่า หรือถูกมาร์ก F2/F3 — ห้ามเว้นว่างเงียบ ๆ
+   * รวมถึงชื่อ-สกุลในตาราง, รายละเอียดที่บังคับ และจำนวน/รายละเอียดของความต้องการ
+   */
+  const missing = useMemo(
+    () =>
+      collectMissing({
+        steps,
+        answers,
+        marks,
+        vulnerableRows,
+        vulnerabilityTypes: master.vulnerabilityTypes.map((v) => ({
+          id: v.id,
+          label: v.label,
+          requiresDetail: v.requiresDetail,
+        })),
+        assistanceTypes: master.assistanceNeedTypes.map((a) => ({
+          id: a.id,
+          label: a.label,
+          requiresCount: a.requiresCount,
+          requiresDetail: a.requiresDetail,
+        })),
+        codeOf: (masterKey, id) =>
+          (master[masterKey as keyof typeof master] as { id: string; code: string }[])
+            .find((o) => o.id === id)?.code,
+      }),
+    [steps, answers, marks, master, vulnerableRows],
+  );
+  const missingByStep = useMemo(() => missingCountByStep(missing), [missing]);
+  const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
+  /** เฉพาะของ step ที่เปิดอยู่ — ใช้บอกชื่อช่องที่ยังขาดตรงหัวเรื่อง */
+  const stepMissing = useMemo(
+    () => missing.filter((m) => m.stepId === step.id),
+    [missing, step.id],
+  );
 
   // นับถอยหลัง lock
   useEffect(() => {
@@ -377,19 +363,17 @@ export function EntryWizard({
   if (submitted) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-canvas px-4">
-        <div className="w-full max-w-md animate-rise rounded-2xl border border-slate-200/70 bg-white p-8 text-center shadow-md">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+        <div className="w-full max-w-md animate-rise rounded-3xl border-2 border-slate-200/80 bg-white p-8 text-center shadow-lg">
+          <div className="animate-drop-in">
+            <Mascot role="entry" mood="happy" tone="mint" motion="float" size={112} decorative className="mx-auto" />
           </div>
-          <h1 className="mt-5 text-xl font-bold text-slate-900">ส่งใบเรียบร้อย</h1>
+          <h1 className="mt-4 text-2xl font-bold text-slate-900">ส่งใบเรียบร้อย</h1>
           <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
-            ใบ <span className="font-mono font-medium">{sheet.sheetNo}</span>{" "}
+            ใบ <span className="font-mono font-bold">{sheet.sheetNo}</span>{" "}
             ถูกบันทึกเข้าระบบแล้ว (ข้อมูลอ่อนไหวถูกเข้ารหัส) — รอผู้ตรวจยืนยันความถูกต้อง
           </p>
           {submitted.duplicateSuspected && (
-            <p className="mx-auto mt-3 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+            <p className="mx-auto mt-3 max-w-sm rounded-xl border-2 border-sun-200 bg-sun-50 px-3 py-2 text-xs font-medium leading-relaxed text-sun-800">
               ⚠ เบอร์โทรผู้ให้ข้อมูลตรงกับใบอื่นในระบบ — ระบบติดธง &ldquo;สงสัยใบซ้ำ&rdquo;
               ให้ผู้ตรวจดูแล้ว ไม่ต้องทำอะไรเพิ่ม
             </p>
@@ -399,7 +383,7 @@ export function EntryWizard({
             onClick={() => {
               router.replace("/surveys");
             }}
-            className="btn btn-primary btn-md mt-7"
+            className="btn btn-accent btn-lg mt-7"
           >
             คีย์ใบถัดไป
           </button>
@@ -415,13 +399,18 @@ export function EntryWizard({
         <div className="space-y-4 md:sticky md:top-6">
           {/* ข้อมูลใบ */}
           <div className="card p-5">
-            <div className="flex items-center gap-2">
-              <span className="badge badge-brand">Entry รอบที่ 1</span>
+            <div className="flex items-center gap-2.5">
+              <span className="chip chip-accent h-9 w-9 shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
+                  <path d="M8 4h9a1 1 0 011 1v15l-3-2-3 2-3-2V5a1 1 0 011-1z" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <span className="badge badge-accent">กำลังคีย์ใบนี้</span>
             </div>
-            <p className="mt-3 break-all font-mono text-sm font-semibold text-slate-900">
+            <p className="mt-3 break-all font-mono text-base font-bold text-slate-900">
               {sheet.sheetNo}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs font-medium text-slate-500">
               {sheet.communityName} · <span className="font-mono">{sheet.batchCode}</span>
             </p>
 
@@ -429,7 +418,7 @@ export function EntryWizard({
                 ต่ออายุอัตโนมัติเมื่อเปลี่ยนขั้นตอน · เตือนเฉพาะเมื่อใกล้หมด */}
             <p
               className={`mt-3 flex items-center gap-1.5 text-[11px] ${
-                lowLock ? "font-medium text-amber-600" : "text-slate-500"
+                lowLock ? "font-bold text-sun-700" : "text-slate-500"
               }`}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3">
@@ -457,45 +446,61 @@ export function EntryWizard({
           <nav className="card overflow-hidden p-2">
             {steps.map((s, i) => {
               const active = i === safeIndex;
-              const done = visited.has(s.id) && !active;
+              const gap = missingByStep[s.id] ?? 0;
+              // เขียวต่อเมื่อ "กรอกครบจริง" ไม่ใช่แค่เคยเปิดผ่าน
+              const done = visited.has(s.id) && !active && gap === 0;
+              const incomplete = visited.has(s.id) && !active && gap > 0;
               return (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => void goTo(i)}
                   aria-current={active ? "step" : undefined}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                    active ? "bg-brand-50" : "hover:bg-slate-50"
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
+                    active
+                      ? "bg-brand-50 shadow-[inset_3px_0_0_0_var(--color-brand-500)]"
+                      : "hover:translate-x-0.5 hover:bg-slate-50"
                   }`}
                 >
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-colors ${
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold transition-colors ${
                       active
-                        ? "bg-brand-600 text-white"
+                        ? "bg-brand-500 text-white shadow-[0_2px_0_0_var(--color-brand-700)]"
                         : done
-                          ? "bg-emerald-100 text-emerald-600"
-                          : "bg-slate-100 text-slate-500"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : incomplete
+                            ? "bg-sun-100 text-sun-800"
+                            : "bg-slate-100 text-slate-500"
                     }`}
                   >
                     {done ? (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3 w-3">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3.5 w-3.5">
                         <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : incomplete ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3.5 w-3.5">
+                        <path d="M12 8v5M12 17h.01" strokeLinecap="round" />
                       </svg>
                     ) : (
                       i + 1
                     )}
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">
                       {s.paperSection}
                     </span>
                     <span
                       className={`block truncate text-[13px] ${
-                        active ? "font-semibold text-brand-800" : "text-slate-600"
+                        active ? "font-bold text-brand-800" : "font-medium text-slate-600"
                       }`}
                     >
                       {s.title}
                     </span>
+                    {gap > 0 && !active && (
+                      <span className="mt-0.5 block text-[10px] font-bold text-sun-800">
+                        ยังไม่ได้ตอบ {gap} ช่อง
+                      </span>
+                    )}
                   </span>
                 </button>
               );
@@ -516,9 +521,9 @@ export function EntryWizard({
       {/* ── เนื้อหา step ── */}
       <div className="min-w-0 flex-1 space-y-4">
         {/* แถบสถานะการบันทึกร่าง + ปุ่มลัดคีย์บอร์ด */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-slate-200/80 bg-white px-4 py-3">
           <p
-            className={`flex items-center gap-2 text-xs ${
+            className={`flex items-center gap-2 text-xs font-medium ${
               saveState === "error" ? "text-red-600" : "text-slate-600"
             }`}
             role="status"
@@ -562,39 +567,39 @@ export function EntryWizard({
 
         {/* progress */}
         <div className="flex items-center gap-3">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200/70">
             <div
-              className="h-full rounded-full bg-brand-600 transition-all duration-300"
+              className="h-full rounded-full bg-brand-500 transition-all duration-500"
               style={{ width: `${((safeIndex + 1) / steps.length) * 100}%` }}
             />
           </div>
-          <span className="shrink-0 text-xs font-medium tabular-nums text-slate-500">
+          <span className="shrink-0 text-xs font-bold tabular-nums text-slate-600">
             ขั้นที่ {safeIndex + 1} / {steps.length}
           </span>
         </div>
 
-        {showValidation && missingCritical.length > 0 && (
+        {showValidation && missing.length > 0 && (
           <div
             role="alert"
-            className="animate-fade-in rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+            className="animate-pop rounded-2xl border-2 border-sun-200 bg-sun-50 px-4 py-3"
           >
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-800">
+            <p className="flex items-center gap-1.5 text-sm font-bold text-sun-800">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
                 <path d="M12 9v4M12 17h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              ยังกรอกฟิลด์สำคัญไม่ครบ ({missingCritical.length})
+              ยังไม่ได้ตอบ {missing.length} ช่อง — ส่งใบไม่ได้
             </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-amber-700">
+            <p className="mt-0.5 text-xs leading-relaxed text-sun-700">
               ฟิลด์ ⭐ ต้องมีค่า หรือทำเครื่องหมาย <kbd className="kbd">F2</kbd> (อ่านไม่ออก) /{" "}
               <kbd className="kbd">F3</kbd> (ว่างในกระดาษ) — คลิกเพื่อไปแก้
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {missingCritical.map((m) => (
+              {missing.map((m) => (
                 <button
                   key={m.key}
                   type="button"
                   onClick={() => void goTo(m.stepIndex)}
-                  className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                  className="rounded-lg border-2 border-sun-300 bg-white px-2.5 py-1 text-xs font-bold text-sun-800 transition-colors hover:bg-sun-100"
                 >
                   {m.label}
                 </button>
@@ -604,11 +609,41 @@ export function EntryWizard({
         )}
 
         <section key={step.id} className="card animate-step-in p-6 md:p-7">
-          <header className="mb-6 border-b border-slate-100 pb-5">
-            <span className="badge badge-neutral">{step.paperSection}</span>
-            <h2 className="mt-2 text-lg font-bold text-slate-900">{step.title}</h2>
+          <header className="mb-6 border-b-2 border-slate-100 pb-5">
+            <span className="badge badge-brand">{step.paperSection}</span>
+            <h2 className="mt-2 text-xl font-bold text-slate-900">{step.title}</h2>
             {step.description && (
               <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{step.description}</p>
+            )}
+            {/* อธิบายตัวเลขในแถบซ้าย: นับเฉพาะ "ช่องบังคับ" ไม่ใช่ช่องว่างทั้งหมด
+                ช่องอื่นเว้นว่างได้ตามกระดาษ (paper-first) */}
+            {stepMissing.length > 0 ? (
+              <div className="mt-3 rounded-xl border-2 border-sun-200 bg-sun-50 px-3.5 py-2.5">
+                <p className="text-xs font-bold text-sun-800">
+                  ส่วนนี้ยังไม่ได้ตอบ {stepMissing.length} ช่อง
+                </p>
+                <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  {stepMissing.slice(0, 8).map((m) => (
+                    <li key={m.key} className="text-xs font-medium text-sun-800">
+                      • {m.label}
+                    </li>
+                  ))}
+                  {stepMissing.length > 8 && (
+                    <li className="text-xs font-medium text-sun-700">
+                      และอีก {stepMissing.length - 8} ช่อง
+                    </li>
+                  )}
+                </ul>
+                <p className="mt-1.5 text-[11px] font-medium text-sun-700">
+                  ทุกช่องต้องถูกตอบ เพื่อไม่ให้ข้อมูลจากกระดาษตกหล่น —
+                  กระดาษไม่ได้เขียนกด <span className="kbd">F3</span> ·
+                  เขียนมาแต่อ่านไม่ออกกด <span className="kbd">F2</span>
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs font-medium text-emerald-700">
+                ✓ ส่วนนี้ตอบครบทุกช่องแล้ว
+              </p>
             )}
           </header>
 
@@ -616,6 +651,7 @@ export function EntryWizard({
             <VulnerableGrid
               master={master}
               rows={vulnerableRows}
+              missingKeys={showValidation ? missingKeys : undefined}
               onChange={(rows) => {
                 touched.current = true;
                 dirty.current = true;
@@ -639,12 +675,19 @@ export function EntryWizard({
                     onPairChange={
                       f.pair ? (v) => setAnswer(f.pair!.name, v) : undefined
                     }
+                    extraValues={
+                      f.extraKeys
+                        ? Object.fromEntries(f.extraKeys.map((k) => [k, answers[k]]))
+                        : undefined
+                    }
+                    onExtraChange={(k, v) => setAnswer(k, v)}
+                    missingKeys={showValidation ? missingKeys : undefined}
                   />
                 ))}
             </div>
           )}
 
-          <footer className="mt-7 flex items-center justify-between border-t border-slate-100 pt-5">
+          <footer className="mt-7 flex items-center justify-between border-t-2 border-slate-100 pt-5">
             <button
               type="button"
               onClick={() => void goTo(safeIndex - 1)}
@@ -672,14 +715,14 @@ export function EntryWizard({
                 type="button"
                 onClick={() => {
                   setSubmitError(null);
-                  if (missingCritical.length > 0) {
+                  if (missing.length > 0) {
                     setShowValidation(true);
-                    void goTo(missingCritical[0].stepIndex);
+                    void goTo(missing[0].stepIndex);
                     return;
                   }
                   setConfirmOpen(true);
                 }}
-                className="btn btn-primary btn-md"
+                className="btn btn-accent btn-lg"
               >
                 ส่งใบ
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
@@ -692,15 +735,22 @@ export function EntryWizard({
       </div>
 
       {/* Overlay ยืนยันการส่งใบ */}
-      {confirmOpen && !lockExpired && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md animate-rise rounded-2xl bg-white p-7 shadow-lg">
-            <h3 className="text-lg font-bold text-slate-900">ยืนยันการส่งใบ</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-              ใบ <span className="font-mono font-medium">{sheet.sheetNo}</span> ·{" "}
-              {sheet.communityName}
-            </p>
-            <ul className="mt-4 space-y-1.5 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      <Modal
+        open={confirmOpen && !lockExpired}
+        onClose={() => !submitting && setConfirmOpen(false)}
+      >
+          <div className="animate-rise rounded-3xl bg-white p-7 shadow-lg">
+            <div className="flex items-center gap-3">
+              <Mascot role="entry" mood="wink" motion="wiggle" size={56} decorative className="shrink-0" />
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">ยืนยันการส่งใบ</h3>
+                <p className="text-sm leading-relaxed text-slate-600">
+                  ใบ <span className="font-mono font-bold">{sheet.sheetNo}</span> ·{" "}
+                  {sheet.communityName}
+                </p>
+              </div>
+            </div>
+            <ul className="mt-4 space-y-1.5 rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
               <li className="flex justify-between">
                 <span>อ่านไม่ออก (F2)</span>
                 <span className="tabular-nums font-medium">
@@ -734,7 +784,7 @@ export function EntryWizard({
               ข้อมูลอ่อนไหวถูกเข้ารหัสก่อนบันทึก
             </p>
             {submitError && (
-              <p role="alert" className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p role="alert" className="mt-3 rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
                 {submitError}
               </p>
             )}
@@ -751,26 +801,19 @@ export function EntryWizard({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={submitting}
-                className="btn btn-primary btn-md"
+                className="btn btn-accent btn-md"
               >
                 {submitting ? "กำลังส่ง…" : "ยืนยันส่งใบ"}
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Overlay เมื่อ lock หมดอายุ */}
-      {lockExpired && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md animate-rise rounded-2xl bg-white p-7 text-center shadow-lg">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <h3 className="mt-5 text-lg font-bold text-slate-900">การจองใบหมดอายุ</h3>
+      <Modal open={lockExpired}>
+          <div className="animate-rise rounded-3xl bg-white p-7 text-center shadow-lg">
+            <Mascot role="entry" mood="sleep" tone="sun" motion="float" size={96} decorative className="mx-auto" />
+            <h3 className="mt-4 text-lg font-bold text-slate-900">การจองใบหมดอายุ</h3>
             <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
               คุณไม่ได้ใช้งานสักพัก ระบบจึงปล่อยใบนี้ให้ผู้อื่นเปิดได้ —
               กด “คีย์ใบนี้ต่อ” เพื่อจองอีกครั้ง (หากยังไม่มีผู้อื่นเปิด)
@@ -796,8 +839,7 @@ export function EntryWizard({
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { claimSheetAction } from "@/lib/entry/actions";
+import { Mascot } from "@/components/brand/mascot";
 
 type Props = {
   sheetId: string;
@@ -31,24 +32,19 @@ export function SheetGate({ sheetId, expired }: Props) {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas px-4">
-      <div className="w-full max-w-md animate-rise rounded-2xl border border-slate-200/70 bg-white p-8 text-center shadow-md">
-        <div
-          className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${
-            expired ? "bg-amber-50 text-amber-600" : "bg-brand-50 text-brand-600"
-          }`}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-            {expired ? (
-              <>
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
-              </>
-            ) : (
-              <path d="M8 4h9a1 1 0 011 1v15l-3-2-3 2-3-2V5a1 1 0 011-1z" strokeLinejoin="round" />
-            )}
-          </svg>
+      <div className="w-full max-w-md animate-rise rounded-3xl border-2 border-slate-200/80 bg-white p-8 text-center shadow-lg">
+        <div className="animate-drop-in">
+          <Mascot
+            role={expired ? "notify" : "entry"}
+            mood={expired ? "sleep" : "wink"}
+            tone={expired ? "sun" : undefined}
+            motion="float"
+            size={104}
+            decorative
+            className="mx-auto"
+          />
         </div>
-        <h1 className="mt-5 text-xl font-bold text-slate-900">
+        <h1 className="mt-4 text-xl font-bold text-slate-900">
           {expired ? "การจองใบหมดอายุ" : "พร้อมเริ่มคีย์ใบนี้"}
         </h1>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
@@ -61,16 +57,16 @@ export function SheetGate({ sheetId, expired }: Props) {
             type="button"
             onClick={handleClaim}
             disabled={pending}
-            className="btn btn-primary btn-md"
+            className="btn btn-accent btn-lg"
           >
             {pending ? "กำลังเปิด…" : expired ? "คีย์ใบนี้ต่อ" : "เริ่มคีย์ใบนี้"}
           </button>
-          <Link href="/surveys" className="btn btn-secondary btn-md">
+          <Link href="/surveys" className="btn btn-secondary btn-lg">
             กลับหน้าคีย์แบบสอบถาม
           </Link>
         </div>
         {message && (
-          <p role="status" className="mt-4 text-xs text-amber-700 animate-fade-in">
+          <p role="status" className="mt-4 text-xs font-semibold text-sun-800 animate-pop">
             {message}
           </p>
         )}
