@@ -25,23 +25,27 @@ async function main() {
   console.log(dryRun ? "— DRY RUN (ไม่เขียนข้อมูล) —" : "— รันจริง —");
   console.log(JSON.stringify(result, null, 2));
 
-  if (result.noop) {
-    console.log("\n✓ ไม่มีบทบาทเดิมที่ต้องย้าย — ฐานข้อมูลนี้ผ่าน migration แล้ว");
-    return;
-  }
   if (dryRun) {
     console.log("\nรันคำสั่งเดิมโดยไม่ใส่ --dry-run เพื่อเขียนข้อมูลจริง");
     return;
   }
 
+  // ตรวจ postcondition **เสมอ** แม้ผลจะเป็น noop — noop แปลว่า "ไม่มีอะไรให้ย้าย"
+  // ซึ่งต้องพิสูจน์ด้วยการนับจริง ไม่ใช่เชื่อผลลัพธ์ของขั้นตอนก่อนหน้า
   const check = await verifyMigration(prisma);
   console.log("\nตรวจหลังย้าย:", JSON.stringify(check));
   if (!check.ok) {
-    console.error("! ยังเหลือบทบาทเดิมที่ใช้งานอยู่ — ตรวจสอบก่อนถือว่าเสร็จ");
+    console.error(
+      "! Postcondition ไม่ผ่าน — ยังเหลือบทบาทเดิมที่ใช้งานอยู่ ห้ามถือว่าเสร็จ",
+    );
     process.exitCode = 1;
-  } else {
-    console.log("✓ ไม่เหลือบทบาทเดิมที่ใช้งานอยู่");
+    return;
   }
+  console.log(
+    result.noop
+      ? "✓ ไม่มีบทบาทเดิมที่ต้องย้าย — ฐานข้อมูลนี้ผ่าน migration แล้ว"
+      : "✓ ไม่เหลือบทบาทเดิมที่ใช้งานอยู่",
+  );
 }
 
 void main().finally(() => prisma.$disconnect());

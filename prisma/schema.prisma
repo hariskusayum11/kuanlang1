@@ -183,7 +183,7 @@ enum UserRoleEnum {
   VOLUNTEER // อาสาสมัครชุมชน — เห็น Aggregate + รับงาน Incident (v3.0 BR-25)
   DATA_ENTRY // เจ้าหน้าที่คีย์ข้อมูล — เห็นทีละใบ ห้าม Query (v3.0)
   RESEARCHER // นักวิจัย — ข้อมูล Anonymized
-  FIELD_SURVEYOR // ผู้สำรวจ — ตอบคำถามกลับเท่านั้น
+  FIELD_SURVEYOR // เลิกใช้ (#R6-E) — ผู้สำรวจเป็นข้อมูลในแบบสอบถาม ไม่ต้องมีบัญชี; คง enum ไว้เพื่อประวัติ
 }
 
 /// ระดับความเสี่ยงที่ผู้สำรวจประเมิน (ท้ายเล่ม) — กระดาษมี 3 ตัวเลือก (AMB-05)
@@ -1627,7 +1627,7 @@ model RegistrationRequest {
   id     String @id @default(cuid())
   userId String @unique /// บัญชี (inactive) ที่สร้างตอนสมัคร — 1 คำขอต่อบัญชี
 
-  requestedRole UserRoleEnum /// จำกัด whitelist ฝั่ง server: VOLUNTEER / FIELD_SURVEYOR / DATA_ENTRY
+  requestedRole UserRoleEnum /// จำกัด whitelist ฝั่ง server: VOLUNTEER / DATA_ENTRY (FIELD_SURVEYOR เลิกใช้แล้ว — #R6-E)
   organization  String? /// สังกัด (free text เฟสแรก — docs/27 §4 รอรายชื่อภาคีจริง)
   communityId   String? /// ชุมชนที่ขอทำงานด้วย
   note          String? /// เหตุผล/รายละเอียดประกอบ

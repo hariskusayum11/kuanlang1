@@ -30,13 +30,18 @@ export const ACTIVE_ROLES: readonly UserRoleEnum[] = [
  * ยังคงอยู่ใน PostgreSQL enum เพื่อให้บัญชีเก่าอ่านได้จนกว่าจะรัน Data Migration
  * แต่ **ห้ามมอบหมายใหม่** — ทั้งจากหน้าจัดการผู้ใช้และจากการเรียก Server Action ตรง
  *
- *  - COORDINATOR → ยุบเข้า OFFICER (permission ของ OFFICER ครอบคลุมอยู่แล้ว)
- *  - VERIFIER    → ยุบเข้า OFFICER + ต้องได้ `hasGlobalCommunityScope=true`
- *                  เพื่อคงพฤติกรรมเดิมที่เห็นคิวทุกชุมชน (ผ่านธงรายบัญชี ไม่ใช่ชื่อ Role)
+ *  - COORDINATOR    → ยุบเข้า OFFICER (permission ของ OFFICER ครอบคลุมอยู่แล้ว)
+ *  - VERIFIER       → ยุบเข้า OFFICER + ต้องได้ `hasGlobalCommunityScope=true`
+ *                     เพื่อคงพฤติกรรมเดิมที่เห็นคิวทุกชุมชน (ผ่านธงรายบัญชี ไม่ใช่ชื่อ Role)
+ *  - FIELD_SURVEYOR → **ไม่ใช่บัญชีผู้ใช้ระบบอีกต่อไป** (Owner Decision #R6-E)
+ *                     ผู้สำรวจเป็น "ข้อมูลในแบบสอบถาม" (ชื่อ/เบอร์จากกระดาษ) ไม่ต้องมีบัญชี
+ *                     จึง **ไม่มีบทบาททดแทน** — ห้ามแปลงเป็น OFFICER หรือ DATA_ENTRY อัตโนมัติ
+ *                     เพราะไม่มีข้อมูลสนับสนุนว่าเจ้าของบัญชีควรได้สิทธิ์ใด
  */
 export const LEGACY_ROLES: readonly UserRoleEnum[] = [
   UserRoleEnum.COORDINATOR,
   UserRoleEnum.VERIFIER,
+  UserRoleEnum.FIELD_SURVEYOR,
 ];
 
 /** บทบาทนี้ถูกเลิกใช้แล้วหรือไม่ — ใช้ตรวจทั้งฝั่ง server และตอนเรนเดอร์ UI */
@@ -44,21 +49,21 @@ export function isLegacyRole(role: UserRoleEnum): boolean {
   return LEGACY_ROLES.includes(role);
 }
 
-/** บทบาทที่ควรย้ายไปแทน — ใช้แสดงคำแนะนำและเป็นฐานของ Migration ใน commit ถัดไป */
-export const LEGACY_ROLE_REPLACEMENT: Record<string, UserRoleEnum> = {
+/** บทบาทที่ควรย้ายไปแทน (null = ไม่มีบทบาททดแทน) — ฐานของ Data Migration */
+export const LEGACY_ROLE_REPLACEMENT: Record<string, UserRoleEnum | null> = {
   [UserRoleEnum.COORDINATOR]: UserRoleEnum.OFFICER,
   [UserRoleEnum.VERIFIER]: UserRoleEnum.OFFICER,
+  // null = ไม่มีบทบาททดแทน — ปิดของเดิมแล้วจบ ห้ามเดาสิทธิ์ให้
+  [UserRoleEnum.FIELD_SURVEYOR]: null,
 };
 
 /**
  * บทบาทที่ประกาศไว้ตาม requirement แต่ยังไม่มีโมดูลรองรับ (มอบหมายได้แต่ยังทำอะไรไม่ได้)
- *  - FIELD_SURVEYOR: รอโมดูล FieldQuery (ตอบกลับเมื่อคนคีย์อ่านลายมือไม่ออก) — 0 permission
  *  - VOLUNTEER: รอโมดูล Incident / Rescue Task — ปัจจุบันเห็นได้แค่ภาพรวม
  *  - RESEARCHER: รอโมดูล Reports (ข้อมูล Anonymized)
  * เก็บไว้ในระบบตาม CLAUDE.md §Authentication and roles ที่ระบุว่า "ต้องรองรับอย่างน้อย" 9 บทบาท
  */
 export const RESERVED_ROLES: readonly UserRoleEnum[] = [
-  UserRoleEnum.FIELD_SURVEYOR,
   UserRoleEnum.VOLUNTEER,
   UserRoleEnum.RESEARCHER,
 ];
@@ -72,7 +77,8 @@ export const ROLE_HINTS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.VERIFIER]:
     "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้ (ผู้ที่ต้องเห็นทุกชุมชนให้เปิดสิทธิ์พื้นที่รายบัญชี)",
   [UserRoleEnum.DATA_ENTRY]: "คีย์แบบสอบถาม เปิดใบจากรหัสบนกระดาษได้ทุกชุมชน",
-  [UserRoleEnum.FIELD_SURVEYOR]: "รอโมดูลตอบคำถามกลับ — ยังไม่มีสิทธิ์ใด ๆ",
+  [UserRoleEnum.FIELD_SURVEYOR]:
+    "บทบาทเดิม — ปัจจุบันบันทึกผู้สำรวจเป็นข้อมูลในแบบสอบถาม โดยไม่ต้องมีบัญชีผู้ใช้",
   [UserRoleEnum.VOLUNTEER]: "รอโมดูลเหตุการณ์/ภารกิจกู้ภัย — ปัจจุบันเห็นแค่ภาพรวม",
   [UserRoleEnum.RESEARCHER]: "รอโมดูลรายงาน — ปัจจุบันเห็นแค่ภาพรวม",
 };

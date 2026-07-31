@@ -572,6 +572,84 @@ node --env-file=.env --import tsx scripts/migrate-legacy-roles.ts     # เข�
    (สคริปต์ `audit-legacy-roles.ts` รายงาน `verifierAlreadyGlobal` ไว้ — ต้องเก็บค่านี้
    ก่อนรันถ้าต้องการย้อนกลับให้แม่นยำ)
 
+**Production Runbook (บังคับทำทุก Environment):**
+สคริปต์นี้ **ไม่ได้รันอัตโนมัติพร้อม `prisma migrate deploy`** — ต้องสั่งเองทุกครั้ง
+
+| # | ขั้นตอน | คำสั่ง / สิ่งที่ต้องได้ |
+|---|---|---|
+| 1 | สำรองฐานข้อมูล | `pg_dump` หรือ snapshot ของผู้ให้บริการ — **เส้นทางคืนค่าหลัก** |
+| 2 | รัน audit ก่อน | `node --env-file=.env --import tsx scripts/audit-legacy-roles.ts` |
+| 3 | **เก็บผลจำนวนก่อนรัน** | บันทึก JSON ที่ได้ไว้ (โดยเฉพาะ `verifierAlreadyGlobal`) |
+| 4 | Dry-run | `node --env-file=.env --import tsx scripts/migrate-legacy-roles.ts --dry-run` |
+| 5 | ตรวจผล Dry-run | `legacyUsers` / `officerRolesGranted` / `globalScopeGranted` ตรงกับข้อ 2 |
+| 6 | รันจริง | `node --env-file=.env --import tsx scripts/migrate-legacy-roles.ts` |
+| 7 | รัน audit หลัง | `node --env-file=.env --import tsx scripts/audit-legacy-roles.ts` |
+| 8 | ยืนยัน | `activeCoordinator = 0` |
+| 9 | ยืนยัน | `activeVerifier = 0` |
+| 10 | ยืนยัน | ผู้ใช้ VERIFIER เดิมมี `OFFICER` และ `hasGlobalCommunityScope = true` |
+
+สคริปต์ตรวจ postcondition **เสมอ** (แม้ผลเป็น `noop`) และ **คืน exit code 1** เมื่อยังเหลือ
+บทบาทเดิมที่ใช้งานอยู่ — ใช้ผูกกับ CI/CD ได้โดยไม่ต้องอ่าน log ด้วยตา
+
+### #R6-E — เลิกใช้บทบาท FIELD_SURVEYOR ในชั้นแอปพลิเคชัน
+
+| # | คำตัดสิน |
+|---|---|
+| #R6-29 | **`FIELD_SURVEYOR` ไม่ใช่บัญชีผู้ใช้งานระบบอีกต่อไป** — ผู้สำรวจภาคสนามเป็นเพียง**ข้อมูลประกอบของแบบสอบถาม** (ชื่อ / เบอร์โทร) ไม่ต้องมี User Account |
+| #R6-30 | **ห้ามใช้ข้อมูลผู้สำรวจตัดสิน Authorization** — `surveyorUserId` เป็น Optional Legacy Reference เท่านั้น ห้าม derive Community Scope หรือ Permission จากผู้สำรวจ |
+| #R6-31 | คง `FIELD_SURVEYOR` ใน PostgreSQL enum เพื่อรองรับข้อมูลและประวัติเดิม แต่ **เลิกใช้ในชั้นแอปพลิเคชัน** |
+| #R6-32 | **ไม่มีบทบาททดแทน** — ห้ามแปลงผู้ใช้เดิมเป็น `OFFICER` หรือ `DATA_ENTRY` อัตโนมัติ เพราะไม่มีข้อมูลสนับสนุนว่าควรได้สิทธิ์ใด |
+| #R6-33 | **ห้ามปิด `User.isActive` อัตโนมัติ** — บัญชีอาจมีบทบาทอื่นที่ยังใช้งานอยู่ |
+| #R6-34 | คำขอสมัคร `PENDING` ที่ขอบทบาทนี้ → `REJECTED` พร้อมเหตุผลและ Audit Log · **ห้ามลบคำขอทิ้ง** |
+| #R6-35 | **คำขอที่ `APPROVED` ห้ามเขียนทับเป็น `REJECTED`** — คำขอนั้นถูกอนุมัติจริงในเวลานั้น การเขียนทับคือการทำลายประวัติ · การเลิกใช้บทบาทแสดงผ่านการปิด `UserRole` แทน |
+| #R6-36 | `REJECTED` / `CANCELLED` เดิม — ไม่เปลี่ยนซ้ำ |
+| #R6-37 | **ห้ามเพิ่ม `surveyorCodeOnPaper` และ `surveyorOrganizationOnPaper`** — ไม่มีในแบบสอบถามกระดาษ (ตรวจ docs/03 §0 แล้ว มีเพียง 0.3 ชื่อ และ 0.4 เบอร์โทร) |
+| #R6-38 | `VOLUNTEER` และ `RESEARCHER` ยังเป็นบทบาทสำรอง **ห้ามเปิดใช้งานในรอบนี้** |
+
+**บทบาทที่มอบหมายใหม่ได้ (หลัง #R6-E):** `ADMIN` · `EXECUTIVE` · `OFFICER` · `DATA_ENTRY`
+**Legacy / Retired:** `COORDINATOR` · `VERIFIER` · `FIELD_SURVEYOR`
+**สำรองในอนาคต:** `VOLUNTEER` · `RESEARCHER`
+
+**Permission ก่อน/หลัง:** `FIELD_SURVEYOR` = `[]` **ทั้งก่อนและหลัง** — ไม่เคยมี Operational
+Permission อยู่แล้ว งานรอบนี้จึงเป็นการปิดช่องมอบหมายและย้ายข้อมูล ไม่ใช่การลดสิทธิ์
+ผู้ใช้ที่มี `[FIELD_SURVEYOR, DATA_ENTRY]` ได้สิทธิ์จาก `DATA_ENTRY` เท่านั้น (มีเทสต์ล็อกไว้)
+
+**Surveyor Metadata — ฟิลด์จริงในสคีมา (ใช้ชื่อเดิม ไม่สร้างซ้ำ):**
+
+| ฟิลด์ | ความหมาย |
+|---|---|
+| `Household.surveyorPrefixId` / `surveyorPrefixOther` | คำนำหน้าผู้สำรวจ (master data) |
+| `Household.surveyorFirstNameOnPaper` / `surveyorLastNameOnPaper` | ชื่อ-สกุลผู้สำรวจ **จากกระดาษ** |
+| `Household.surveyorPhoneOnPaper` | เบอร์ผู้สำรวจ **จากกระดาษ** |
+| `Household.surveyorUserId` | Optional Legacy Reference — **ไม่ถูกใช้ในโค้ดใด ๆ** |
+
+> ตรวจทั้ง repository แล้ว `surveyorUserId` **ไม่ถูกอ้างในโค้ด production เลย** มีเพียงประกาศในสคีมา
+> จึงไม่มีจุดใดใช้ผู้สำรวจตัดสิน Authorization อยู่แล้ว
+
+**Data Migration — `retire-field-surveyor`:**
+
+* `lib/admin/retire-field-surveyor.ts` (core) · `scripts/retire-field-surveyor.ts` (CLI)
+  · `scripts/audit-field-surveyor.ts` (ตรวจนับ ไม่มี PII)
+* ทำใน `$transaction` เดียว — ปิด `UserRole` และเปลี่ยนสถานะคำขอต้องเกิดหรือหายพร้อมกัน
+* Audit เขียนด้วย `tx.auditLog.create` **ในทรานแซกชันเดียวกัน** (ไม่ใช้ `writeAuditLog`
+  ซึ่งเป็น best-effort นอกทรานแซกชัน) เพราะร่องรอยกับการเปลี่ยนสถานะต้องไม่มีอย่างใดค้างเดี่ยว
+* `AuditLog.userId = null` = ระบบเป็นผู้กระทำ ตามที่สคีมากำหนดไว้แล้ว
+  พร้อม `changes.migration = "migration:retire-field-surveyor"` เป็นตัวระบุผู้ดำเนินการ
+* Idempotent: กรองด้วย `isActive: true` และ `status: PENDING` — รันซ้ำได้ ไม่เขียน Audit ซ้ำ
+
+**Runbook (เหมือน #R6-D):**
+
+```
+1) สำรองฐานข้อมูล
+2) node --env-file=.env --import tsx scripts/audit-field-surveyor.ts
+3) node --env-file=.env --import tsx scripts/retire-field-surveyor.ts --dry-run
+4) node --env-file=.env --import tsx scripts/retire-field-surveyor.ts
+5) node --env-file=.env --import tsx scripts/audit-field-surveyor.ts
+```
+
+ยืนยันหลังรัน: `Active FIELD_SURVEYOR UserRole = 0` · `Pending FIELD_SURVEYOR Request = 0`
+· บทบาทอื่นของผู้ใช้ไม่เปลี่ยน — สคริปต์คืน **exit code 1** เมื่อ postcondition ไม่ผ่าน
+
 ---
 
 ## 7. ข้อจำกัดเพิ่มเติมจากรอบ 2 (บังคับใช้)

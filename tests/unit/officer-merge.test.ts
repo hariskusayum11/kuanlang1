@@ -18,7 +18,7 @@ import { NAV_ITEMS, visibleNavItems } from "../../lib/navigation";
 
 // Owner Decision 2026-07-31 #R6-D: ยุบ COORDINATOR + VERIFIER เข้า OFFICER
 // Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY
-// (FIELD_SURVEYOR ยังไม่แตะใน commit นี้)
+// Owner Decision 2026-07-31 #R6-E: เลิกใช้ FIELD_SURVEYOR ในชั้นแอปพลิเคชัน
 
 describe("OFFICER ครอบคลุมหน้าที่ของ COORDINATOR และ VERIFIER", () => {
   const officer = ROLE_PERMISSIONS[UserRoleEnum.OFFICER];
@@ -113,9 +113,45 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     );
   });
 
-  it("FIELD_SURVEYOR ยังไม่ถูกเลิกใช้ใน commit นี้ (ทำใน commit ถัดไป)", () => {
-    expect(isLegacyRole(UserRoleEnum.FIELD_SURVEYOR)).toBe(false);
-    expect(RESERVED_ROLES).toContain(UserRoleEnum.FIELD_SURVEYOR);
+  it("1) FIELD_SURVEYOR ไม่อยู่ในรายการที่มอบหมายได้ (Owner Decision #R6-E)", () => {
+    expect(isLegacyRole(UserRoleEnum.FIELD_SURVEYOR)).toBe(true);
+    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.FIELD_SURVEYOR);
+    // ห้ามอยู่กลุ่ม "ยังไม่มีโมดูลรองรับ" เพราะสื่อว่าอนาคตอาจเปิดกลับ
+    expect(RESERVED_ROLES).not.toContain(UserRoleEnum.FIELD_SURVEYOR);
+  });
+
+  it("12) FIELD_SURVEYOR ให้ Permission เป็นศูนย์", () => {
+    expect(ROLE_PERMISSIONS[UserRoleEnum.FIELD_SURVEYOR]).toEqual([]);
+    const authz = buildAuthorization([UserRoleEnum.FIELD_SURVEYOR]);
+    expect(authz.permissions).toEqual([]);
+    expect(authz.isGlobalScope).toBe(false);
+    expect(visibleNavItems(authz.permissions)).toEqual([]);
+  });
+
+  it("13) [FIELD_SURVEYOR, DATA_ENTRY] ได้สิทธิ์จาก DATA_ENTRY เท่านั้น", () => {
+    const combined = buildAuthorization([
+      UserRoleEnum.FIELD_SURVEYOR,
+      UserRoleEnum.DATA_ENTRY,
+    ]);
+    const dataEntryOnly = buildAuthorization([UserRoleEnum.DATA_ENTRY]);
+    expect([...combined.permissions].sort()).toEqual(
+      [...dataEntryOnly.permissions].sort(),
+    );
+    expect(combined.isGlobalScope).toBe(false);
+  });
+
+  it("4) คำขอสมัครไม่รับ FIELD_SURVEYOR", () => {
+    expect(REQUESTABLE_ROLES as readonly UserRoleEnum[]).not.toContain(
+      UserRoleEnum.FIELD_SURVEYOR,
+    );
+  });
+
+  it("บทบาทสำรอง VOLUNTEER / RESEARCHER ยังไม่ถูกเปิดใช้งานใน commit นี้", () => {
+    expect([...RESERVED_ROLES].sort()).toEqual(
+      [UserRoleEnum.VOLUNTEER, UserRoleEnum.RESEARCHER].sort(),
+    );
+    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.VOLUNTEER);
+    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.RESEARCHER);
   });
 
   it("ทุก role ในเอนัมยังต้องมีป้ายและคำอธิบาย — บัญชีเก่าต้องแสดงผลได้", () => {
@@ -130,10 +166,15 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     expect([...ROLE_DISPLAY_ORDER].sort()).toEqual([...grouped].sort());
   });
 
-  it("บทบาทเดิมทุกตัวต้องระบุได้ว่าย้ายไปเป็นอะไร (ฐานของ Data Migration)", () => {
+  it("บทบาทเดิมทุกตัวต้องระบุปลายทางได้ (ฐานของ Data Migration)", () => {
     for (const role of LEGACY_ROLES) {
-      expect(LEGACY_ROLE_REPLACEMENT[role]).toBe(UserRoleEnum.OFFICER);
+      // null = ไม่มีบทบาททดแทน (FIELD_SURVEYOR) — ต้องเป็นค่าที่ "ตั้งใจระบุ" ไม่ใช่ค่าที่ลืมใส่
+      expect(role in LEGACY_ROLE_REPLACEMENT).toBe(true);
     }
+    expect(LEGACY_ROLE_REPLACEMENT[UserRoleEnum.COORDINATOR]).toBe(UserRoleEnum.OFFICER);
+    expect(LEGACY_ROLE_REPLACEMENT[UserRoleEnum.VERIFIER]).toBe(UserRoleEnum.OFFICER);
+    // ห้ามเดาบทบาททดแทนให้ผู้สำรวจ — ไม่มีข้อมูลว่าควรได้สิทธิ์ใด
+    expect(LEGACY_ROLE_REPLACEMENT[UserRoleEnum.FIELD_SURVEYOR]).toBeNull();
   });
 
   it("8-9) คำขอสมัครไม่รับ COORDINATOR และ VERIFIER", () => {
