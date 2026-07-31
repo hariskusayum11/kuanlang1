@@ -169,11 +169,11 @@ export function ReceiveBatchForm({ communities }: { communities: CommunityOption
             />
             {preview &&
               (preview.ok ? (
-                <p className="text-xs font-medium text-emerald-600" role="status">
+                <p className="text-xs font-bold text-emerald-700" role="status">
                   ✓ อ่านได้ {preview.count.toLocaleString("th-TH")} ใบ
                 </p>
               ) : (
-                <p className="text-xs text-red-600" role="alert">
+                <p className="text-xs font-semibold text-red-600" role="alert">
                   {preview.message}
                 </p>
               ))}
@@ -233,9 +233,9 @@ export function ReceiveBatchForm({ communities }: { communities: CommunityOption
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 animate-fade-in"
+          className="flex items-start gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 animate-pop"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="mt-0.5 h-4 w-4 shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 h-4 w-4 shrink-0">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
           </svg>
@@ -244,10 +244,10 @@ export function ReceiveBatchForm({ communities }: { communities: CommunityOption
       )}
 
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={submitting} className="btn btn-primary btn-md">
+        <button type="submit" disabled={submitting} className="btn btn-accent btn-lg">
           {submitting ? "กำลังบันทึก…" : "รับปึกเข้าระบบ"}
         </button>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs font-medium text-slate-500">
           รับแล้วสถานะเป็น &ldquo;รับปึกแล้ว&rdquo; — เปิดให้คีย์ได้จากหน้าปึก
         </p>
       </div>
@@ -270,10 +270,10 @@ function ModeCard({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500/40 ${
+      className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-3.5 transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400 has-[:focus-visible]:ring-offset-1 ${
         checked
-          ? "border-brand-500 bg-brand-50/50"
-          : "border-slate-200 hover:border-slate-300"
+          ? "border-brand-500 bg-brand-50"
+          : "border-slate-200 hover:border-brand-300 hover:bg-brand-50/40"
       }`}
     >
       <input
@@ -282,10 +282,12 @@ function ModeCard({
         checked={checked}
         onChange={onSelect}
         disabled={disabled}
-        className="mt-1 h-4 w-4 accent-brand-600"
+        className="mt-1 h-4 w-4 accent-brand-500"
       />
       <span>
-        <span className="block text-sm font-semibold text-slate-900">{title}</span>
+        <span className={`block text-sm font-bold ${checked ? "text-brand-800" : "text-slate-900"}`}>
+          {title}
+        </span>
         <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
           {desc}
         </span>

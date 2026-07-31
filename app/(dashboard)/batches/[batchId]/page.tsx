@@ -4,6 +4,8 @@ import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getBatchDetail } from "@/lib/batch/core";
 import { BatchTransitionButton } from "@/components/batch/batch-actions";
+import { Mascot } from "@/components/brand/mascot";
+import { SectionTitle } from "@/components/layout/page-hero";
 
 export const metadata = { title: "รายละเอียดปึก" };
 export const dynamic = "force-dynamic";
@@ -39,39 +41,45 @@ export default async function BatchDetailPage({
     : 0;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
+    <div className="mx-auto max-w-4xl space-y-7 animate-fade-in">
       <div>
         <Link
           href="/batches"
-          className="text-xs font-medium text-slate-500 hover:text-slate-700"
+          className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800"
         >
-          ← กลับหน้าปึกกระดาษ
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+            <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          กลับหน้าปึกกระดาษ
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h2 className="font-mono text-xl font-bold text-slate-900">{batch.code}</h2>
-          <span className={`badge ${status.cls}`}>{status.label}</span>
+
+        <div className="animate-slide-up mt-3 flex flex-wrap items-center justify-between gap-4 rounded-3xl band-ink px-6 py-6 md:px-8">
+          <div className="min-w-0">
+            <h2 className="font-mono text-2xl font-bold text-white">{batch.code}</h2>
+            <p className="mt-1 text-sm text-brand-100">{batch.communityName}</p>
+            <span className={`badge mt-3 ${status.cls}`}>{status.label}</span>
+          </div>
         </div>
-        <p className="mt-1 text-sm text-slate-500">{batch.communityName}</p>
       </div>
 
       {/* สรุปตัวเลข */}
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="รับมา (นับได้)" value={batch.expectedCount} />
-        <StatCard label="รอคีย์" value={batch.awaiting} />
-        <StatCard label="คีย์แล้ว" value={batch.entered} />
-        <StatCard label="ยืนยันแล้ว" value={batch.verified} />
+      <section className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="รับมา (นับได้)" value={batch.expectedCount} tone="brand" />
+        <StatCard label="รอคีย์" value={batch.awaiting} tone="sun" />
+        <StatCard label="คีย์แล้ว" value={batch.entered} tone="alert" />
+        <StatCard label="ยืนยันแล้ว" value={batch.verified} tone="mint" />
       </section>
 
       {/* ความคืบหน้า + การจัดการ */}
       <section className="card space-y-4 p-6">
         <div>
           <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-slate-700">ความคืบหน้าการคีย์</span>
-            <span className="tabular-nums text-slate-500">{done}%</span>
+            <span className="font-bold text-slate-700">ความคืบหน้าการคีย์</span>
+            <span className="font-bold tabular-nums text-emerald-700">{done}%</span>
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200/70">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
+              className="h-full rounded-full bg-emerald-400 transition-all duration-500"
               style={{ width: `${done}%` }}
             />
           </div>
@@ -91,7 +99,7 @@ export default async function BatchDetailPage({
           )}
         </dl>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+        <div className="flex flex-wrap items-center gap-3 border-t-2 border-slate-100 pt-4">
           {batch.status === "RECEIVED" && (
             <BatchTransitionButton batchId={batch.id} kind="open" />
           )}
@@ -108,24 +116,29 @@ export default async function BatchDetailPage({
 
       {/* เลขใบที่ยังไม่ถูกคีย์ — ไว้ไล่ใบค้าง/หาใบหาย */}
       <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h3 className="text-[15px] font-semibold text-slate-900">
-            เลขใบที่ยังไม่ถูกคีย์
-          </h3>
-          <span className="text-xs tabular-nums text-slate-500">
-            {batch.awaiting.toLocaleString("th-TH")} ใบ
-          </span>
+        <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
+          <SectionTitle
+            title="เลขใบที่ยังไม่ถูกคีย์"
+            tone="sun"
+            aside={
+              <span className="badge badge-neutral tabular-nums">
+                {batch.awaiting.toLocaleString("th-TH")} ใบ
+              </span>
+            }
+          />
         </div>
         {batch.awaitingNumbers.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-slate-500">
-            ทุกใบถูกคีย์แล้ว 🎉
-          </p>
+          <div className="flex flex-col items-center px-6 py-12 text-center">
+            <Mascot role="entry" mood="happy" tone="mint" motion="float" size={84} decorative />
+            <p className="mt-4 text-[15px] font-bold text-slate-800">ทุกใบถูกคีย์แล้ว</p>
+            <p className="mt-1 text-sm text-slate-500">รอ Verifier ตรวจสอบความถูกต้องต่อไป</p>
+          </div>
         ) : (
-          <div className="flex flex-wrap gap-1.5 px-6 py-4">
+          <div className="flex flex-wrap gap-2 px-6 py-5">
             {batch.awaitingNumbers.map((no) => (
               <span
                 key={no}
-                className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600"
+                className="rounded-lg border-2 border-sun-200 bg-sun-50 px-2.5 py-1 font-mono text-xs font-bold text-sun-800"
               >
                 {no}
               </span>
@@ -137,11 +150,29 @@ export default async function BatchDetailPage({
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+const STAT_TONE = {
+  brand: { bar: "bg-brand-400", value: "text-brand-700" },
+  sun: { bar: "bg-sun-400", value: "text-sun-700" },
+  alert: { bar: "bg-alert-400", value: "text-alert-600" },
+  mint: { bar: "bg-emerald-400", value: "text-emerald-700" },
+} as const;
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof STAT_TONE;
+}) {
   return (
-    <div className="card p-4">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+    <div className="card card-interactive p-4">
+      <p className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+        <span className={`h-4 w-1.5 rounded-full ${STAT_TONE[tone].bar}`} aria-hidden="true" />
+        {label}
+      </p>
+      <p className={`mt-2 text-[28px] font-bold leading-none tabular-nums ${STAT_TONE[tone].value}`}>
         {value.toLocaleString("th-TH")}
       </p>
     </div>
@@ -151,8 +182,8 @@ function StatCard({ label, value }: { label: string; value: number }) {
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 sm:justify-start">
-      <dt className="shrink-0 text-slate-500">{label}</dt>
-      <dd className="text-right font-medium text-slate-800 sm:text-left">{value}</dd>
+      <dt className="shrink-0 font-medium text-slate-500">{label}</dt>
+      <dd className="text-right font-semibold text-slate-800 sm:text-left">{value}</dd>
     </div>
   );
 }

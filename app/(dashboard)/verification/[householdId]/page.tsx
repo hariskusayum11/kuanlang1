@@ -11,6 +11,7 @@ import {
 import { loadHouseholdEditable } from "@/lib/verification/edit";
 import { VerifyPanel } from "@/components/verification/verify-panel";
 import { EditPanel } from "@/components/verification/edit-panel";
+import { SectionTitle } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ตรวจสอบใบ" };
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ function StatusBadge({ status }: { status: FieldStatusEnum }) {
 function FieldRow({ field }: { field: ReviewField }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
-      <dt className="flex items-center gap-1.5 text-sm text-slate-500">
+      <dt className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
         {field.label}
         {field.sensitive && (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 text-slate-400" aria-label="ข้อมูลอ่อนไหว">
@@ -37,7 +38,7 @@ function FieldRow({ field }: { field: ReviewField }) {
           </svg>
         )}
       </dt>
-      <dd className="text-right text-sm font-medium text-slate-900">
+      <dd className="text-right text-sm font-semibold text-slate-900">
         {field.value != null && field.value !== "" ? (
           field.value
         ) : (
@@ -51,16 +52,16 @@ function FieldRow({ field }: { field: ReviewField }) {
 function PersonCard({ person }: { person: ReviewVulnerablePerson }) {
   const display = [person.prefix, person.name].filter(Boolean).join(" ");
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between">
-        <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-bold text-brand-700">
+    <div className="rounded-2xl border-2 border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-alert-100 text-[11px] font-bold text-alert-700">
             {person.seq}
           </span>
           {display || <span className="font-normal text-slate-400">— ไม่มีชื่อ —</span>}
           <StatusBadge status={person.nameStatus} />
         </p>
-        <div className="flex items-center gap-3 text-xs text-slate-500">
+        <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
           <span className="flex items-center gap-1">
             อายุ {person.age ?? "—"}
             <StatusBadge status={person.ageStatus} />
@@ -104,40 +105,40 @@ export default async function ReviewPage({
       <div>
         <Link
           href="/verification"
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-700"
+          className="inline-flex items-center gap-1.5 rounded-full border-2 border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
             <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           กลับคิวตรวจสอบ
         </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 font-mono text-xl font-bold text-slate-900">
+        <div className="animate-slide-up mt-3 flex flex-wrap items-center justify-between gap-4 rounded-3xl band-ink px-6 py-6 md:px-8">
+          <div className="min-w-0">
+            <h2 className="flex flex-wrap items-center gap-2 font-mono text-2xl font-bold text-white">
               {review.sheetNo}
               {isVerified ? (
                 <span className="badge badge-success">ตรวจสอบแล้ว</span>
               ) : (
-                <span className="badge badge-brand">รอตรวจสอบ</span>
+                <span className="badge bg-white/20 text-white">รอตรวจสอบ</span>
               )}
               {review.hasDuplicateFlag && (
                 <span className="badge badge-warning">⚠ สงสัยซ้ำ</span>
               )}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1.5 text-sm font-medium text-brand-100">
               {review.communityName} · <span className="font-mono">{review.batchCode}</span> ·
               คีย์โดย {review.enteredByName}
             </p>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
-              อ่านไม่ออก {review.illegibleCount}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-slate-300" />
-              ว่าง {review.blankCount}
-            </span>
+            <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs font-bold">
+              <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-sun-100">
+                <span className="h-2 w-2 rounded-full bg-sun-400" />
+                อ่านไม่ออก {review.illegibleCount}
+              </span>
+              <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-slate-200">
+                <span className="h-2 w-2 rounded-full bg-slate-300" />
+                ว่าง {review.blankCount}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -145,8 +146,8 @@ export default async function ReviewPage({
       {/* ส่วนข้อมูล */}
       {review.sections.map((section) => (
         <section key={section.title} className="card p-6">
-          <h3 className="mb-1 text-[15px] font-semibold text-slate-900">{section.title}</h3>
-          <dl className="divide-y divide-slate-50">
+          <SectionTitle title={section.title} tone="brand" />
+          <dl className="mt-2 divide-y-2 divide-slate-50">
             {section.fields.map((f) => (
               <FieldRow key={f.label} field={f} />
             ))}
@@ -157,10 +158,12 @@ export default async function ReviewPage({
       {/* กลุ่มเปราะบาง */}
       {review.vulnerablePersons.length > 0 && (
         <section className="card p-6">
-          <h3 className="mb-3 text-[15px] font-semibold text-slate-900">
-            กลุ่มเปราะบาง ({review.vulnerablePersons.length} คน)
-          </h3>
-          <div className="space-y-3">
+          <SectionTitle
+            title="กลุ่มเปราะบาง"
+            tone="alert"
+            aside={<span className="badge badge-neutral">{review.vulnerablePersons.length} คน</span>}
+          />
+          <div className="mt-3 space-y-3">
             {review.vulnerablePersons.map((p) => (
               <PersonCard key={p.seq} person={p} />
             ))}
@@ -178,18 +181,18 @@ export default async function ReviewPage({
       )}
 
       {/* แถบยืนยัน */}
-      <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/90 px-6 py-4 shadow-md backdrop-blur">
+      <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-white/95 px-6 py-4 shadow-lg backdrop-blur">
         {isVerified ? (
-          <p className="text-sm text-emerald-700">
+          <p className="text-sm font-bold text-emerald-700">
             ✓ ยืนยันแล้วโดย {review.verifiedByName ?? "—"}
             {review.verifiedAt && ` · ${review.verifiedAt.toLocaleString("th-TH")}`}
           </p>
         ) : review.enteredByMe ? (
-          <p className="text-sm text-amber-700">
+          <p className="text-sm font-semibold text-sun-800">
             คุณเป็นผู้คีย์ใบนี้ — ต้องให้ผู้ตรวจคนอื่นยืนยัน (แยกหน้าที่ผู้คีย์/ผู้ตรวจ)
           </p>
         ) : (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm font-medium text-slate-600">
             ตรวจข้อมูลข้างต้นเทียบกับกระดาษ เมื่อถูกต้องแล้วจึงยืนยัน
           </p>
         )}

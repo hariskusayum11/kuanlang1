@@ -48,7 +48,7 @@ export function BatchTransitionButton({
         type="button"
         onClick={run}
         disabled={pending}
-        className={`btn btn-md ${kind === "open" ? "btn-primary" : "btn-secondary"}`}
+        className={`btn btn-md ${kind === "open" ? "btn-accent" : "btn-secondary"}`}
       >
         {pending
           ? "กำลังทำรายการ…"
@@ -57,7 +57,7 @@ export function BatchTransitionButton({
             : "ปิดปึก"}
       </button>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="animate-pop text-xs font-semibold text-red-600">
           {error}
         </p>
       )}

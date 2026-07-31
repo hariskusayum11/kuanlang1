@@ -88,10 +88,13 @@ export function EditPanel({ householdId, initialValues, options }: Props) {
   }
 
   return (
-    <section className="card animate-fade-in border-brand-200 p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold text-slate-900">แก้ไขข้อมูลที่คีย์ผิด</h3>
-        <span className="text-xs text-slate-400">ระบบเก็บสำเนาก่อนแก้ (version) ทุกครั้ง</span>
+    <section className="card animate-fade-in !border-brand-300 p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
+          <span className="h-5 w-1.5 rounded-full bg-alert-400" />
+          แก้ไขข้อมูลที่คีย์ผิด
+        </h3>
+        <span className="text-xs font-medium text-slate-400">ระบบเก็บสำเนาก่อนแก้ (version) ทุกครั้ง</span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -100,16 +103,20 @@ export function EditPanel({ householdId, initialValues, options }: Props) {
           const changed = val !== (initialValues[f.key] ?? "");
           return (
             <div key={f.key} className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
                 {f.label}
                 {f.sensitive && <span className="text-slate-400" title="เข้ารหัสเมื่อบันทึก">🔒</span>}
-                {changed && <span className="text-brand-600" title="มีการแก้ไข">• แก้แล้ว</span>}
+                {changed && (
+                  <span className="badge badge-accent !px-2 !py-0.5 !text-[10px]" title="มีการแก้ไข">
+                    แก้แล้ว
+                  </span>
+                )}
               </label>
               {f.kind === "select" && f.masterKey ? (
                 <select
                   value={val}
                   onChange={(e) => set(f.key, e.target.value)}
-                  className={`field ${changed ? "!border-brand-400" : ""}`}
+                  className={`field ${changed ? "!border-alert-400 !bg-alert-50/40" : ""}`}
                 >
                   <option value="">— ไม่ระบุ —</option>
                   {options[f.masterKey].map((o) => (
@@ -135,7 +142,7 @@ export function EditPanel({ householdId, initialValues, options }: Props) {
                           : raw,
                     );
                   }}
-                  className={`field ${changed ? "!border-brand-400" : ""}`}
+                  className={`field ${changed ? "!border-alert-400 !bg-alert-50/40" : ""}`}
                 />
               )}
             </div>
@@ -144,12 +151,12 @@ export function EditPanel({ householdId, initialValues, options }: Props) {
       </div>
 
       {error && (
-        <p role="alert" className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p role="alert" className="mt-4 animate-pop rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
           {error}
         </p>
       )}
       {notice && (
-        <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="mt-4 animate-pop rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-600">
           {notice}
         </p>
       )}
@@ -162,7 +169,7 @@ export function EditPanel({ householdId, initialValues, options }: Props) {
           type="button"
           onClick={() => void save()}
           disabled={busy || !dirty}
-          className="btn btn-primary btn-md"
+          className="btn btn-accent btn-md"
         >
           {busy ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}
         </button>

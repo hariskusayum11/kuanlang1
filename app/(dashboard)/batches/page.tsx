@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { listBatches } from "@/lib/batch/core";
+import { PageHero, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ปึกกระดาษ" };
 export const dynamic = "force-dynamic";
@@ -21,30 +22,45 @@ export default async function BatchesPage() {
   const batches = (await listBatches(ctx)) ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">ปึกกระดาษ</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            รับปึกแบบสอบถามเข้าระบบ เปิดให้คีย์ และติดตามความคืบหน้าจนปิดปึก
-          </p>
-        </div>
-        <Link href="/batches/new" className="btn btn-primary btn-md">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-          </svg>
-          รับปึกใหม่
-        </Link>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-7 animate-fade-in">
+      <PageHero
+        title="ปึกกระดาษ"
+        tone="ink"
+        description="รับปึกแบบสอบถามเข้าระบบ เปิดให้คีย์ และติดตามความคืบหน้าจนปิดปึก"
+        badge={
+          <>
+            <span className="live-dot" />
+            {batches.length.toLocaleString("th-TH")} ปึกในขอบเขตของคุณ
+          </>
+        }
+        actions={
+          <Link href="/batches/new" className="btn btn-accent btn-md">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+            </svg>
+            รับปึกใหม่
+          </Link>
+        }
+      />
 
       <section className="card overflow-hidden">
         {batches.length === 0 ? (
-          <EmptyBatches />
+          <EmptyState
+            mood="sleep"
+            tone="sun"
+            title="ยังไม่มีปึกกระดาษในขอบเขตของคุณ"
+            description="เมื่อได้รับกระดาษแบบสอบถามจากผู้สำรวจ กด “รับปึกใหม่” เพื่อนำเข้าระบบ"
+            action={
+              <Link href="/batches/new" className="btn btn-primary btn-md">
+                รับปึกใหม่
+              </Link>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
+                <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
                   <th className="py-3 pl-6 pr-4">ปึก</th>
                   <th className="py-3 pr-4">ชุมชน</th>
                   <th className="py-3 pr-4">สถานะ</th>
@@ -56,23 +72,23 @@ export default async function BatchesPage() {
                   <th className="py-3 pr-6">ที่เก็บ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y-2 divide-slate-50">
                 {batches.map((b) => {
                   const status = BATCH_STATUS[b.status] ?? {
                     label: b.status,
                     cls: "badge-neutral",
                   };
                   return (
-                    <tr key={b.id} className="transition-colors hover:bg-slate-50/60">
+                    <tr key={b.id} className="transition-colors hover:bg-brand-50/50">
                       <td className="py-3 pl-6 pr-4">
                         <Link
                           href={`/batches/${b.id}`}
-                          className="font-mono text-xs font-medium text-brand-700 hover:underline"
+                          className="font-mono text-xs font-bold text-brand-700 hover:underline"
                         >
                           {b.code}
                         </Link>
                       </td>
-                      <td className="py-3 pr-4 text-slate-700">{b.communityName}</td>
+                      <td className="py-3 pr-4 font-medium text-slate-700">{b.communityName}</td>
                       <td className="py-3 pr-4">
                         <span className={`badge ${status.cls}`}>{status.label}</span>
                       </td>
@@ -85,7 +101,7 @@ export default async function BatchesPage() {
                       <td className="py-3 pr-4 text-right tabular-nums text-slate-600">
                         {b.entered.toLocaleString("th-TH")}
                       </td>
-                      <td className="py-3 pr-4 text-right tabular-nums font-semibold text-slate-900">
+                      <td className="py-3 pr-4 text-right font-bold tabular-nums text-emerald-700">
                         {b.verified.toLocaleString("th-TH")}
                       </td>
                       <td className="py-3 pr-4 text-xs tabular-nums text-slate-500">
@@ -102,26 +118,6 @@ export default async function BatchesPage() {
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function EmptyBatches() {
-  return (
-    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-300">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-          <path d="M4 7h16M4 7v11a1 1 0 001 1h14a1 1 0 001-1V7M4 7l2-3h12l2 3" strokeLinejoin="round" />
-          <path d="M9 11h6" strokeLinecap="round" />
-        </svg>
-      </div>
-      <p className="mt-4 text-sm font-medium text-slate-700">
-        ยังไม่มีปึกกระดาษในขอบเขตของคุณ
-      </p>
-      <p className="mt-1 max-w-sm text-xs text-slate-500">
-        เมื่อได้รับกระดาษแบบสอบถามจากผู้สำรวจ กด &ldquo;รับปึกใหม่&rdquo;
-        เพื่อนำเข้าระบบ
-      </p>
     </div>
   );
 }

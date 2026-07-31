@@ -9,6 +9,7 @@ import {
   registrationSchema,
 } from "@/lib/registration/validation";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
+import { Mascot } from "@/components/brand/mascot";
 
 interface CommunityOption {
   id: string;
@@ -73,19 +74,17 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
   if (submitted) {
     return (
       <div className="space-y-5 text-center animate-fade-in" role="status">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-7 w-7">
-            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <div className="animate-drop-in">
+          <Mascot role="field" mood="happy" tone="mint" motion="float" size={100} decorative className="mx-auto" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">ส่งคำขอลงทะเบียนแล้ว</h3>
+          <h3 className="text-xl font-bold text-slate-900">ส่งคำขอลงทะเบียนแล้ว</h3>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
             ผู้ดูแลระบบจะตรวจสอบและอนุมัติคำขอของคุณ
             เมื่อได้รับการอนุมัติแล้ว คุณสามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ตั้งไว้ได้ทันที
           </p>
         </div>
-        <Link href="/login" className="btn btn-primary w-full">
+        <Link href="/login" className="btn btn-accent btn-lg w-full">
           ไปหน้าเข้าสู่ระบบ
         </Link>
       </div>
@@ -94,37 +93,38 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div className="space-y-1.5">
-        <label htmlFor="reg-name" className="label">
-          ชื่อ-นามสกุล <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="reg-name"
-          type="text"
-          autoComplete="name"
-          required
-          value={form.name}
-          onChange={(e) => set("name", e.target.value)}
-          disabled={submitting}
-          className="field disabled:bg-slate-50"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="reg-email" className="label">
-          อีเมล <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="reg-email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@example.com"
-          required
-          value={form.email}
-          onChange={(e) => set("email", e.target.value)}
-          disabled={submitting}
-          className="field disabled:bg-slate-50"
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="reg-name" className="label">
+            ชื่อ-นามสกุล <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="reg-name"
+            type="text"
+            autoComplete="name"
+            required
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            disabled={submitting}
+            className="field disabled:bg-slate-50"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="reg-email" className="label">
+            อีเมล <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="reg-email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            required
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            disabled={submitting}
+            className="field disabled:bg-slate-50"
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -161,21 +161,6 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor="reg-phone" className="label">
-          เบอร์โทรศัพท์
-        </label>
-        <input
-          id="reg-phone"
-          type="tel"
-          autoComplete="tel"
-          placeholder="08x-xxx-xxxx"
-          value={form.phone}
-          onChange={(e) => set("phone", e.target.value)}
-          disabled={submitting}
-          className="field disabled:bg-slate-50"
-        />
-      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -219,19 +204,36 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor="reg-org" className="label">
-          หน่วยงาน/สังกัด
-        </label>
-        <input
-          id="reg-org"
-          type="text"
-          placeholder="เช่น เทศบาลเมืองควนลัง, ม.ทักษิณ, ชุมชนท่าเคียน"
-          value={form.organization}
-          onChange={(e) => set("organization", e.target.value)}
-          disabled={submitting}
-          className="field disabled:bg-slate-50"
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="reg-phone" className="label">
+            เบอร์โทรศัพท์
+          </label>
+          <input
+            id="reg-phone"
+            type="tel"
+            autoComplete="tel"
+            placeholder="08x-xxx-xxxx"
+            value={form.phone}
+            onChange={(e) => set("phone", e.target.value)}
+            disabled={submitting}
+            className="field disabled:bg-slate-50"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="reg-org" className="label">
+            หน่วยงาน/สังกัด
+          </label>
+          <input
+            id="reg-org"
+            type="text"
+            placeholder="เช่น เทศบาล, ม.ทักษิณ, ชุมชน"
+            value={form.organization}
+            onChange={(e) => set("organization", e.target.value)}
+            disabled={submitting}
+            className="field disabled:bg-slate-50"
+          />
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -252,9 +254,9 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 animate-fade-in"
+          className="flex items-start gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 animate-pop"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="mt-0.5 h-4 w-4 shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 h-4 w-4 shrink-0">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
           </svg>
@@ -278,7 +280,7 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
 
       <p className="text-center text-sm text-slate-500">
         มีบัญชีอยู่แล้ว?{" "}
-        <Link href="/login" className="font-medium text-brand-600 hover:underline">
+        <Link href="/login" className="font-bold text-brand-700 hover:underline">
           เข้าสู่ระบบ
         </Link>
       </p>

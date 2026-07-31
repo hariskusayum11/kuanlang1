@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { APP_NAME, APP_DESCRIPTION_TH } from "@/lib/app-config";
+import { Mascot } from "@/components/brand/mascot";
+import { LogoMark } from "@/components/brand/logo-mark";
 import {
   getPublicStats,
   getPublicEmergencyContacts,
@@ -17,9 +19,35 @@ const CATEGORY_LABEL: Record<string, string> = {
   MUNICIPALITY: "เทศบาล",
 };
 
-const PREPARE_TIPS = [
+/* sun/alert สงวนความหมายไว้ (คำเตือน / ต้องลงมือทำ) — ตัวเลขที่เป็นกลางใช้ brand หรือ ink */
+type Tone = "brand" | "ink" | "alert" | "sun" | "mint";
+
+const TONE_CHIP: Record<Tone, string> = {
+  brand: "chip chip-brand",
+  ink: "chip bg-ink-800/10 text-ink-900",
+  alert: "chip chip-accent",
+  sun: "chip chip-sun",
+  mint: "chip chip-mint",
+};
+const TONE_VALUE: Record<Tone, string> = {
+  brand: "text-brand-700",
+  ink: "text-ink-900",
+  alert: "text-alert-600",
+  sun: "text-sun-800",
+  mint: "text-emerald-700",
+};
+const TONE_DOT: Record<Tone, string> = {
+  brand: "bg-brand-400",
+  ink: "bg-ink-800",
+  alert: "bg-alert-400",
+  sun: "bg-sun-400",
+  mint: "bg-emerald-400",
+};
+
+const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }[] = [
   {
     title: "ก่อนน้ำมา",
+    tone: "sun",
     icon: "M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18.4 5.6l-2.1 2.1M21 12h-3M7 21h10M12 9a5 5 0 015 5c0 1.5-.7 2.6-1.6 3.6-.6.7-.9 1.4-1 2.4h-4.8c-.1-1-.4-1.7-1-2.4C7.7 16.6 7 15.5 7 14a5 5 0 015-5z",
     items: [
       "เตรียมถุงยังชีพ อาหารแห้ง น้ำดื่ม ยาประจำตัว และไฟฉาย",
@@ -30,6 +58,7 @@ const PREPARE_TIPS = [
   },
   {
     title: "ระหว่างน้ำท่วม",
+    tone: "brand",
     icon: "M3 15c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0 3 1.2 4.5 0M3 19c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0 3 1.2 4.5 0M12 3v6M9 6l3 3 3-3",
     items: [
       "ติดตามประกาศจากผู้นำชุมชนและเทศบาลอย่างใกล้ชิด",
@@ -40,6 +69,7 @@ const PREPARE_TIPS = [
   },
   {
     title: "หลังน้ำลด",
+    tone: "mint",
     icon: "M4 21V9l8-5 8 5v12M9 21v-6h6v6M12 3v2",
     items: [
       "ตรวจระบบไฟฟ้าและแก๊สก่อนกลับเข้าบ้าน",
@@ -64,17 +94,15 @@ export default async function PublicHomePage() {
   return (
     <div className="min-h-screen bg-canvas">
       {/* Header สาธารณะ — เรียบ เข้าถึงง่าย */}
-      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 backdrop-blur-md">
+      <header className="sticky top-0 z-20 border-b-2 border-slate-200/70 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
-              SF
-            </div>
+          <div className="flex items-center gap-2.5">
+            <LogoMark size={34} className="text-brand-600" />
             <div>
               <p className="text-[15px] font-bold leading-tight text-slate-900">
                 {APP_NAME}
               </p>
-              <p className="hidden text-[11px] text-slate-500 sm:block">
+              <p className="hidden text-[11px] font-medium text-brand-600 sm:block">
                 เครือข่ายสองคลอง–ควนลัง
               </p>
             </div>
@@ -89,34 +117,74 @@ export default async function PublicHomePage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-4 pb-16 md:px-6">
-        {/* Hero — สถานะพื้นที่ */}
-        <section className="animate-slide-up py-10 text-center md:py-14">
-          <span className="badge badge-brand mx-auto animate-pop">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-            อยู่ระหว่างการสำรวจข้อมูลครัวเรือน
-          </span>
-          <h1 className="mx-auto mt-4 max-w-2xl text-2xl font-bold leading-snug text-slate-900 md:text-3xl">
-            ข้อมูลชุมชน พร้อมรับมืออุทกภัย
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-600 md:text-base">
-            {APP_DESCRIPTION_TH} — รวบรวมข้อมูลครัวเรือน กลุ่มเปราะบาง
-            และทรัพยากรชุมชน เพื่อวางแผนช่วยเหลือเมื่อเกิดน้ำท่วม
-          </p>
+        {/* Hero — แถบแบรนด์สีเข้ม + มาสคอตหยดน้ำ */}
+        <section className="animate-slide-up relative mt-5 overflow-hidden rounded-3xl band-brand px-6 pb-16 pt-8 md:px-10 md:pb-20 md:pt-12">
+          <div className="relative z-10 flex flex-col items-center gap-6 text-center md:flex-row md:items-center md:gap-10 md:text-left">
+            <div className="min-w-0 flex-1">
+              <span className="badge animate-pop bg-white/20 text-white">
+                <span className="live-dot" />
+                อยู่ระหว่างการสำรวจข้อมูลครัวเรือน
+              </span>
+              <h1 className="mt-4 text-3xl font-bold leading-snug text-white md:text-[40px]">
+                ข้อมูลชุมชน
+                <br className="hidden md:block" /> พร้อมรับมืออุทกภัย
+              </h1>
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-brand-50 md:text-base">
+                {APP_DESCRIPTION_TH} — รวบรวมข้อมูลครัวเรือน กลุ่มเปราะบาง
+                และทรัพยากรชุมชน เพื่อวางแผนช่วยเหลือเมื่อเกิดน้ำท่วม
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3 md:justify-start">
+                <a href="#emergency-title" className="btn btn-accent btn-lg">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
+                    <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" strokeLinejoin="round" />
+                  </svg>
+                  เบอร์ฉุกเฉิน
+                </a>
+                <a
+                  href="#prepare-title"
+                  className="btn btn-lg border-2 border-white/40 bg-white/10 text-white hover:bg-white/20"
+                >
+                  วิธีเตรียมตัว
+                </a>
+              </div>
+            </div>
+            <div className="animate-drop-in shrink-0">
+              <Mascot role="notify" mood="wink" motion="float" size={152} decorative className="drop-shadow-lg" />
+            </div>
+          </div>
+
+          {/* คลื่นน้ำเชื่อมเข้ากับพื้นหน้า */}
+          <svg
+            viewBox="0 0 1200 90"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 h-12 w-full md:h-16"
+          >
+            <path
+              d="M0 52c120-30 220 22 340 22s200-46 320-46 220 40 330 40 130-18 210-30v52H0z"
+              fill="#f3f6fc"
+            />
+            <path
+              d="M0 62c120-30 220 22 340 22s200-46 320-46 220 40 330 40 130-18 210-30v42H0z"
+              fill="#f3f6fc"
+              opacity="0.55"
+            />
+          </svg>
         </section>
 
-        {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่บนสุด */}
-        <section aria-labelledby="emergency-title" className="card overflow-hidden">
-          <div className="flex items-center gap-2.5 border-b border-slate-100 bg-red-50/60 px-5 py-4">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 text-red-600">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+        {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่บนสุด (แดง = วิกฤตจริง) */}
+        <section aria-labelledby="emergency-title" className="card mt-8 overflow-hidden">
+          <div className="flex items-center gap-3 border-b-2 border-red-100 bg-red-50 px-5 py-4">
+            <span className="chip chip-md bg-red-100 text-red-600">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
                 <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" strokeLinejoin="round" />
               </svg>
             </span>
             <div>
-              <h2 id="emergency-title" className="text-[15px] font-semibold text-slate-900">
+              <h2 id="emergency-title" className="text-base font-bold text-slate-900">
                 เบอร์ติดต่อฉุกเฉิน
               </h2>
-              <p className="text-xs text-slate-500">กดที่หมายเลขเพื่อโทรได้ทันที</p>
+              <p className="text-xs font-medium text-slate-500">กดที่หมายเลขเพื่อโทรได้ทันที</p>
             </div>
           </div>
           {contacts.length === 0 ? (
@@ -129,10 +197,10 @@ export default async function PublicHomePage() {
                 <li key={c.id} className="bg-white">
                   <a
                     href={`tel:${c.phone.replace(/[^0-9+]/g, "")}`}
-                    className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-slate-50"
+                    className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-red-50/50"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-slate-800">
+                      <span className="block truncate text-sm font-semibold text-slate-800">
                         {c.nameTh}
                       </span>
                       <span className="block text-xs text-slate-500">
@@ -140,7 +208,7 @@ export default async function PublicHomePage() {
                         {c.isNationwide ? " · ทั่วประเทศ" : ""}
                       </span>
                     </span>
-                    <span className="shrink-0 rounded-lg bg-red-50 px-3 py-1.5 font-mono text-sm font-bold text-red-700">
+                    <span className="shrink-0 rounded-xl bg-red-600 px-3.5 py-2 font-mono text-sm font-bold text-white shadow-[0_3px_0_0_#991b1b]">
                       {c.phone}
                     </span>
                   </a>
@@ -151,49 +219,59 @@ export default async function PublicHomePage() {
         </section>
 
         {/* สถิติภาพรวม — aggregate เท่านั้น */}
-        <section aria-labelledby="stats-title" className="mt-8">
-          <h2 id="stats-title" className="text-[15px] font-semibold text-slate-900">
-            ภาพรวมพื้นที่
-          </h2>
-          <div className="stagger mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <PublicStat label="ชุมชนในเครือข่าย" value={stats.communities} />
-            <PublicStat label="ตำบลที่ครอบคลุม" value={stats.tambons} />
+        <section aria-labelledby="stats-title" className="mt-10">
+          <SectionTitle id="stats-title" tone="brand" title="ภาพรวมพื้นที่" />
+          <div className="stagger mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <PublicStat
+              label="ชุมชนในเครือข่าย"
+              value={stats.communities}
+              tone="brand"
+              icon="M3 21h18M6 21V8l6-4 6 4v13M10 21v-5h4v5"
+            />
+            <PublicStat
+              label="ตำบลที่ครอบคลุม"
+              value={stats.tambons}
+              tone="ink"
+              icon="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"
+            />
             <PublicStat
               label="ครัวเรือนที่ยืนยันข้อมูลแล้ว"
               value={stats.verifiedHouseholds}
+              tone="mint"
+              icon="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4"
               zeroNote="เริ่มการสำรวจเร็ว ๆ นี้"
             />
             <PublicStat
               label="จุดพักพิง/จุดช่วยเหลือ"
               value={stats.evacuationSites}
+              tone="alert"
+              icon="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11zM12 11h.01"
               zeroNote="อยู่ระหว่างรวบรวมข้อมูล"
             />
           </div>
-          <p className="mt-2 text-[11px] text-slate-500">
+          <p className="mt-3 text-[11px] text-slate-500">
             ตัวเลขเป็นข้อมูลภาพรวมระดับพื้นที่ — ไม่มีการเปิดเผยข้อมูลรายครัวเรือนหรือบุคคล
           </p>
         </section>
 
         {/* การเตรียมพร้อม — เนื้อหาความรู้ */}
-        <section aria-labelledby="prepare-title" className="mt-8">
-          <h2 id="prepare-title" className="text-[15px] font-semibold text-slate-900">
-            เตรียมพร้อมรับมือน้ำท่วม
-          </h2>
-          <div className="stagger mt-3 grid gap-4 md:grid-cols-3">
+        <section aria-labelledby="prepare-title" className="mt-10">
+          <SectionTitle id="prepare-title" tone="alert" title="เตรียมพร้อมรับมือน้ำท่วม" />
+          <div className="stagger mt-4 grid gap-4 md:grid-cols-3">
             {PREPARE_TIPS.map((tip) => (
               <article key={tip.title} className="card card-interactive p-5">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+                <div className="flex items-center gap-3">
+                  <span className={`${TONE_CHIP[tip.tone]} chip-md`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
                       <path d={tip.icon} strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </span>
-                  <h3 className="text-sm font-semibold text-slate-900">{tip.title}</h3>
+                  <h3 className="text-[15px] font-bold text-slate-900">{tip.title}</h3>
                 </div>
-                <ul className="mt-3 space-y-2">
+                <ul className="mt-4 space-y-2.5">
                   {tip.items.map((item) => (
-                    <li key={item} className="flex gap-2 text-[13px] leading-relaxed text-slate-600">
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand-300" />
+                    <li key={item} className="flex gap-2.5 text-[13px] leading-relaxed text-slate-600">
+                      <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${TONE_DOT[tip.tone]}`} />
                       {item}
                     </li>
                   ))}
@@ -204,24 +282,21 @@ export default async function PublicHomePage() {
         </section>
 
         {/* แผนที่ — ยังไม่เปิดใช้ (ไม่แสดงข้อมูลจำลอง) */}
-        <section className="card mt-8 flex flex-col items-center gap-2 px-5 py-10 text-center">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
-              <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <h2 className="text-[15px] font-semibold text-slate-800">
+        <section className="card-mist mt-10 flex flex-col items-center gap-3 px-5 py-10 text-center">
+          <Mascot role="field" mood="sleep" tone="sun" motion="float" size={84} decorative />
+          <h2 className="text-base font-bold text-slate-800">
             แผนที่จุดพักพิงและพื้นที่เสี่ยง
           </h2>
-          <p className="max-w-md text-xs leading-relaxed text-slate-500">
+          <p className="max-w-md text-xs leading-relaxed text-slate-600">
             จะเปิดให้ใช้งานเมื่อการสำรวจและการตรวจสอบข้อมูลพื้นที่แล้วเสร็จ —
             แผนที่สาธารณะจะแสดงเฉพาะข้อมูลภาพรวมและจุดสาธารณะ ไม่มีตำแหน่งรายบ้าน
           </p>
         </section>
       </main>
 
-      <footer className="border-t border-slate-200/70 bg-white">
-        <div className="mx-auto max-w-5xl space-y-2 px-4 py-6 text-center md:px-6">
+      <footer className="border-t-2 border-slate-200/70 bg-white">
+        <div className="mx-auto max-w-5xl space-y-2 px-4 py-8 text-center md:px-6">
+          <LogoMark size={38} className="mx-auto text-brand-600" />
           <p className="text-xs text-slate-500">
             ข้อมูลอัปเดตล่าสุด {updatedAt} · จัดทำโดยเครือข่ายสองคลอง–ควนลัง
             ร่วมกับมหาวิทยาลัยทักษิณ
@@ -236,28 +311,46 @@ export default async function PublicHomePage() {
   );
 }
 
+function SectionTitle({ id, title, tone }: { id: string; title: string; tone: Tone }) {
+  return (
+    <h2 id={id} className="flex items-center gap-2.5 text-lg font-bold text-slate-900">
+      <span className={`h-6 w-1.5 rounded-full ${TONE_DOT[tone]}`} aria-hidden="true" />
+      {title}
+    </h2>
+  );
+}
+
 function PublicStat({
   label,
   value,
+  tone,
+  icon,
   zeroNote,
 }: {
   label: string;
   value: number;
+  tone: Tone;
+  icon: string;
   zeroNote?: string;
 }) {
   const isZero = value === 0;
   return (
     <div className="card p-4">
-      <p className="text-xs font-medium leading-snug text-slate-500">{label}</p>
+      <span className={`${TONE_CHIP[tone]} chip-md`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+          <path d={icon} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <p className="mt-3 text-xs font-semibold leading-snug text-slate-500">{label}</p>
       <p
-        className={`mt-1.5 text-2xl font-bold tabular-nums ${
-          isZero && zeroNote ? "text-slate-300" : "text-slate-900"
+        className={`mt-1 text-[28px] font-bold leading-none tabular-nums ${
+          isZero && zeroNote ? "text-slate-300" : TONE_VALUE[tone]
         }`}
       >
         {value.toLocaleString("th-TH")}
       </p>
       {isZero && zeroNote && (
-        <p className="mt-0.5 text-[11px] text-slate-500">{zeroNote}</p>
+        <p className="mt-1 text-[11px] text-slate-500">{zeroNote}</p>
       )}
     </div>
   );

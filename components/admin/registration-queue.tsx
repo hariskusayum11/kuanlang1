@@ -78,7 +78,7 @@ export function RegistrationDecideButtons({ requestId }: { requestId: string }) 
           </button>
         </div>
         {error && (
-          <p role="alert" className="text-xs text-red-600">
+          <p role="alert" className="animate-pop text-xs font-semibold text-red-600">
             {error}
           </p>
         )}
@@ -107,7 +107,7 @@ export function RegistrationDecideButtons({ requestId }: { requestId: string }) 
         </button>
       </div>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="animate-pop text-xs font-semibold text-red-600">
           {error}
         </p>
       )}
