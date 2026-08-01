@@ -85,7 +85,7 @@ export function ReceiveBatchForm({ communities }: { communities: CommunityOption
       } else if (result.reason === "PARSE_ERROR" && result.message) {
         setError(result.message);
       } else if (result.reason === "FORBIDDEN") {
-        setError("คุณไม่มีสิทธิ์รับปึกของชุมชนนี้");
+        setError("คุณไม่มีสิทธิ์รับเอกสารของชุมชนนี้");
       } else {
         setError(SAFE_ERROR_MESSAGES.generic);
       }
@@ -245,10 +245,10 @@ export function ReceiveBatchForm({ communities }: { communities: CommunityOption
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={submitting} className="btn btn-accent btn-lg">
-          {submitting ? "กำลังบันทึก…" : "รับปึกเข้าระบบ"}
+          {submitting ? "กำลังบันทึก…" : "บันทึกปึกและแบบสอบถาม"}
         </button>
         <p className="text-xs font-medium text-slate-500">
-          รับแล้วสถานะเป็น &ldquo;รับปึกแล้ว&rdquo; — เปิดให้คีย์ได้จากหน้าปึก
+          บันทึกแล้วสถานะเป็น &ldquo;รับแล้ว&rdquo; — เปิดให้คีย์ได้จากหน้ารายละเอียดปึก
         </p>
       </div>
     </form>

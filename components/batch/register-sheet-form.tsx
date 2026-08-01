@@ -156,7 +156,7 @@ export function RegisterSheetForm({
             ))}
           </select>
           <p id="sheet-batch-hint" className="text-xs leading-relaxed text-slate-500">
-            ระบุเฉพาะกรณีที่แบบสอบถามถูกจัดเป็นกองหรือปึกไว้ชัดเจน
+            หากไม่ได้แบ่งเอกสารเป็นปึก เว้นช่องนี้ได้
           </p>
         </div>
       </div>
@@ -208,7 +208,7 @@ export function RegisterSheetForm({
           {submitting ? "กำลังบันทึก…" : "บันทึกแบบสอบถาม"}
         </button>
         <p className="text-xs font-medium text-slate-500">
-          ลงทะเบียนทีละใบตามกระดาษที่รับมา — ไม่จำเป็นต้องมีปึก
+          ไม่ต้องมีปึกก็ลงทะเบียนและเปิดคีย์ได้ทันที
         </p>
       </div>
     </form>

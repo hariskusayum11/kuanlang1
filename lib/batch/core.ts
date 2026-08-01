@@ -359,6 +359,47 @@ function scopeWhere(ctx: AuthorizationContext) {
   return ctx.isGlobalScope ? {} : { communityId: { in: ctx.communityIds } };
 }
 
+/**
+ * สรุปจำนวนแบบสอบถามในขอบเขตของผู้ใช้ — **นับทุกใบ ไม่ว่าจะอยู่ในปึกหรือไม่**
+ *
+ * อ่านอย่างเดียว ใช้ Community Scope และ Permission ชุดเดียวกับ `listBatches`
+ * ต่างกันที่ไม่กรอง `batchId` เพราะใบที่ไม่มีปึกก็ต้องถูกนับ (Owner Decision:
+ * แบบสอบถามเป็นศูนย์กลาง ปึกเป็นข้อมูลประกอบ) — ถ้ากรองตามปึกตัวเลขจะหลอกผู้ใช้
+ */
+export interface SheetSummary {
+  received: number; // ทุกใบที่ลงทะเบียนแล้ว = ตัวหาร
+  awaitingEntry: number; // PENDING
+  inEntry: number; // LOCKED — มีคนเปิดคีย์อยู่
+  awaitingVerify: number; // ENTERED_* / DISCREPANCY / NEEDS_FIELD_QUERY
+  verified: number;
+  problem: number; // SHEET_LOST / UNRESOLVABLE / MERGED_INTO
+}
+
+export async function getSheetSummary(
+  ctx: AuthorizationContext,
+): Promise<SheetSummary | null> {
+  if (!hasPermission(ctx, PERMISSIONS.BATCH_MANAGE)) return null;
+
+  const grouped = await prisma.paperSheet.groupBy({
+    by: ["status"],
+    where: scopeWhere(ctx),
+    _count: { _all: true },
+  });
+  const countOf = (statuses: SheetStatus[]) =>
+    grouped
+      .filter((g) => statuses.includes(g.status))
+      .reduce((sum, g) => sum + g._count._all, 0);
+
+  return {
+    received: grouped.reduce((sum, g) => sum + g._count._all, 0),
+    awaitingEntry: countOf([SheetStatus.PENDING]),
+    inEntry: countOf([SheetStatus.LOCKED]),
+    awaitingVerify: countOf(ENTERED_STATUSES),
+    verified: countOf([SheetStatus.VERIFIED]),
+    problem: countOf(PROBLEM_STATUSES),
+  };
+}
+
 export async function listBatches(
   ctx: AuthorizationContext,
 ): Promise<BatchListRow[] | null> {

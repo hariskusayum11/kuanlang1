@@ -11,7 +11,7 @@ export const metadata = { title: "รายละเอียดปึก" };
 export const dynamic = "force-dynamic";
 
 const BATCH_STATUS: Record<string, { label: string; cls: string }> = {
-  RECEIVED: { label: "รับปึกแล้ว — ยังไม่เปิดให้คีย์", cls: "badge-neutral" },
+  RECEIVED: { label: "รับแล้ว — ยังไม่เปิดให้คีย์", cls: "badge-neutral" },
   READY_FOR_ENTRY: { label: "พร้อมคีย์", cls: "badge-brand" },
   IN_PROGRESS: { label: "กำลังคีย์", cls: "badge-warning" },
   CLOSED: { label: "ปิดแล้ว", cls: "badge-success" },
@@ -50,7 +50,7 @@ export default async function BatchDetailPage({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
             <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          กลับหน้าปึกกระดาษ
+          กลับหน้าเอกสารภาคสนาม
         </Link>
 
         <div className="animate-slide-up mt-3 flex flex-wrap items-center justify-between gap-4 rounded-3xl band-ink px-6 py-6 md:px-8">

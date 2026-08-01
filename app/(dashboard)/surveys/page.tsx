@@ -77,7 +77,7 @@ export default async function SurveysPage() {
       <section className="card overflow-hidden">
         <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
           <SectionTitle
-            title="ความคืบหน้าปึกในพื้นที่ของคุณ"
+            title="ความคืบหน้าในพื้นที่ของคุณ"
             tone="mint"
             aside={
               overview.batches.length > 0 ? (
@@ -96,12 +96,12 @@ export default async function SurveysPage() {
             tone={overview.allowed ? "sun" : "brand"}
             title={
               overview.allowed
-                ? "ยังไม่มีปึกกระดาษที่เปิดให้คีย์"
+                ? "ยังไม่มีแบบสอบถามที่เปิดให้คีย์"
                 : "ไม่มีขอบเขตชุมชนที่คุณเข้าถึงได้"
             }
             description={
               overview.allowed
-                ? "เมื่อหัวหน้างานรับปึกกระดาษและเปิดให้คีย์ ความคืบหน้าจะแสดงที่นี่"
+                ? "เปิดใบด้วยรหัสบนกระดาษได้เสมอ — ส่วนนี้จะแสดงความคืบหน้าเมื่อเอกสารถูกจัดเป็นปึก"
                 : "กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดชุมชนที่คุณรับผิดชอบ"
             }
           />

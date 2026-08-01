@@ -46,7 +46,7 @@ export default async function EntrySheetPage({
         <GateMessage
           variant="locked"
           title="ใบนี้ถูกผู้อื่นใช้งานอยู่"
-          detail="มีเจ้าหน้าที่ท่านอื่นกำลังคีย์ใบนี้ — ข้ามไปคีย์ใบถัดไปในปึกของคุณได้เลย"
+          detail="มีเจ้าหน้าที่ท่านอื่นกำลังคีย์ใบนี้ — หยิบใบถัดไปที่ถืออยู่แล้วคีย์ต่อได้เลย"
         />
       );
     case "WRONG_STATUS":
