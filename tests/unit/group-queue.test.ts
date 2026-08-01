@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { groupVerificationQueue, type QueueItemLike } from "../../domain/verification/group-queue";
+import {
+  groupVerificationQueue,
+  UNBATCHED_LABEL,
+  type QueueItemLike,
+} from "../../domain/verification/group-queue";
 
 function item(over: Partial<QueueItemLike> & { householdId: string }): QueueItemLike {
   return {
@@ -76,9 +80,31 @@ describe("groupVerificationQueue", () => {
       item({ householdId: "h1", batchId: "b2", batchCode: "BATCH-002" }),
       item({ householdId: "h2", batchId: "b1", batchCode: "BATCH-001" }),
     ]);
-    expect(groups[0].batches.map((b) => b.batchCode)).toEqual([
+    expect(groups[0].batches.map((b) => b.batchLabel)).toEqual([
       "BATCH-001",
       "BATCH-002",
+    ]);
+  });
+
+  it("ใบที่ยังไม่ได้จัดเข้าปึก → รวมเป็นกลุ่มเดียว ป้ายเป็นข้อความไทย ไม่ใช่ null", () => {
+    const groups = groupVerificationQueue([
+      item({ householdId: "h1", batchId: null, batchCode: null }),
+      item({ householdId: "h2", batchId: null, batchCode: null }),
+    ]);
+    expect(groups[0].batches).toHaveLength(1);
+    expect(groups[0].batches[0].batchId).toBeNull();
+    expect(groups[0].batches[0].batchLabel).toBe(UNBATCHED_LABEL);
+    expect(groups[0].batches[0].count).toBe(2);
+  });
+
+  it("ใบที่ยังไม่ได้จัดเข้าปึกอยู่บนสุดของชุมชนเสมอ แม้ป้ายจะเรียงทีหลัง", () => {
+    const groups = groupVerificationQueue([
+      item({ householdId: "h1", batchId: "b1", batchCode: "BATCH-001" }),
+      item({ householdId: "h2", batchId: null, batchCode: null }),
+    ]);
+    expect(groups[0].batches.map((b) => b.batchLabel)).toEqual([
+      UNBATCHED_LABEL,
+      "BATCH-001",
     ]);
   });
 

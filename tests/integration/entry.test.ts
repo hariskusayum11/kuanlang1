@@ -132,16 +132,16 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     });
     for (let n = 1; n <= 3; n += 1) {
       const s = await prisma.paperSheet.create({
-        data: { batchId: batch1.id, sheetNo: SHEET(1, n), sequence: n },
+        data: { communityId: c1Id, batchId: batch1.id, sheetNo: SHEET(1, n), sequence: n },
       });
       sheet1Ids[SHEET(1, n)] = s.id;
     }
     const sc2 = await prisma.paperSheet.create({
-      data: { batchId: batch2.id, sheetNo: SHEET(2, 1), sequence: 1 },
+      data: { communityId: c2.id, batchId: batch2.id, sheetNo: SHEET(2, 1), sequence: 1 },
     });
     sheetC2Id = sc2.id;
     await prisma.paperSheet.create({
-      data: { batchId: batch3.id, sheetNo: SHEET(3, 1), sequence: 1 },
+      data: { communityId: c1Id, batchId: batch3.id, sheetNo: SHEET(3, 1), sequence: 1 },
     });
 
     const users = [userA, userB, userNoScope, userNoPerm];

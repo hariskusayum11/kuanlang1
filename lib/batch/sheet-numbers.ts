@@ -20,6 +20,12 @@ const RANGE_RE = /^(\d{1,6})-(\d{1,6})$/;
 // เลขเดี่ยว: ตัวอักษร/ตัวเลข/ขีด ยาว 1-32 (ตรงกับกติกา sheet code ของหน้า entry)
 const SINGLE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,31}$/;
 
+/** normalize เลขใบเดี่ยว (กติกาเดียวกับตอนรับปึก) — รูปแบบไม่ถูกต้อง → null */
+export function normalizeSheetNo(input: string): string | null {
+  const value = input.trim().toUpperCase();
+  return SINGLE_RE.test(value) ? value : null;
+}
+
 /**
  * แปลงข้อความเป็นรายการเลขใบ (normalize เป็นตัวพิมพ์ใหญ่ ตัดช่องว่าง)
  * เลขซ้ำ = error ทันที (สะท้อนความผิดปกติของกระดาษจริง ไม่เงียบทิ้ง)

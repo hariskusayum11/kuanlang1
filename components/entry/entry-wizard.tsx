@@ -25,7 +25,8 @@ import { Modal } from "@/components/ui/modal";
 type SheetInfo = {
   id: string;
   sheetNo: string;
-  batchCode: string;
+  /** null = ใบยังไม่ได้จัดเข้าปึก — ไม่แสดงคำว่า "ปึก" เลย (#R6-B) */
+  batchCode: string | null;
   communityName: string;
 };
 
@@ -411,7 +412,13 @@ export function EntryWizard({
               {sheet.sheetNo}
             </p>
             <p className="mt-1 text-xs font-medium text-slate-500">
-              {sheet.communityName} · <span className="font-mono">{sheet.batchCode}</span>
+              {sheet.communityName}
+              {sheet.batchCode && (
+                <>
+                  {" · "}
+                  <span className="font-mono">{sheet.batchCode}</span>
+                </>
+              )}
             </p>
 
             {/* Lock = กลไกความปลอดภัยเบื้องหลัง (กันเปิดใบซ้อนกัน) — แสดงแบบไม่รบกวน

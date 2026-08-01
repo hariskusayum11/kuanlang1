@@ -214,7 +214,6 @@ export async function submitEntry(
 
   const householdData = {
     sheetId,
-    batchId,
     communityId,
     // ส่วนที่ 0 — ตามกระดาษ ไม่ auto-fill
     surveyNo: answerString(clean, "surveyNo"),
@@ -388,11 +387,14 @@ export async function submitEntry(
         });
       }
 
-      // 7) ตัวนับบนปึก
-      await tx.paperBatch.update({
-        where: { id: batchId },
-        data: { enteredCount: { increment: 1 } },
-      });
+      // 7) ตัวนับบนปึก — ใบที่ยังไม่ได้จัดเข้าปึกไม่มีตัวนับให้ขยับ
+      //    ห้ามให้ Submit ล้มเพราะไม่มีปึก (Batch เป็นทางเลือก #R6-B)
+      if (batchId) {
+        await tx.paperBatch.update({
+          where: { id: batchId },
+          data: { enteredCount: { increment: 1 } },
+        });
+      }
 
       return {
         kind: "OK" as const,

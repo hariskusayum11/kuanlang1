@@ -36,8 +36,9 @@ export interface VerificationQueueItem {
   sheetNo: string;
   communityId: string;
   communityName: string;
-  batchId: string;
-  batchCode: string;
+  /** null = ใบยังไม่ได้จัดเข้าปึก (Batch เป็นทางเลือก #R6-B) */
+  batchId: string | null;
+  batchCode: string | null;
   enteredAt: Date;
   enteredById: string;
   enteredByName: string;
@@ -166,7 +167,7 @@ export async function getVerificationOverview(
       communityId: h.communityId,
       communityName: h.community.nameTh,
       batchId: h.sheet.batchId,
-      batchCode: h.sheet.batch.code,
+      batchCode: h.sheet.batch?.code ?? null,
       enteredAt: h.enteredAt,
       enteredById: h.enteredById,
       enteredByName: h.enteredBy.name,

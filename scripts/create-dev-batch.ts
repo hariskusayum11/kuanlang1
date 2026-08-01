@@ -59,7 +59,7 @@ async function main() {
     await prisma.paperSheet.upsert({
       where: { sheetNo },
       update: {},
-      create: { batchId: batch.id, sheetNo, sequence: i },
+      create: { communityId: community.id, batchId: batch.id, sheetNo, sequence: i },
     });
   }
 

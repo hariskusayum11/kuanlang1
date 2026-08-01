@@ -25,11 +25,12 @@ export type SheetAccess =
       sheet: {
         id: string;
         sheetNo: string;
-        sequence: number;
+        /** null = ใบยังไม่ได้จัดเข้าปึก */
+        sequence: number | null;
         status: SheetStatus;
         lockExpiresAt: Date | null;
-        batchId: string;
-        batchCode: string;
+        batchId: string | null;
+        batchCode: string | null;
         communityId: string;
         communityName: string;
       };
@@ -61,7 +62,8 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
       id: true,
       sheetNo: true,
       lockExpiresAt: true,
-      batch: { select: { code: true, community: { select: { nameTh: true } } } },
+      batch: { select: { code: true } },
+      community: { select: { nameTh: true } },
     },
     orderBy: { lockedAt: "desc" },
   });
@@ -70,8 +72,8 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
     id: sheet.id,
     sheetNo: sheet.sheetNo,
     lockExpiresAt: sheet.lockExpiresAt,
-    batchCode: sheet.batch.code,
-    communityName: sheet.batch.community.nameTh,
+    batchCode: sheet.batch?.code ?? null,
+    communityName: sheet.community.nameTh,
     expired: isLockExpired(sheet.lockExpiresAt, new Date()),
   };
 }
@@ -109,7 +111,8 @@ export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
           status: true,
           lockedById: true,
           lockExpiresAt: true,
-          batch: { select: { code: true, community: { select: { nameTh: true } } } },
+          batch: { select: { code: true } },
+          community: { select: { nameTh: true } },
         },
       },
     },
@@ -123,8 +126,8 @@ export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
     return {
       id: d.sheet.id,
       sheetNo: d.sheet.sheetNo,
-      batchCode: d.sheet.batch.code,
-      communityName: d.sheet.batch.community.nameTh,
+      batchCode: d.sheet.batch?.code ?? null,
+      communityName: d.sheet.community.nameTh,
       startedAt: d.startedAt,
       /** ต้องกดจองใบก่อนถึงคีย์ต่อได้ (ปล่อยใบไปแล้ว หรือ lock หมดอายุ) */
       needsClaim: !heldByMe || isLockExpired(d.sheet.lockExpiresAt, now),
@@ -172,6 +175,8 @@ export async function getEntryOverview(ctx: AuthorizationContext) {
     { pending: number; locked: number; entered: number; other: number; total: number }
   >();
   for (const g of grouped) {
+    // where กรอง batchId ไว้แล้ว — เช็คซ้ำเพื่อ narrow type ที่เป็น nullable ตามสคีมา
+    if (g.batchId === null) continue;
     const acc =
       byBatch.get(g.batchId) ??
       { pending: 0, locked: 0, entered: 0, other: 0, total: 0 };
@@ -244,33 +249,29 @@ export async function openSheetByCode(
   if (!normalized) return { ok: false, reason: "NOT_FOUND" };
 
   // เลขล้วน + เลือกปึกไว้ → ตีความเป็น "ลำดับใบในปึก" (พิมพ์สั้นกว่ารหัสเต็ม)
+  // ไม่ระบุปึก = เปิดด้วยรหัสเต็มเท่านั้น — sequence เดี่ยว ๆ ไม่ระบุใบได้ (#R6-F)
+  const selectSheet = {
+    id: true,
+    status: true,
+    lockedById: true,
+    lockExpiresAt: true,
+    batchId: true,
+    batch: { select: { status: true } },
+  } as const;
   const sheet =
     batchId && /^\d{1,5}$/.test(normalized)
       ? await prisma.paperSheet.findFirst({
           where: { batchId, sequence: Number(normalized) },
-          select: {
-            id: true,
-            status: true,
-            lockedById: true,
-            lockExpiresAt: true,
-            batchId: true,
-            batch: { select: { status: true, communityId: true } },
-          },
+          select: selectSheet,
         })
       : await prisma.paperSheet.findUnique({
           where: { sheetNo: normalized },
-          select: {
-            id: true,
-            status: true,
-            lockedById: true,
-            lockExpiresAt: true,
-            batchId: true,
-            batch: { select: { status: true, communityId: true } },
-          },
+          select: selectSheet,
         });
   if (!sheet) return { ok: false, reason: "NOT_FOUND" };
 
-  if (!CLAIMABLE_BATCH_STATUSES.includes(sheet.batch.status)) {
+  // ใบที่ยังไม่ได้จัดเข้าปึกไม่มีสถานะปึกให้ตรวจ — เปิดคีย์ได้เลย (Batch เป็นทางเลือก)
+  if (sheet.batch && !CLAIMABLE_BATCH_STATUSES.includes(sheet.batch.status)) {
     return { ok: false, reason: "BATCH_NOT_OPEN" };
   }
 
@@ -308,11 +309,13 @@ export async function openSheetByCode(
   });
   if (claimed.count !== 1) return { ok: false, reason: "IN_USE" };
 
-  // ปึกเริ่มมีการคีย์ → IN_PROGRESS (idempotent)
-  await prisma.paperBatch.updateMany({
-    where: { id: sheet.batchId, status: BatchStatus.READY_FOR_ENTRY },
-    data: { status: BatchStatus.IN_PROGRESS },
-  });
+  // ปึกเริ่มมีการคีย์ → IN_PROGRESS (idempotent) · ใบเดี่ยวไม่มีปึกให้ขยับ
+  if (sheet.batchId) {
+    await prisma.paperBatch.updateMany({
+      where: { id: sheet.batchId, status: BatchStatus.READY_FOR_ENTRY },
+      data: { status: BatchStatus.IN_PROGRESS },
+    });
+  }
   return { ok: true, sheetId: sheet.id, resumed };
 }
 
@@ -330,11 +333,16 @@ export async function claimSheetById(
   const claimed = await prisma.paperSheet.updateMany({
     where: {
       id: sheetId,
-      batch: { status: { in: CLAIMABLE_BATCH_STATUSES } },
-      OR: [
-        { status: SheetStatus.PENDING },
-        { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
-        { status: SheetStatus.LOCKED, lockedById: ctx.userId },
+      AND: [
+        // ใบเดี่ยว (ไม่มีปึก) เปิดได้เสมอ · ใบในปึกต้องอยู่ในปึกที่เปิดให้คีย์
+        { OR: [{ batchId: null }, { batch: { status: { in: CLAIMABLE_BATCH_STATUSES } } }] },
+        {
+          OR: [
+            { status: SheetStatus.PENDING },
+            { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
+            { status: SheetStatus.LOCKED, lockedById: ctx.userId },
+          ],
+        },
       ],
     },
     data: {
@@ -406,13 +414,9 @@ export async function getSheetForEntry(
       lockedById: true,
       lockExpiresAt: true,
       batchId: true,
-      batch: {
-        select: {
-          code: true,
-          communityId: true,
-          community: { select: { nameTh: true } },
-        },
-      },
+      communityId: true,
+      batch: { select: { code: true } },
+      community: { select: { nameTh: true } },
     },
   });
   if (!sheet) return { kind: "NOT_FOUND" };
@@ -433,9 +437,10 @@ export async function getSheetForEntry(
       status: sheet.status,
       lockExpiresAt: sheet.lockExpiresAt,
       batchId: sheet.batchId,
-      batchCode: sheet.batch.code,
-      communityId: sheet.batch.communityId,
-      communityName: sheet.batch.community.nameTh,
+      batchCode: sheet.batch?.code ?? null,
+      // ชุมชนมาจากใบโดยตรง ไม่ผ่านปึก — ใบที่ไม่มีปึกจึงยังมีชุมชนเสมอ (#R6-F)
+      communityId: sheet.communityId,
+      communityName: sheet.community.nameTh,
     },
   };
 }

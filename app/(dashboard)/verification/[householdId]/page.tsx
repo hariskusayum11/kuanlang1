@@ -126,7 +126,12 @@ export default async function ReviewPage({
               )}
             </h2>
             <p className="mt-1.5 text-sm font-medium text-brand-100">
-              {review.communityName} · <span className="font-mono">{review.batchCode}</span> ·
+              {review.communityName} ·{" "}
+              {review.batchCode && (
+                <>
+                  <span className="font-mono">{review.batchCode}</span> ·{" "}
+                </>
+              )}
               คีย์โดย {review.enteredByName}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs font-bold">

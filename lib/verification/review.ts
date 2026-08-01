@@ -54,7 +54,8 @@ export interface HouseholdReview {
   householdId: string;
   sheetNo: string;
   communityName: string;
-  batchCode: string;
+  /** null = ใบยังไม่ได้จัดเข้าปึก (Batch เป็นทางเลือก #R6-B) */
+  batchCode: string | null;
   status: SheetStatus;
   enteredAt: Date;
   enteredByName: string;
@@ -212,7 +213,7 @@ export async function loadHouseholdForReview(
     householdId: h.id,
     sheetNo: h.sheet.sheetNo,
     communityName: h.community.nameTh,
-    batchCode: h.sheet.batch.code,
+    batchCode: h.sheet.batch?.code ?? null,
     status: h.sheet.status,
     enteredAt: h.enteredAt,
     enteredByName: h.enteredBy.name,
@@ -260,10 +261,9 @@ export async function verifyHousehold(
     select: {
       id: true,
       communityId: true,
-      batchId: true,
       sheetId: true,
       enteredById: true,
-      sheet: { select: { status: true } },
+      sheet: { select: { status: true, batchId: true } },
     },
   });
   if (!h) return { ok: false, reason: "NOT_FOUND" };
@@ -306,11 +306,13 @@ export async function verifyHousehold(
         data: { verifiedById: ctx.userId, verifiedAt: now },
       });
 
-      // 4) ตัวนับปึก
-      await tx.paperBatch.update({
-        where: { id: h.batchId },
-        data: { verifiedCount: { increment: 1 } },
-      });
+      // 4) ตัวนับปึก — ข้ามเมื่อใบยังไม่ได้จัดเข้าปึก (Verify ต้องไม่ล้มเพราะไม่มีปึก)
+      if (h.sheet.batchId) {
+        await tx.paperBatch.update({
+          where: { id: h.sheet.batchId },
+          data: { verifiedCount: { increment: 1 } },
+        });
+      }
 
       return { kind: "OK" as const };
     });

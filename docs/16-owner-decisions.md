@@ -400,15 +400,9 @@ model FloodRiskProfile {
 | #R6-12c | คำว่า **"ปึก" ให้แสดงเฉพาะเมื่อแบบสอบถามถูกผูกกับ Batch จริง** |
 | #R6-12d | **Batch เป็นข้อมูลเพื่อการบริหารและติดตามงาน ไม่ใช่ Business Requirement หลัก** |
 
-**สถานะการ Implement (ตรวจ 2026-07-31) — ยังไม่ตรงคำตัดสิน:**
-
-```
-SurveySheet.batchId และ Household.batchId ยังเป็น NOT NULL
-และ Flow ปัจจุบันยังบังคับสร้างแบบสอบถามผ่าน Batch
-```
-
-> จึงถือว่า Implementation ปัจจุบัน **ยังไม่ตรง Owner Decision** และต้องแก้เป็น **งานแยกภายหลัง**
-> ห้ามรวมการแก้ Schema / Data Entry Flow / Batch Flow เข้ากับงานปรับโครงสร้าง Role (Commit 4)
+**สถานะการ Implement:** ทำครบแล้วตาม **#R6-F** (2026-08-01) ดูหัวข้อถัดไป
+เดิม (ตรวจ 2026-07-31) `PaperSheet.batchId` และ `Household.batchId` ยังเป็น NOT NULL
+และถูกแยกเป็นงานต่างหากตามที่ตกลงไว้ ไม่รวมกับงานปรับโครงสร้าง Role
 
 ### #R6-C — ADMIN = Full System Administrator + การเปิด/ปิดบัญชี
 
@@ -649,6 +643,80 @@ Permission อยู่แล้ว งานรอบนี้จึงเป�
 
 ยืนยันหลังรัน: `Active FIELD_SURVEYOR UserRole = 0` · `Pending FIELD_SURVEYOR Request = 0`
 · บทบาทอื่นของผู้ใช้ไม่เปลี่ยน — สคริปต์คืน **exit code 1** เมื่อ postcondition ไม่ผ่าน
+
+### #R6-F — สถาปัตยกรรม Optional Batch (2026-08-01)
+
+> ถ้อยคำที่มีผลผูกพันสำหรับการ Implement #R6-B — ปิดคำถามว่า "ชุมชนของใบมาจากไหนเมื่อไม่มีปึก"
+
+| # | คำตัดสิน |
+|---|---|
+| #R6-39 | **`PaperSheet.communityId` คือ Source of Truth ของชุมชน** — ใบกระดาษมีอยู่ก่อน Household และ Authorization ต้องทำงานได้ตั้งแต่วินาทีที่เปิดใบจาก Sheet ID |
+| #R6-40 | **`PaperSheet.batchId` เป็น Optional Operational Metadata** — Nullable · ไม่มีปึกไม่กระทบขั้นตอนใด |
+| #R6-41 | **ลบ `Household.batchId`** — อ่านผ่าน `Household → PaperSheet → PaperBatch` เท่านั้น **ห้ามเพิ่ม Composite FK เพื่อคง `Household.batchId` ไว้** เพราะเป็นการคงข้อมูลซ้ำและเพิ่มภาระรักษา invariant โดยไม่จำเป็น |
+| #R6-42 | **กฎคู่ `batchId`/`sequence`** — มีปึก → `sequence` บังคับและไม่ซ้ำภายในปึก · ไม่มีปึก → `sequence` ต้องเป็น `null` บังคับที่ฐานข้อมูลด้วย `CHECK ((batchId IS NULL) = (sequence IS NULL))` และ partial `UNIQUE (batchId, sequence) WHERE batchId IS NOT NULL` |
+| #R6-43 | **การค้นด้วยเลขลำดับสั้นทำได้เฉพาะเมื่อระบุปึก** — ไม่ระบุปึกต้องใช้ Full Sheet ID (`sequence` เดี่ยว ๆ ไม่ระบุใบได้) |
+| #R6-44 | **สร้างใบพร้อมปึก → derive `communityId` จากปึกแล้วเก็บลงใบ** — ใบที่สร้างมาพร้อมปึกต้องมีชุมชนของตัวเองตั้งแต่แรก ไม่ใช่อ่านผ่านปึก |
+| #R6-46 | **Authorization ต้องตรวจ `PaperSheet.communityId` ไม่ใช่ `PaperSheet.batch.communityId`** — ห้ามให้ใบที่ไม่มีปึกกลายเป็นใบที่ไม่มี Community Scope |
+| #R6-47 | **ตัวนับปึกทุกตัว (`receivedCount`/`enteredCount`/`verifiedCount`) ต้องอัปเดตแบบมีเงื่อนไข** — Save / Submit / Verify **ห้ามล้มเหลวเพราะ `batchId = null`** |
+| #R6-48 | **คิวตรวจจัดกลุ่ม ชุมชน → (ยังไม่ได้จัดเข้าปึก \| ปึกที่มีอยู่) → ผู้คีย์** · ป้ายกลุ่มเป็นข้อความแสดงผล **ห้ามส่ง `null` ดิบไปแสดง** |
+
+**เหตุผลที่คง FK เดิมเป็น `ON DELETE RESTRICT` (ไม่ใช่ `SET NULL`):** `SET NULL` จะเคลียร์
+`batchId` แต่ไม่เคลียร์ `sequence` → ชน `CHECK` ของ #R6-42 อยู่ดี ใบจึงต้องถูกถอดออกจากปึก
+ผ่าน Application ที่เคลียร์ทั้งคู่พร้อมกันเสมอ (ยังไม่มีเครื่องมือนี้ในรอบนี้ — ดู Future Enhancement)
+
+**Migration:** `prisma/migrations/20260801020000_optional_batch/`
+(เพิ่ม nullable → backfill จากปึก → guard `RAISE EXCEPTION` เมื่อ backfill ไม่ครบ →
+FK/Index → `SET NOT NULL` → ผ่อน `batchId`/`sequence` → ลบ `household.batchId` → CHECK + partial unique)
+ตรวจก่อนรันด้วย `scripts/audit-optional-batch.ts`
+
+**เทสต์ที่ล็อกคำตัดสินนี้:** `tests/integration/optional-batch.test.ts` (21 เคส)
+
+### #R6-G — ผู้ลงทะเบียน Sheet ID คือ OFFICER (2026-08-01)
+
+| # | คำตัดสิน |
+|---|---|
+| #R6-49 | **ผู้ลงทะเบียนแบบสอบถามเข้าระบบคือ OFFICER** ผ่าน Permission เดิม `batch.manage` — ไม่เพิ่ม Permission String ใหม่ |
+| #R6-50 | **`DATA_ENTRY` สร้าง `PaperSheet` เองไม่ได้** — เปิดได้เฉพาะใบที่ลงทะเบียนแล้ว แล้วคีย์ข้อมูลเท่านั้น |
+| #R6-51 | **ปึกเป็นตัวตัดสินชุมชนเสมอ** — ระบุปึกแล้ว `communityId` จาก Client ที่ขัดกับปึก → `COMMUNITY_MISMATCH` **ห้ามเขียนทับเงียบ ๆ** |
+| #R6-52 | **ปึกที่ปิดแล้วรับใบเพิ่มไม่ได้** (`BATCH_CLOSED`) · ผูกใบเข้าปึกเพิ่ม `expectedCount`/`receivedCount` ในทรานแซกชันเดียวกัน |
+| #R6-53 | **การหาลำดับถัดไปในปึกต้องจัดคิวด้วย `pg_advisory_xact_lock` ต่อปึก** — retry อย่างเดียวไม่พอ (พิสูจน์แล้ว ดูด้านล่าง) · แยกสาเหตุ `P2002` จาก `meta.target` **ห้ามเดาจากการนับแถว** |
+
+**เหตุผล:** `survey.entry` **ไม่ผูก Community Scope** (Owner Decision 2026-07-24) การลงทะเบียนใบ
+จึงเป็น **ด่านเดียวที่เหลืออยู่** ที่ผูก "ข้อมูลที่ถูกคีย์" เข้ากับ "กระดาษที่รับมาจริง" —
+ถ้าผู้คีย์สร้างใบเองได้ ผู้มี `survey.entry` คนใดก็สร้าง Sheet ID และครัวเรือนที่ไม่มีเอกสาร
+ต้นทางในชุมชนใดก็ได้ ทำให้ตัวเลข Coverage เชื่อถือไม่ได้
+
+**หลักฐานที่ทำให้ต้องใช้ Advisory Lock (#R6-53):** เดิมใช้ `max(sequence)+1` + retry 3 รอบ
+ทดสอบจริงด้วยการลงทะเบียน **4 ใบพร้อมกันในปึกเดียว** ได้ผล `["ok","ok","ERROR","ok"]` —
+เพราะผู้แข่ง N คนต้องใช้ retry ราว N รอบ (แต่ละรอบมีผู้ชนะเพียงคนเดียว) หลังใส่
+`pg_advisory_xact_lock(hashtext(batchId))` ต้นทรานแซกชัน ทดสอบซ้ำ 4 ใบและ 9 ใบพร้อมกัน
+ผ่านครบทุกใบ ลำดับเรียง 1..N ไม่ซ้ำไม่ข้าม · ล็อกผูกกับทรานแซกชัน (ปลดเองเมื่อจบ)
+และแคบระดับปึก จึงไม่กระทบปึกอื่นหรือใบนอกปึก — retry ที่เหลือไว้เป็นตาข่ายกันพลาดเท่านั้น
+
+**การแยกสาเหตุ `P2002`:** ตรวจกับฐานข้อมูลจริงแล้ว Prisma คืน `meta.target` เป็นรายชื่อ
+**คอลัมน์** ทั้งสองกรณี — `["sheetNo"]` และ `["batchId","sequence"]` (partial unique จาก raw SQL
+ก็รายงานเป็นคอลัมน์ ไม่ใช่ชื่อ index) · `sheetNo` ชน → `SHEET_CONFLICT` ทันที (retry ไม่ช่วย)
+· `sequence` ชน → retry · ระบุไม่ได้ → ตรวจว่าเลขใบถูกใช้แล้วหรือไม่ก่อนตัดสิน
+
+**ที่อยู่จริง:** `registerSheet()` ใน `lib/batch/core.ts` · `registerSheetAction()` ใน
+`lib/batch/actions.ts` · ฟอร์ม `components/batch/register-sheet-form.tsx` วางในหน้า `/batches`
+เดิม (ไม่สร้างหน้าใหม่) · CTA = **"บันทึกแบบสอบถาม"** ไม่พาผู้ใช้เข้า Wizard
+
+**ขอบเขตของรอบนี้ (Owner Decision 2026-08-01):** #R6-F/#R6-G ทำให้ Batch **เป็น Optional**
+และมี **Minimum Sheet Registration** เท่านั้น — **ไม่ใช่การสร้าง Batch Management Module**
+
+**Future Enhancement (แยกออกจากรอบนี้ — ห้าม implement โดยไม่มีคำสั่งใหม่):**
+
+| # | รายการ | เหตุผลที่เลื่อน |
+|---|---|---|
+| FE-1 | `linkSheetToBatch` / `unlinkSheetFromBatch` (ผูก/ถอดใบภายหลัง) | เป็นงานบริหารปึก ไม่ใช่เงื่อนไขของการคีย์ข้อมูล |
+| FE-2 | Candidate Panel (รายการใบนอกปึกให้เลือกผูก) | UI ของ FE-1 |
+| FE-3 | Batch Reconciliation (`recountBatch` / `reconcileBatchCounters`) | Drift ของตัวนับเกิดจากการย้ายใบ (FE-1) เท่านั้น ตัวนับปัจจุบันเพิ่ม/ลดทีละ 1 ในทรานแซกชันเดียวกับการเขียนจริง |
+| FE-4 | Drag-and-drop · Bulk reassignment · หน้าจัดการใบแยกต่างหาก | ไม่มีความจำเป็นเชิงธุรกิจในรอบนี้ |
+
+ข้อผูกพันที่ยังมีผลเมื่อทำ FE-1 ในอนาคต: ผูก/ถอดปึก **ห้ามเปลี่ยนชุมชนของใบ** ·
+ผูกได้เฉพาะชุมชนเดียวกัน (`COMMUNITY_MISMATCH`) · ถอดใบ **ห้ามลบใบหรือ Household** ·
+ต้องเคลียร์ `batchId`/`sequence` พร้อมกันตาม CHECK #R6-42
 
 ---
 

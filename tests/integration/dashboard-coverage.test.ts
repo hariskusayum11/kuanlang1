@@ -84,12 +84,17 @@ describe.skipIf(!isLocalDevDb)("Integration: Dashboard Coverage", () => {
     ) => {
       seq += 1;
       const sheet = await prisma.paperSheet.create({
-        data: { batchId, sheetNo: `TCOV-SHEET-${seq}`, sequence: seq, status: sheetStatus },
+        data: {
+          communityId,
+          batchId,
+          sheetNo: `TCOV-SHEET-${seq}`,
+          sequence: seq,
+          status: sheetStatus,
+        },
       });
       await prisma.household.create({
         data: {
           sheetId: sheet.id,
-          batchId,
           communityId,
           enteredById: keyer.id,
           hasDuplicateFlag: opts.duplicate ?? false,

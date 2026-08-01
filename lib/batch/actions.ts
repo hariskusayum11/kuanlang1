@@ -9,8 +9,10 @@ import {
   closeBatch,
   createBatch,
   openBatchForEntry,
+  registerSheet,
   type BatchTransitionResult,
   type CreateBatchResult,
+  type RegisterSheetResult,
 } from "./core";
 import { MAX_SHEETS_PER_BATCH } from "./sheet-numbers";
 
@@ -50,6 +52,30 @@ export async function createBatchAction(
   const parsed = createBatchSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "INVALID" };
   return createBatch(ctx, parsed.data);
+}
+
+// ปึกเป็นทางเลือก — ช่องว่าง/ไม่ส่งมา = ใบเดี่ยว (ไม่ใช่ error)
+const registerSheetSchema = z.object({
+  sheetNo: z.string().trim().min(1).max(32),
+  communityId: z.string().cuid(),
+  batchId: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().cuid().optional(),
+  ),
+});
+
+export type RegisterSheetActionResult =
+  | RegisterSheetResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+export async function registerSheetAction(
+  input: unknown,
+): Promise<RegisterSheetActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsed = registerSheetSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+  return registerSheet(ctx, parsed.data);
 }
 
 const batchIdSchema = z.string().cuid();

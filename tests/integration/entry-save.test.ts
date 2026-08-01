@@ -35,7 +35,7 @@ async function cleanupFixtures() {
   const batch = await prisma.paperBatch.findUnique({ where: { code: BATCH_CODE } });
   if (batch) {
     const households = await prisma.household.findMany({
-      where: { batchId: batch.id },
+      where: { sheet: { batchId: batch.id } },
       select: { id: true },
     });
     const hids = households.map((h) => h.id);
@@ -116,7 +116,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     });
     for (const [i, sheetNo] of SHEETS.entries()) {
       const s = await prisma.paperSheet.create({
-        data: { batchId: batch.id, sheetNo, sequence: i + 1 },
+        data: { communityId: community.id, batchId: batch.id, sheetNo, sequence: i + 1 },
       });
       sheetIds[sheetNo] = s.id;
     }

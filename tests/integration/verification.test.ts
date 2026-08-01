@@ -109,6 +109,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     const mkHousehold = async (key: string, sheetNo: string, enteredById: string) => {
       const sheet = await prisma.paperSheet.create({
         data: {
+          communityId: c1.id,
           batchId: batch.id,
           sheetNo,
           sequence: Object.keys(hh).length + 1,
@@ -118,7 +119,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
       const household = await prisma.household.create({
         data: {
           sheetId: sheet.id,
-          batchId: batch.id,
           communityId: c1.id,
           enteredById,
           respondentFirstName: enc("มานี"),

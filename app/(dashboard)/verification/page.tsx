@@ -180,13 +180,22 @@ export default async function VerificationPage({
 
                 <div className="divide-y divide-slate-50 border-t border-slate-100 bg-slate-50/40 pl-4">
                   {community.batches.map((batch) => (
-                    <details key={batch.batchId} className="group/batch">
+                    <details key={batch.batchId ?? "unbatched"} className="group/batch">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-brand-50/40">
                         <span className="flex items-center gap-2 text-sm">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 shrink-0 text-slate-400 transition-transform group-open/batch:rotate-90">
                             <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          <span className="font-mono font-bold text-slate-700">{batch.batchCode}</span>
+                          {/* ใบที่ยังไม่ได้จัดเข้าปึกใช้ป้ายภาษาไทย ไม่ใช่รหัส — จึงไม่ใช้ font-mono */}
+                          <span
+                            className={
+                              batch.batchId === null
+                                ? "font-bold text-slate-500"
+                                : "font-mono font-bold text-slate-700"
+                            }
+                          >
+                            {batch.batchLabel}
+                          </span>
                         </span>
                         <span className="badge badge-neutral tabular-nums">{batch.count} ใบ</span>
                       </summary>

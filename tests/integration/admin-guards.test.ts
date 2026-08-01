@@ -122,6 +122,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     });
     const sheet = await prisma.paperSheet.create({
       data: {
+        communityId: community.id,
         batchId: batch.id,
         sheetNo: "TAG-930001",
         sequence: 1,
@@ -132,7 +133,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     const household = await prisma.household.create({
       data: {
         sheetId: sheet.id,
-        batchId: batch.id,
         communityId: community.id,
         enteredById: admin.id, // ← ADMIN เป็นผู้คีย์
         respondentFirstName: encryptText("สมชาย", keyring, CURRENT_KEY_VERSION),

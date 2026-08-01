@@ -116,10 +116,10 @@ describe.skipIf(!isLocalDevDb)("Integration (local Dev DB — PostgreSQL/PostGIS
         },
       });
       const s1 = await prisma.paperSheet.create({
-        data: { batchId: batch.id, sheetNo: "TEST-BR44-S1", sequence: 1 },
+        data: { communityId: tk.id, batchId: batch.id, sheetNo: "TEST-BR44-S1", sequence: 1 },
       });
       const s2 = await prisma.paperSheet.create({
-        data: { batchId: batch.id, sheetNo: "TEST-BR44-S2", sequence: 2 },
+        data: { communityId: tk.id, batchId: batch.id, sheetNo: "TEST-BR44-S2", sequence: 2 },
       });
       sheet1Id = s1.id;
       sheet2Id = s2.id;

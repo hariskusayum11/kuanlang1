@@ -99,7 +99,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "communityNameOnPaper",
         label: "ชื่อชุมชน (ตามที่ผู้สำรวจเขียน)",
         type: "text",
-        hint: "คีย์ตามตัวอักษร — ระบบจะเทียบกับชุมชนของ Batch ให้ภายหลัง",
+        hint: "คีย์ตามตัวอักษร — ระบบจะเทียบกับชุมชนของใบนี้ให้ภายหลัง",
       },
       {
         name: "surveyorPrefix",

@@ -499,6 +499,7 @@ model Community {
   boundaries           CommunityBoundary[] // ขอบเขต GIS (มีประวัติ)
   incidentCommunities  IncidentCommunity[]
   batches              PaperBatch[]
+  paperSheets          PaperSheet[]
   households           Household[]
   evacuationSites      EvacuationSite[]
   userScopes           UserCommunityScope[]
@@ -713,10 +714,18 @@ model PaperBatch {
 
 /// กระดาษแบบสอบถาม 1 ใบ (1 ใบ = 1 ครัวเรือน)
 model PaperSheet {
-  id       String @id @default(cuid())
-  batchId  String /// อยู่ใน Batch ไหน
-  sheetNo  String @unique /// เลขประจำใบ เช่น "SHEET-KL01-001-024" (BR-40)
-  sequence Int /// ลำดับในปึก (1, 2, 3...)
+  id String @id @default(cuid())
+
+  /// ชุมชนของแบบสอบถามใบนี้ — Source of Truth (#R6-F)
+  /// ใบกระดาษมีอยู่ก่อน Household จึงต้องตรวจสิทธิ์ได้ตั้งแต่เปิด Sheet ID
+  communityId String
+  sheetNo     String @unique /// เลขประจำใบ เช่น "SHEET-KL01-001-024" (BR-40)
+
+  /// ปึกที่จัดไว้ — Optional Operational Metadata (#R6-B/#R6-F)
+  batchId  String?
+  /// ลำดับในปึก (1, 2, 3...) — null เมื่อใบไม่อยู่ในปึก
+  /// DB บังคับ: (batchId IS NULL) = (sequence IS NULL) + partial unique (batchId, sequence)
+  sequence Int?
 
   status SheetStatus @default(PENDING)
 
@@ -740,8 +749,12 @@ model PaperSheet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  batch    PaperBatch @relation(fields: [batchId], references: [id])
-  lockedBy User?      @relation("sheetLockedBy", fields: [lockedById], references: [id])
+  community Community   @relation(fields: [communityId], references: [id])
+  // Restrict (ไม่ใช่ SetNull ซึ่งเป็นค่า default ของ optional relation):
+  // SetNull จะเคลียร์ batchId แต่ปล่อย sequence ค้าง → ชน CHECK batch_sequence_together
+  // การถอดใบออกจากปึกจึงต้องทำผ่าน Application ที่เคลียร์ทั้งคู่พร้อมกัน
+  batch     PaperBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  lockedBy  User?       @relation("sheetLockedBy", fields: [lockedById], references: [id])
 
   // Relations
   household     Household? /// 1:1 — สร้างเมื่อคีย์ Entry 1 เสร็จ
@@ -754,7 +767,10 @@ model PaperSheet {
   @@index([status, batchId, sequence], name: "ix_sheet_pickup")
   // ⭐ Index สำหรับปลด Lock ค้าง (Cron ทุก 1 นาที)
   @@index([lockExpiresAt], name: "ix_sheet_lock_expiry")
-  @@index([batchId, sequence])
+  // ค้นใบตามชุมชน — ครอบคลุมใบที่ยังไม่ได้จัดเข้าปึก (ปึกช่วยไม่ได้)
+  @@index([communityId, status])
+  // หมายเหตุ: unique (batchId, sequence) เป็น **partial index** (WHERE batchId IS NOT NULL)
+  // Prisma ยังประกาศ partial index ไม่ได้ → อยู่ใน migration SQL
   @@map("paper_sheet")
 }
 
@@ -868,8 +884,9 @@ model Household {
 
   // --- ความเชื่อมโยงกับกระดาษ ---
   sheetId     String @unique /// 1:1 กับ PaperSheet
-  batchId     String /// มาจาก Batch ไหน (denormalize เพื่อ query เร็ว)
-  communityId String /// ชุมชน
+  /// ชุมชนของครัวเรือน — ตรึงไว้ ณ เวลาที่ Submit
+  /// ปึกอ่านผ่าน sheet.batchId (#R6-F: ห้ามเก็บ batchId ซ้ำที่นี่)
+  communityId String
 
   // --- ส่วนที่ 0: ข้อมูลสำหรับการสำรวจ (📋 คีย์จากกระดาษ) ---
   surveyNo                 String? /// 📋 แบบสอบถามลำดับที่
@@ -998,7 +1015,6 @@ model Household {
   @@index([houseNo, mooId, tambonId], name: "ix_household_address_dup")
   @@index([communityId])
   @@index([communityId, deletedAt])
-  @@index([batchId])
   @@index([deletedAt])
   @@index([surveyedAt])
   @@index([hasDuplicateFlag])

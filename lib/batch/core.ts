@@ -7,7 +7,7 @@ import { writeAuditLog } from "../audit/log";
 import { canAccessCommunity, hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
-import { parseSheetNumbers, parseErrorMessage } from "./sheet-numbers";
+import { normalizeSheetNo, parseSheetNumbers, parseErrorMessage } from "./sheet-numbers";
 
 // ---------------------------------------------------------------------------
 // รับปึก (สร้าง Batch + Sheet ทั้งหมดใน transaction เดียว)
@@ -117,6 +117,7 @@ export async function createBatch(
           );
         await tx.paperSheet.createMany({
           data: numbers.map((sheetNo, i) => ({
+            communityId: community.id,
             batchId: created.id,
             sheetNo,
             sequence: i + 1,
@@ -159,12 +160,176 @@ export async function createBatch(
 }
 
 // ---------------------------------------------------------------------------
+// ลงทะเบียนแบบสอบถามทีละใบ (ปึกเป็นทางเลือก — Owner Decision 2026-08-01 #R6-F)
+// ---------------------------------------------------------------------------
+
+/**
+ * คอลัมน์ที่ทำให้ unique constraint ชน (P2002) — `null` เมื่อไม่ใช่ P2002
+ *
+ * Prisma คืน `meta.target` เป็นรายชื่อ **คอลัมน์** ทั้งกรณี unique ในสคีมา
+ * (`["sheetNo"]`) และ partial unique ที่สร้างด้วย raw SQL (`["batchId","sequence"]`)
+ * — ตรวจกับฐานข้อมูลจริงแล้ว ไม่ใช่การอนุมาน · เผื่อ string เดี่ยวไว้กันรูปแบบต่างเวอร์ชัน
+ */
+function uniqueConflictTarget(e: unknown): string[] | null {
+  if (typeof e !== "object" || e === null) return null;
+  if (!("code" in e) || e.code !== "P2002") return null;
+  const target = (e as { meta?: { target?: unknown } }).meta?.target;
+  if (typeof target === "string") return [target];
+  if (Array.isArray(target)) return target.filter((t): t is string => typeof t === "string");
+  return [];
+}
+
+export interface RegisterSheetInput {
+  sheetNo: string;
+  communityId: string;
+  /** ระบุเฉพาะเมื่อกระดาษถูกจัดเป็นปึกจริง — ไม่ระบุ = ใบเดี่ยว (batchId/sequence = null) */
+  batchId?: string | null;
+}
+
+export type RegisterSheetResult =
+  | {
+      ok: true;
+      sheetId: string;
+      sheetNo: string;
+      communityName: string;
+      batchCode: string | null;
+      sequence: number | null;
+    }
+  | {
+      ok: false;
+      reason:
+        | "FORBIDDEN"
+        | "INVALID_SHEET_NO"
+        | "INVALID_COMMUNITY"
+        | "BATCH_NOT_FOUND"
+        | "BATCH_CLOSED"
+        | "COMMUNITY_MISMATCH"
+        | "SHEET_CONFLICT"
+        | "ERROR";
+    };
+
+/**
+ * ผู้รับเอกสาร (`batch.manage`) ลงทะเบียนใบกระดาษเข้าระบบ
+ *
+ * เป็น "ด่านยืนยันว่ากระดาษมีอยู่จริงและอยู่ชุมชนใด" — จึงเป็นหน้าที่ของผู้รับเอกสาร
+ * ไม่ใช่ผู้คีย์ (`survey.entry` ไม่ผูก community scope จึงสร้างใบเองไม่ได้)
+ */
+export async function registerSheet(
+  ctx: AuthorizationContext,
+  input: RegisterSheetInput,
+): Promise<RegisterSheetResult> {
+  if (!hasPermission(ctx, PERMISSIONS.BATCH_MANAGE)) {
+    return { ok: false, reason: "FORBIDDEN" };
+  }
+
+  const sheetNo = normalizeSheetNo(input.sheetNo);
+  if (!sheetNo) return { ok: false, reason: "INVALID_SHEET_NO" };
+
+  // ปึกเป็นตัวตัดสินชุมชน — ค่าจาก client ที่ขัดกับปึกต้องถูกปฏิเสธ ไม่ใช่เขียนทับเงียบ ๆ
+  let batch: { id: string; code: string; communityId: string; status: BatchStatus } | null =
+    null;
+  if (input.batchId) {
+    batch = await prisma.paperBatch.findUnique({
+      where: { id: input.batchId },
+      select: { id: true, code: true, communityId: true, status: true },
+    });
+    if (!batch) return { ok: false, reason: "BATCH_NOT_FOUND" };
+    if (batch.status === BatchStatus.CLOSED) return { ok: false, reason: "BATCH_CLOSED" };
+    if (batch.communityId !== input.communityId) {
+      return { ok: false, reason: "COMMUNITY_MISMATCH" };
+    }
+  }
+
+  const communityId = batch?.communityId ?? input.communityId;
+  if (!canAccessCommunity(ctx, communityId)) return { ok: false, reason: "FORBIDDEN" };
+
+  const community = await prisma.community.findFirst({
+    where: { id: communityId, deletedAt: null, isActive: true },
+    select: { id: true, nameTh: true },
+  });
+  if (!community) return { ok: false, reason: "INVALID_COMMUNITY" };
+
+  // ลองซ้ำได้เฉพาะกรณีชน (batchId, sequence) จากผู้ใช้สองคนลงทะเบียนปึกเดียวกันพร้อมกัน
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const sheet = await prisma.$transaction(async (tx) => {
+        let sequence: number | null = null;
+        if (batch) {
+          // จัดคิวการหาลำดับถัดไปให้เป็นทีละคนต่อปึก — พิสูจน์แล้วว่า retry อย่างเดียวไม่พอ
+          // (ลงทะเบียนพร้อมกัน 4 ใบในปึกเดียว ต้องใช้ retry ~N รอบ จึงมีใบตกหล่นจริง)
+          // ล็อกผูกกับทรานแซกชัน ปลดเองเมื่อจบ · แคบระดับปึก ไม่กระทบปึกอื่นหรือใบนอกปึก
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${batch.id})::bigint)`;
+          const last = await tx.paperSheet.findFirst({
+            where: { batchId: batch.id },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+          });
+          sequence = (last?.sequence ?? 0) + 1;
+        }
+        const created = await tx.paperSheet.create({
+          data: {
+            communityId: community.id,
+            batchId: batch?.id ?? null,
+            sequence,
+            sheetNo,
+            status: SheetStatus.PENDING,
+          },
+          select: { id: true, sequence: true },
+        });
+        if (batch) {
+          // ปึกมีกระดาษเพิ่มจริงหนึ่งใบ — ตัวนับที่แสดงบนหน้าปึกต้องตรงกับจำนวนใบ
+          await tx.paperBatch.update({
+            where: { id: batch.id },
+            data: {
+              expectedCount: { increment: 1 },
+              receivedCount: { increment: 1 },
+            },
+          });
+        }
+        return created;
+      });
+
+      await writeAuditLog({
+        userId: ctx.userId,
+        action: AuditAction.CREATE,
+        entityType: "PaperSheet",
+        entityId: sheet.id,
+      });
+      return {
+        ok: true,
+        sheetId: sheet.id,
+        sheetNo,
+        communityName: community.nameTh,
+        batchCode: batch?.code ?? null,
+        sequence: sheet.sequence,
+      };
+    } catch (e) {
+      const target = uniqueConflictTarget(e);
+      if (!target) return { ok: false, reason: "ERROR" };
+
+      // เลขใบซ้ำ = ผู้ใช้ต้องแก้เอง retry ไม่ช่วย
+      if (target.includes("sheetNo")) return { ok: false, reason: "SHEET_CONFLICT" };
+      // ชน (batchId, sequence) = อีกคนแทรกลำดับเดียวกันระหว่างอ่าน max → อ่านใหม่แล้วลองอีก
+      if (target.includes("sequence")) continue;
+
+      // ไม่รู้ว่าคอนสเตรนต์ใด — ตรวจให้แน่ว่าเลขใบถูกใช้ไปแล้วหรือไม่ ก่อนตัดสิน
+      const taken = await prisma.paperSheet.count({ where: { sheetNo } });
+      if (taken > 0) return { ok: false, reason: "SHEET_CONFLICT" };
+      return { ok: false, reason: "ERROR" };
+    }
+  }
+  // ชนลำดับติดกันครบ 3 รอบ — ปึกกำลังถูกแก้พร้อมกันหนัก ให้ผู้ใช้ลองใหม่
+  return { ok: false, reason: "ERROR" };
+}
+
+// ---------------------------------------------------------------------------
 // รายการปึก + รายละเอียด (scope-filtered)
 // ---------------------------------------------------------------------------
 
 export interface BatchListRow {
   id: string;
   code: string;
+  communityId: string;
   communityName: string;
   status: BatchStatus;
   expectedCount: number;
@@ -205,6 +370,7 @@ export async function listBatches(
     select: {
       id: true,
       code: true,
+      communityId: true,
       status: true,
       expectedCount: true,
       receivedAt: true,
@@ -228,6 +394,7 @@ export async function listBatches(
   return batches.map((b) => ({
     id: b.id,
     code: b.code,
+    communityId: b.communityId,
     communityName: b.community.nameTh,
     status: b.status,
     expectedCount: b.expectedCount,

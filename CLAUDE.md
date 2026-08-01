@@ -197,10 +197,43 @@ Batch (ปึก) คือ **ข้อมูลเพื่อการบร�
 * UI ต้องไม่บังคับเลือกหรือสร้าง Batch ก่อนเปิดแบบสอบถาม
 * คำว่า "ปึก" ให้แสดงเฉพาะเมื่อแบบสอบถามถูกผูกกับ Batch จริง
 
-> **สถานะปัจจุบันยังไม่ตรงคำตัดสิน:** `SurveySheet.batchId` และ `Household.batchId`
-> ยังเป็น NOT NULL และ Flow ปัจจุบันยังบังคับสร้างแบบสอบถามผ่าน Batch
-> ต้องแก้เป็น **งานแยกภายหลัง** — ห้ามรวมกับงานปรับโครงสร้าง Role
-> (รายละเอียดใน `docs/16-owner-decisions.md` §6.7 #R6-B)
+**สถาปัตยกรรมที่ใช้จริง (Owner Decision 2026-08-01, #R6-F — implement แล้ว):**
+
+```prisma
+PaperSheet { communityId String; batchId String?; sequence Int? }
+Household  { sheetId String; communityId String; /* ไม่มี batchId */ }
+```
+
+* `PaperSheet.communityId` คือ **Source of Truth ของ Community Scope** — ใบกระดาษมีอยู่ก่อน
+  Household จึงต้องตรวจสิทธิ์ได้ตั้งแต่วินาทีที่เปิด Sheet ID
+* Authorization ต้องอ่านจาก `PaperSheet.communityId` **ห้าม**อ่านจาก `PaperSheet.batch.communityId`
+  — ห้ามให้ใบที่ไม่มี Batch กลายเป็นใบที่ไม่มี Community Scope
+* `Household.batchId` **ถูกลบแล้ว** — อ่านปึกผ่าน `Household → PaperSheet → PaperBatch`
+  และห้ามเพิ่ม Composite FK เพื่อคงคอลัมน์นี้ไว้ (ข้อมูลซ้ำ + ภาระรักษา invariant โดยไม่จำเป็น)
+* `batchId` กับ `sequence` ต้องมีหรือไม่มีพร้อมกัน บังคับที่ระดับ DB ด้วย CHECK และ
+  Partial Unique `(batchId, sequence) WHERE batchId IS NOT NULL`
+* เปิดใบด้วยเลขลำดับสั้นได้เฉพาะเมื่อระบุปึก — Full Sheet ID ใช้ได้เสมอ
+* ตัวนับ `receivedCount`/`enteredCount`/`verifiedCount` ต้องอัปเดตแบบมีเงื่อนไข
+  Save/Submit/Verify ห้ามล้มเพราะ `batchId = null`
+* รายละเอียดครบใน `docs/16-owner-decisions.md` §6.7 #R6-F ·
+  เทสต์ครอบคลุมที่ `tests/integration/optional-batch.test.ts`
+
+**ผู้ลงทะเบียนใบ = OFFICER (Owner Decision 2026-08-01, #R6-G):** ผู้รับเอกสาร (`batch.manage`
++ Community Scope) เป็นผู้ลงทะเบียนแบบสอบถามเข้าระบบ — `registerSheet()` ใน `lib/batch/core.ts`
+รับ `sheetNo` + `communityId` (บังคับ) และ `batchId` (ไม่บังคับ)
+
+* **`DATA_ENTRY` สร้างใบเองไม่ได้** — เปิดใบที่ลงทะเบียนแล้วและคีย์เท่านั้น
+  เหตุผล: `survey.entry` ไม่ผูก Community Scope การลงทะเบียนจึงเป็นด่านเดียวที่ยืนยันว่า
+  กระดาษมีอยู่จริงและอยู่ชุมชนใด — ถ้าผู้คีย์สร้างเองได้ จะเกิดครัวเรือนที่ไม่มีเอกสารต้นทาง
+* **ระบุปึกแล้ว ปึกเป็นตัวตัดสินชุมชน** — `communityId` จาก Client ที่ขัดกับปึก → `COMMUNITY_MISMATCH`
+  ห้ามเขียนทับเงียบ ๆ · ปึกที่ปิดแล้ว → `BATCH_CLOSED`
+* UI อยู่ในหน้า `/batches` เดิม (`components/batch/register-sheet-form.tsx`) CTA = "บันทึกแบบสอบถาม"
+  **ไม่พาเข้า Wizard** เพราะ OFFICER อาจไม่มี `survey.entry`
+
+**ขอบเขต — Optional ไม่ใช่ Batch Management (Owner Decision 2026-08-01):** รอบนี้ทำ
+Optional Batch + **Minimum Sheet Registration** เท่านั้น **ไม่ใช่การสร้างโมดูลบริหารปึก** —
+ผูก/ถอดใบเข้าปึกภายหลัง · Candidate Panel · เครื่องมือ Reconcile ตัวนับ · Drag-and-drop ·
+Bulk reassignment เป็น **Future Enhancement (FE-1…FE-4)** ห้าม implement โดยไม่มีคำสั่งใหม่
 
 สถานะข้อมูลแต่ละฟิลด์ควรรองรับ:
 

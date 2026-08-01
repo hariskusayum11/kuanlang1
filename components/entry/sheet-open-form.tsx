@@ -27,23 +27,22 @@ const STATUS_MESSAGE: Record<string, string> = {
 
 /**
  * แบบฟอร์มเปิดใบจากรหัสบนกระดาษ — Primary Action ของหน้าคีย์
- * เจ้าหน้าที่ถือปึกกระดาษอยู่แล้ว: พิมพ์รหัสใบ (หรือเลขลำดับในปึก) → Enter → เข้าฟอร์ม
+ * เจ้าหน้าที่ถือกระดาษอยู่แล้ว: พิมพ์รหัสใบเต็ม → Enter → เข้าฟอร์ม
+ *
+ * ปึกเป็นทางเลือก (#R6-B/#R6-F): ไม่เลือกปึกก็เปิดใบได้ · เลือกปึกเป็นเพียงทางลัด
+ * ให้พิมพ์เลขลำดับสั้น ๆ แทนรหัสเต็ม — ฟอร์มนี้ต้องใช้งานได้แม้ระบบยังไม่มีปึกเลย
  */
 export function SheetOpenForm({ batches }: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState("");
-  const [batchId, setBatchId] = useState<string>(
-    batches.length === 1 ? batches[0].id : "",
-  );
+  const [batchId, setBatchId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const disabled = batches.length === 0;
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (pending || disabled) return;
+    if (pending) return;
     const trimmed = code.trim();
     if (!trimmed) {
       inputRef.current?.focus();
@@ -98,16 +97,17 @@ export function SheetOpenForm({ batches }: Props) {
         <div>
           <h3 className="text-lg font-bold text-slate-900">เปิดใบจากรหัสบนกระดาษ</h3>
           <p className="text-sm text-slate-500">
-            พิมพ์รหัสที่หัวกระดาษของใบที่ถืออยู่ แล้วกด Enter
+            พิมพ์รหัสที่หัวกระดาษของใบที่ถืออยู่ แล้วกด Enter — ไม่ต้องเลือกปึกก่อน
           </p>
         </div>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row">
-        {batches.length > 1 && (
+        {/* ทางลัดเท่านั้น — เลือกปึกแล้วพิมพ์เลขลำดับสั้นแทนรหัสเต็มได้ */}
+        {batches.length > 0 && (
           <div className="lg:w-64">
             <label htmlFor="batch-select" className="label mb-1.5">
-              ปึกที่ได้รับมอบหมาย
+              ปึกที่ถืออยู่ <span className="font-normal text-slate-400">(ไม่บังคับ)</span>
             </label>
             <select
               id="batch-select"
@@ -116,7 +116,7 @@ export function SheetOpenForm({ batches }: Props) {
               className="field"
               disabled={pending}
             >
-              <option value="">ทุกปึก (ใช้รหัสใบเต็ม)</option>
+              <option value="">ไม่ระบุปึก — ใช้รหัสใบเต็ม</option>
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.code} · {b.communityName}
@@ -145,13 +145,13 @@ export function SheetOpenForm({ batches }: Props) {
                 setCode(e.target.value);
                 if (error) setError(null);
               }}
-              disabled={pending || disabled}
+              disabled={pending}
               className="field font-mono text-lg font-bold uppercase tracking-wide placeholder:text-base placeholder:font-normal placeholder:font-sans placeholder:normal-case placeholder:tracking-normal"
               aria-describedby={error ? "sheet-code-error" : undefined}
             />
             <button
               type="submit"
-              disabled={pending || disabled}
+              disabled={pending}
               className="btn btn-accent btn-lg shrink-0"
             >
               {pending ? (
@@ -185,11 +185,9 @@ export function SheetOpenForm({ batches }: Props) {
       )}
 
       <p className="text-xs text-slate-500">
-        {disabled
-          ? "ยังไม่มีปึกที่เปิดให้คีย์ในพื้นที่ของคุณ — เมื่อหัวหน้างานเปิดปึก จะเริ่มคีย์ได้ที่นี่"
-          : batchId
-            ? "พิมพ์เลขลำดับใบในปึก (เช่น 24) หรือรหัสเต็ม แล้วกด Enter · รองรับสแกนบาร์โค้ดในอนาคต"
-            : "พิมพ์รหัสใบเต็มจากหัวกระดาษ แล้วกด Enter · รองรับสแกนบาร์โค้ดในอนาคต"}
+        {batchId
+          ? "พิมพ์เลขลำดับใบในปึก (เช่น 24) หรือรหัสเต็ม แล้วกด Enter · รองรับสแกนบาร์โค้ดในอนาคต"
+          : "พิมพ์รหัสใบเต็มจากหัวกระดาษ แล้วกด Enter · รองรับสแกนบาร์โค้ดในอนาคต"}
       </p>
     </form>
   );

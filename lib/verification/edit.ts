@@ -162,7 +162,6 @@ export async function applyHouseholdEdits(
     select: {
       id: true,
       communityId: true,
-      batchId: true,
       enteredById: true,
       sheet: { select: { status: true } },
       respondentPrefixId: true,

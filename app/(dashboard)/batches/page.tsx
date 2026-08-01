@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { listBatches } from "@/lib/batch/core";
-import { PageHero, EmptyState } from "@/components/layout/page-hero";
+import { listBatches, listReceivableCommunities } from "@/lib/batch/core";
+import { RegisterSheetForm } from "@/components/batch/register-sheet-form";
+import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ปึกกระดาษ" };
 export const dynamic = "force-dynamic";
@@ -19,7 +20,14 @@ const DATE_FMT = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" });
 export default async function BatchesPage() {
   // RBAC ฝั่ง server — เฉพาะผู้จัดการปึก (OFFICER/COORDINATOR/ADMIN)
   const ctx = await requirePermission(PERMISSIONS.BATCH_MANAGE);
-  const batches = (await listBatches(ctx)) ?? [];
+  const [batches, communities] = await Promise.all([
+    listBatches(ctx).then((rows) => rows ?? []),
+    listReceivableCommunities(ctx),
+  ]);
+  // ปึกที่ปิดแล้วรับใบเพิ่มไม่ได้ — ไม่ต้องเสนอให้เลือก
+  const openBatches = batches
+    .filter((b) => b.status !== "CLOSED")
+    .map((b) => ({ id: b.id, code: b.code, communityId: b.communityId }));
 
   return (
     <div className="mx-auto max-w-6xl space-y-7 animate-fade-in">
@@ -42,6 +50,31 @@ export default async function BatchesPage() {
           </Link>
         }
       />
+
+      {/* ลงทะเบียนใบทีละใบ — ปึกเป็นทางเลือก จึงไม่บังคับสร้างปึกก่อน (#R6-B/#R6-F) */}
+      <section className="card overflow-hidden">
+        <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
+          <SectionTitle
+            title="ลงทะเบียนแบบสอบถาม"
+            tone="brand"
+            aside={
+              <span className="badge badge-neutral">
+                ยืนยันว่ากระดาษมีอยู่จริงและอยู่ชุมชนใด
+              </span>
+            }
+          />
+        </div>
+        <div className="p-6">
+          {communities.length === 0 ? (
+            <EmptyState
+              title="ไม่มีขอบเขตชุมชนที่คุณลงทะเบียนแบบสอบถามได้"
+              description="กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดชุมชนที่คุณรับผิดชอบ"
+            />
+          ) : (
+            <RegisterSheetForm communities={communities} batches={openBatches} />
+          )}
+        </div>
+      </section>
 
       <section className="card overflow-hidden">
         {batches.length === 0 ? (

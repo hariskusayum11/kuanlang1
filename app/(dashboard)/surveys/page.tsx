@@ -37,7 +37,7 @@ export default async function SurveysPage() {
       <PageHero
         title="คีย์แบบสอบถาม"
         tone="brand"
-        description="หยิบกระดาษใบถัดไปจากปึกของคุณ แล้วพิมพ์รหัสใบเพื่อเปิดแบบฟอร์ม"
+        description="หยิบกระดาษใบถัดไปที่ถืออยู่ แล้วพิมพ์รหัสใบเพื่อเปิดแบบฟอร์ม"
         badge={
           <>
             <span className="live-dot" />

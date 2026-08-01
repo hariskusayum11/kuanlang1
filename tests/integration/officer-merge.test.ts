@@ -127,12 +127,17 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     const keyring = getKeyring();
     const mkHousehold = async (sheetNo: string, seq: number, enteredById: string) => {
       const sheet = await prisma.paperSheet.create({
-        data: { batchId: batch.id, sheetNo, sequence: seq, status: SheetStatus.ENTERED_1 },
+        data: {
+          communityId: community.id,
+          batchId: batch.id,
+          sheetNo,
+          sequence: seq,
+          status: SheetStatus.ENTERED_1,
+        },
       });
       const h = await prisma.household.create({
         data: {
           sheetId: sheet.id,
-          batchId: batch.id,
           communityId: community.id,
           enteredById,
           respondentFirstName: encryptText("สมหญิง", keyring, CURRENT_KEY_VERSION),
