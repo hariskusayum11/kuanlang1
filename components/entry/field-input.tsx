@@ -4,7 +4,11 @@ import type { EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import { maskThaiDate, sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
 import { parseThaiDate } from "@/lib/entry/payload";
-import { describeCoordinate, parseCoordinateText } from "@/domain/geo/coordinate";
+import {
+  composeCoordinateText,
+  describeCoordinate,
+  parseCoordinateText,
+} from "@/domain/geo/coordinate";
 
 export type FieldMark = "ILLEGIBLE" | "BLANK_IN_PAPER" | null;
 
@@ -157,12 +161,14 @@ export function FieldInput({
         );
       }
       /**
-       * พิกัด — ช่องเดียวตามกระดาษ (QM-04: เก็บข้อความดิบเป็นต้นฉบับ ห้ามจัดรูปแบบให้)
-       * แต่แสดงผลอ่านค่าใต้ช่องทันที เพื่อให้ผู้คีย์ทานกับกระดาษได้โดยไม่ต้องเดา
+       * พิกัด — สองช่อง ละติจูด/ลองจิจูด (Owner Decision 2026-08-03) แต่เป็นพิกัดจุดเดียว
+       * ประกอบกลับเป็นคู่แล้วอ่านค่าใต้ช่องทันที (QM-04: ค่าดิบเก็บตามที่คีย์ ไม่จัดรูปแบบให้)
+       * F2/F3 มาร์กแยกช่องได้ (ละติจูดอ่านออก ลองจิจูดเลอะ) เหมือน measure-pair
        */
       case "coordinate": {
-        const raw = typeof value === "string" ? value : "";
-        const parsed = parseCoordinateText(raw);
+        const latRaw = typeof value === "string" ? value : "";
+        const lngRaw = typeof pairValue === "string" ? pairValue : "";
+        const parsed = parseCoordinateText(composeCoordinateText(latRaw, lngRaw));
         const note = describeCoordinate(parsed);
         const noteClass =
           note.tone === "ok"
@@ -172,15 +178,32 @@ export function FieldInput({
               : "text-slate-500";
         return (
           <div className="space-y-1.5">
-            <input
-              type="text"
-              inputMode="decimal"
-              data-field-name={field.name}
-              value={raw}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="7.820213, 99.943592"
-              className={`field max-w-md font-mono ${markInput}`}
-            />
+            <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+              <label className="space-y-1">
+                <span className="block text-xs font-bold text-slate-600">ละติจูด</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  data-field-name={field.name}
+                  value={latRaw}
+                  onChange={(e) => onChange(e.target.value)}
+                  placeholder="7.820213"
+                  className={`field w-40 font-mono ${markInput}`}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="block text-xs font-bold text-slate-600">ลองจิจูด</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  data-field-name={field.pair?.name ?? `${field.name}-lng`}
+                  value={lngRaw}
+                  onChange={(e) => onPairChange?.(e.target.value)}
+                  placeholder="99.943592"
+                  className={`field w-40 font-mono ${markBorder(pairMark ?? null)}`}
+                />
+              </label>
+            </div>
             <p className={`text-xs font-medium leading-relaxed ${noteClass}`}>
               {note.tone === "ok" ? "✓ " : ""}
               {note.text}

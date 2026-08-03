@@ -3,12 +3,13 @@ import {
   asRecord,
   collectMissing,
   isAnswered,
+  isFieldVisible,
   isRowStarted,
   missingCountByStep,
   type CollectMissingArgs,
   type VulnerableRowLike,
 } from "../../lib/entry/validation";
-import type { EntryStep } from "../../lib/entry/steps";
+import type { EntryField, EntryStep } from "../../lib/entry/steps";
 
 const VULN_TYPES = [
   { id: "v-eld", label: "ผู้สูงอายุ", requiresDetail: false },
@@ -288,5 +289,96 @@ describe("helper", () => {
     expect(asRecord({ a: "1", b: 2, c: null })).toEqual({ a: "1" });
     expect(asRecord(["x"])).toEqual({});
     expect(asRecord(null)).toEqual({});
+  });
+});
+
+describe("isFieldVisible — showWhen รองรับ checkbox-group / boolean (Owner Decision 2026-08-03)", () => {
+  const otherText: EntryField = {
+    name: "evacuationVehiclesOther",
+    label: "อื่นๆ ระบุ",
+    type: "text",
+    showWhen: { field: "evacuationVehicles", equals: "OTHER" },
+  };
+  const noCode = () => undefined;
+
+  it("checkbox-group (enum) ติ๊ก OTHER → ช่องระบุแสดง", () => {
+    expect(isFieldVisible(otherText, { evacuationVehicles: ["CAR", "OTHER"] }, noCode)).toBe(true);
+  });
+
+  it("checkbox-group ไม่ได้ติ๊ก OTHER → ช่องระบุไม่แสดง", () => {
+    expect(isFieldVisible(otherText, { evacuationVehicles: ["CAR", "BOAT"] }, noCode)).toBe(false);
+    expect(isFieldVisible(otherText, { evacuationVehicles: [] }, noCode)).toBe(false);
+    expect(isFieldVisible(otherText, {}, noCode)).toBe(false);
+  });
+
+  it("checkbox-group แบบ master — เทียบด้วย code จาก id (householdResources)", () => {
+    const field: EntryField = {
+      name: "householdResourcesOther",
+      label: "อื่นๆ",
+      type: "text",
+      showWhen: { field: "householdResources", equals: "OTHER" },
+    };
+    // answers เก็บ id ของ master — codeOf แปลง id "res-9" → code "OTHER"
+    const codeOf = (mk: string, id: string) =>
+      mk === "resourceTypes" && id === "res-9" ? "OTHER" : "OTHER_NOT";
+    expect(isFieldVisible(field, { householdResources: ["res-1", "res-9"] }, codeOf)).toBe(true);
+    expect(isFieldVisible(field, { householdResources: ["res-1", "res-2"] }, codeOf)).toBe(false);
+  });
+
+  it("radio ค่าเดียว (พฤติกรรมเดิม) ยังทำงาน", () => {
+    const field: EntryField = {
+      name: "ownershipOther",
+      label: "อื่นๆ",
+      type: "text",
+      showWhen: { field: "ownershipTypeId", equals: "OTHER" },
+    };
+    const codeOf = (_mk: string, id: string) => (id === "own-x" ? "OTHER" : "RENT");
+    expect(isFieldVisible(field, { ownershipTypeId: "own-x" }, codeOf)).toBe(true);
+    expect(isFieldVisible(field, { ownershipTypeId: "own-y" }, codeOf)).toBe(false);
+  });
+
+  it("boolean showWhen (เช่น ระบุสถานที่จอดรถเมื่อ 'มี')", () => {
+    const field: EntryField = {
+      name: "alternateParkingLocation",
+      label: "ระบุ",
+      type: "text",
+      showWhen: { field: "hasAlternateParking", equals: "true" },
+    };
+    expect(isFieldVisible(field, { hasAlternateParking: true }, noCode)).toBe(true);
+    expect(isFieldVisible(field, { hasAlternateParking: false }, noCode)).toBe(false);
+  });
+
+  it("ช่อง 'อื่นๆ ระบุ' ที่มองเห็น ต้องถูกนับว่าขาดถ้ายังไม่ตอบ (collectMissing)", () => {
+    const step: EntryStep = {
+      id: "evac",
+      paperSection: "ส่วนที่ 3",
+      title: "อพยพ",
+      kind: "fields",
+      fields: [
+        {
+          name: "evacuationVehicles",
+          label: "ยานพาหนะ",
+          type: "checkbox-group",
+          options: [
+            { value: "CAR", label: "รถยนต์" },
+            { value: "OTHER", label: "อื่นๆ" },
+          ],
+        },
+        otherText,
+      ],
+    };
+    // ติ๊ก OTHER แต่ยังไม่กรอกช่องระบุ → ช่องระบุถูกนับว่าขาด
+    const missing = run({
+      steps: [step],
+      answers: { evacuationVehicles: ["OTHER"] },
+    }).map((m) => m.key);
+    expect(missing).toContain("evacuationVehiclesOther");
+
+    // ไม่ติ๊ก OTHER → ช่องระบุถูกซ่อน จึงไม่ถูกนับว่าขาด
+    const hidden = run({
+      steps: [step],
+      answers: { evacuationVehicles: ["CAR"] },
+    }).map((m) => m.key);
+    expect(hidden).not.toContain("evacuationVehiclesOther");
   });
 });

@@ -27,7 +27,7 @@ const EMAILS = {
   noScope: "test-esave-c@test.invalid",
 } as const;
 const C_CODE = "TES1";
-const SHEETS = ["SK-970001", "SK-970002", "SK-970003", "SK-970004"];
+const SHEETS = ["SK-970001", "SK-970002", "SK-970003", "SK-970004", "SK-970005"];
 
 async function cleanupFixtures() {
   {
@@ -145,7 +145,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       surveyedAt: "15/03/2568",
       suggestion: "ขอถังน้ำสำรอง",
     },
-    marks: { soi: "BLANK_IN_PAPER", coordinateRawText: "ILLEGIBLE" },
+    marks: { soi: "BLANK_IN_PAPER", latitudeText: "ILLEGIBLE" },
     vulnerableRows: [
       {
         prefix: "",
@@ -267,7 +267,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     // FieldStatus จาก F2/F3
     const statuses = await prisma.fieldStatus.findMany({ where: { sheetId } });
     expect(statuses.map((s) => `${s.fieldPath}:${s.status}`).sort()).toEqual([
-      "coordinateRawText:ILLEGIBLE",
+      "latitudeText:ILLEGIBLE",
       "soi:BLANK_IN_PAPER",
     ]);
 
@@ -286,6 +286,35 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       where: { sheetId_attemptNo: { sheetId, attemptNo: 1 } },
     });
     expect(attempt.submittedAt).not.toBeNull();
+  });
+
+  it("พิกัดแยกสองช่อง → ประกอบเป็นคู่ + derive lat/lng · volunteerNotAvailable ลงคอลัมน์", async () => {
+    const sheetId = sheetIds[SHEETS[4]];
+    expect((await openSheetByCode(ctxA, SHEETS[4])).ok).toBe(true);
+
+    const payload = entryPayloadSchema.parse({
+      answers: {
+        houseNo: "9/9",
+        latitudeText: "7.006",
+        longitudeText: "100.474",
+        volunteerNotAvailable: true,
+        // ช่อง "อื่นๆ ระบุ" ของ checkbox-group — ยังอยู่ใน payload เข้ารหัส (ยังไม่ materialize)
+        evacuationVehicles: ["OTHER"],
+        evacuationVehiclesOther: "รถอีแต๋น",
+      },
+    });
+    const result = await submitEntry(ctxA, sheetId, payload);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const hh = await prisma.household.findUniqueOrThrow({
+      where: { id: result.householdId },
+    });
+    // ค่าดิบประกอบกลับเป็น "lat, lng" + derive lat/lng (อยู่ในกรอบไทย → เขียนลงคอลัมน์)
+    expect(hh.coordinateRawText).toBe("7.006, 100.474");
+    expect(Number(hh.latitude)).toBeCloseTo(7.006, 5);
+    expect(Number(hh.longitude)).toBeCloseTo(100.474, 5);
+    expect(hh.volunteerNotAvailable).toBe(true);
   });
 
   it("ส่งซ้ำ / ส่งใบที่ไม่ได้ถือ lock → ปฏิเสธ", async () => {

@@ -84,7 +84,7 @@ describe("wizard step config (ยึด Data Dictionary)", () => {
       "respondentPhone",
       "houseNo",
       "mooId",
-      "coordinateRawText",
+      "latitudeText", // พิกัดแยกเป็นสองช่อง ละติจูด(primary)/ลองจิจูด(pair)
       "floodDepthMetersRaw", // measure-pair — คำถามเดียวคุมทั้งเมตร+ซม.
     ]) {
       expect(critical).toContain(expected);

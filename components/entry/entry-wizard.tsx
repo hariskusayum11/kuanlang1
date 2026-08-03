@@ -48,25 +48,34 @@ function formatRemaining(ms: number): string {
   return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
 }
 
-/** เงื่อนไขแสดงฟิลด์ตาม showWhen (เช่น "อื่นๆ ระบุ") — เทียบด้วย code ของ master หรือค่า enum */
+/**
+ * เงื่อนไขแสดงฟิลด์ตาม showWhen (เช่น "อื่นๆ ระบุ")
+ * รองรับทั้ง radio/select (ค่าเดียว), checkbox-group (อาร์เรย์ — ติ๊ก OTHER ในกลุ่ม),
+ * และ boolean — เทียบด้วย code ของ master เมื่อค่าที่เก็บเป็น id
+ */
 function fieldVisible(
   field: EntryField,
   answers: Record<string, unknown>,
   master: EntryMasterData,
 ): boolean {
   if (!field.showWhen) return true;
-  const actual = answers[field.showWhen.field];
-  if (typeof actual === "boolean") return String(actual) === field.showWhen.equals;
-  if (typeof actual !== "string" || actual === "") return false;
+  const { field: depName, equals } = field.showWhen;
+  const actual = answers[depName];
+  if (typeof actual === "boolean") return String(actual) === equals;
+
   const dependsOn = visibleSteps(null)
     .flatMap((s) => s.fields)
-    .find((f) => f.name === field.showWhen!.field);
-  if (dependsOn?.masterKey) {
-    const options = master[dependsOn.masterKey];
-    const chosen = options.find((o) => o.id === actual);
-    return chosen?.code === field.showWhen.equals;
+    .find((f) => f.name === depName);
+  const codeOf = (val: string): string | undefined => {
+    if (!dependsOn?.masterKey) return val;
+    return master[dependsOn.masterKey].find((o) => o.id === val)?.code;
+  };
+
+  if (Array.isArray(actual)) {
+    return actual.some((v) => typeof v === "string" && codeOf(v) === equals);
   }
-  return actual === field.showWhen.equals;
+  if (typeof actual === "string" && actual !== "") return codeOf(actual) === equals;
+  return false;
 }
 
 export function EntryWizard({

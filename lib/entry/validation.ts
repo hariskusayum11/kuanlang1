@@ -56,19 +56,27 @@ export function isAnswered(value: unknown): boolean {
   return true;
 }
 
-/** แสดงฟิลด์นี้อยู่หรือไม่ (skip logic ระดับฟิลด์ — showWhen) */
+/**
+ * แสดงฟิลด์นี้อยู่หรือไม่ (skip logic ระดับฟิลด์ — showWhen)
+ * รองรับค่าเดียว (radio/select), อาร์เรย์ (checkbox-group — ติ๊ก OTHER ในกลุ่ม), และ boolean
+ */
 export function isFieldVisible(
   field: EntryField,
   answers: Record<string, unknown>,
   codeOf: (masterKey: string, id: string) => string | undefined,
 ): boolean {
   if (!field.showWhen) return true;
-  const raw = answers[field.showWhen.field];
-  if (typeof raw !== "string" || raw === "") return false;
+  const { field: depName, equals } = field.showWhen;
+  const raw = answers[depName];
+  if (typeof raw === "boolean") return String(raw) === equals;
   // ค่าที่เก็บอาจเป็น id ของ master — เทียบด้วย code (เช่น "OTHER")
-  const target = ENTRY_MASTER_OF[field.showWhen.field];
-  const code = target ? codeOf(target, raw) : raw;
-  return code === field.showWhen.equals;
+  const target = ENTRY_MASTER_OF[depName];
+  const resolve = (v: string) => (target ? codeOf(target, v) : v);
+  if (Array.isArray(raw)) {
+    return raw.some((v) => typeof v === "string" && resolve(v) === equals);
+  }
+  if (typeof raw === "string" && raw !== "") return resolve(raw) === equals;
+  return false;
 }
 
 /** ฟิลด์ที่ค่าเป็น id ของ master ตัวไหน — ใช้แปลง id → code ตอนเช็ค showWhen */
@@ -77,6 +85,8 @@ const ENTRY_MASTER_OF: Record<string, string> = {
   respondentPrefix: "namePrefixes",
   buildingTypeId: "buildingTypes",
   ownershipTypeId: "ownershipTypes",
+  // checkbox-group ที่มีตัวเลือกรหัส OTHER (อ่าน id → code เพื่อเช็ค showWhen)
+  householdResources: "resourceTypes",
 };
 
 /** แถวกลุ่มเปราะบางถูกเริ่มกรอกแล้วหรือยัง — แถวว่างเปล่าไม่ถือว่าขาด */

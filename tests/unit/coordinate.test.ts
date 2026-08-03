@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  composeCoordinateText,
   coordinateForStorage,
   describeCoordinate,
   parseCoordinateText,
@@ -117,5 +118,37 @@ describe("describeCoordinate", () => {
     const d = describeCoordinate({ kind: "EMPTY" });
     expect(d.tone).toBe("muted");
     expect(d.text).toContain("F3");
+  });
+});
+
+describe("composeCoordinateText (พิกัดแยกสองช่อง → คู่เดียว)", () => {
+  it("ครบสองช่อง → 'lat, lng' และ parse ต่อได้เป็น OK", () => {
+    const raw = composeCoordinateText("7.820213", "99.943592");
+    expect(raw).toBe("7.820213, 99.943592");
+    expect(parseCoordinateText(raw)).toMatchObject({ kind: "OK" });
+  });
+
+  it("ตัดช่องว่างหัวท้ายของแต่ละช่องก่อนรวม", () => {
+    expect(composeCoordinateText("  7.82 ", " 99.94  ")).toBe("7.82, 99.94");
+  });
+
+  it("ทั้งคู่ว่าง → สตริงว่าง (parse = EMPTY)", () => {
+    expect(composeCoordinateText("", "")).toBe("");
+    expect(composeCoordinateText(null, undefined)).toBe("");
+  });
+
+  it("กรอกช่องเดียว → คืนเฉพาะช่องนั้น (parse = UNPARSEABLE ตามจริงว่ายังไม่ครบคู่)", () => {
+    expect(composeCoordinateText("7.82", "")).toBe("7.82");
+    expect(composeCoordinateText("", "99.94")).toBe("99.94");
+    expect(parseCoordinateText(composeCoordinateText("7.82", ""))).toMatchObject({
+      kind: "UNPARSEABLE",
+    });
+  });
+
+  it("สลับแกน (ใส่ลองจิจูดในช่องละติจูด) ยังถูกจับได้เหมือนช่องเดียว", () => {
+    // ช่องละติจูด = 99.94 (ค่าลองจิจูด), ช่องลองจิจูด = 7.82 (ค่าละติจูด)
+    expect(parseCoordinateText(composeCoordinateText("99.943592", "7.820213"))).toMatchObject({
+      kind: "SWAPPED_SUSPECT",
+    });
   });
 });

@@ -75,6 +75,26 @@ export function parseCoordinateText(raw: string | null | undefined): CoordinateP
   return { kind: "OUT_OF_RANGE", lat: first, lng: second };
 }
 
+/**
+ * รวมค่าจากสองช่อง (ละติจูด / ลองจิจูด) เป็นข้อความคู่พิกัดเดียว
+ *
+ * กระดาษยังเป็นพิกัดคู่เดียว (หนึ่งจุด) — การแยกเป็นสองช่องเป็นเรื่อง UX ให้คีย์ง่าย
+ * (Owner Decision 2026-08-03) จึงประกอบกลับเป็น "lat, lng" เพื่อเก็บลง coordinateRawText
+ * และส่งเข้า parseCoordinateText ตัวเดิม (คงการตรวจสลับแกน/นอกกรอบไว้ครบ)
+ *
+ * กรอกช่องเดียว → คืนเฉพาะช่องนั้น (parse จะได้ UNPARSEABLE ตามจริงว่ายังไม่ครบคู่)
+ */
+export function composeCoordinateText(
+  latText: string | null | undefined,
+  lngText: string | null | undefined,
+): string {
+  const lat = (latText ?? "").trim();
+  const lng = (lngText ?? "").trim();
+  if (lat === "" && lng === "") return "";
+  if (lat !== "" && lng !== "") return `${lat}, ${lng}`;
+  return lat !== "" ? lat : lng;
+}
+
 /** ใช้ค่านี้เขียนลงคอลัมน์ latitude/longitude ได้ไหม — เฉพาะกรณีมั่นใจเท่านั้น */
 export function coordinateForStorage(
   result: CoordinateParseResult,

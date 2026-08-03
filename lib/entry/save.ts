@@ -19,6 +19,7 @@ import {
 } from "../crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../crypto/keys";
 import {
+  composeCoordinateText,
   coordinateForStorage,
   parseCoordinateText,
 } from "../../domain/geo/coordinate";
@@ -203,7 +204,12 @@ export async function submitEntry(
     ? phoneBlindIndex(respondentPhone, searchKey)
     : null;
   const surveyedAtRaw = answerString(clean, "surveyedAt");
-  const coordinateRawText = answerString(clean, "coordinateRawText");
+  // พิกัดแยกเป็นสองช่อง (Owner Decision 2026-08-03) — ประกอบกลับเป็นคู่เพื่อเก็บค่าดิบ + derive
+  const coordinateRawText =
+    composeCoordinateText(
+      answerString(clean, "latitudeText"),
+      answerString(clean, "longitudeText"),
+    ) || null;
   const parsedCoordinate = coordinateForStorage(parseCoordinateText(coordinateRawText));
   const marks = Object.entries(clean.marks).filter(([, v]) => v != null);
   const illegibleCount = marks.filter(([, v]) => v === "ILLEGIBLE").length;
@@ -267,6 +273,7 @@ export async function submitEntry(
     // ส่วนที่ 4-5 (คอลัมน์ตรงบน Household — ส่วนที่เหลือของฟอร์มคงอยู่ใน payload
     // เข้ารหัส รอ materialize ลงตารางย่อย เช่น FloodRiskProfile ใน slice ถัดไป)
     mentalHealthSupport: answerBoolean(clean, "mentalHealthSupport"),
+    volunteerNotAvailable: answerBoolean(clean, "volunteerNotAvailable"),
     suggestion: answerString(clean, "suggestion"),
     surveyorNote: answerString(clean, "surveyorNote"),
     povertyProgramInterest: answerBoolean(clean, "povertyProgramInterest"),

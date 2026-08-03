@@ -192,12 +192,15 @@ export const ENTRY_STEPS: EntryStep[] = [
       { name: "road", label: "ถนน", type: "text" },
       { name: "tambonId", label: "ตำบล", type: "radio", masterKey: "tambons", required: true },
       {
-        name: "coordinateRawText",
+        // แยกเป็นสองช่อง ละติจูด/ลองจิจูด (Owner Decision 2026-08-03) แต่ยังเป็นพิกัดจุดเดียว
+        // ประกอบกลับเป็น coordinateRawText ตอนบันทึก — ใช้กลไก pair เดียวกับ measure-pair
+        name: "latitudeText",
         label: "พิกัด GPS / ละติจูด-ลองจิจูด (ตามที่เขียนบนกระดาษ)",
         type: "coordinate",
         critical: true,
         sensitive: true,
-        hint: "คีย์ตามตัวอักษรที่เขียนมา ห้ามจัดรูปแบบใหม่ — ระบบจะอ่านค่าให้ทานเองด้านล่าง (QM-04)",
+        pair: { name: "longitudeText", unit: "" },
+        hint: "คีย์ตามตัวเลขที่เขียนมา ห้ามจัดรูปแบบใหม่ — ระบบจะอ่านค่าให้ทานเองด้านล่าง (QM-04)",
       },
       {
         name: "memberCount",
@@ -389,6 +392,13 @@ export const ENTRY_STEPS: EntryStep[] = [
         ],
       },
       {
+        // ติ๊ก "อื่นๆ" ในกลุ่มด้านบน → เปิดช่องระบุ (showWhen รองรับ checkbox-group แล้ว)
+        name: "evacuationVehiclesOther",
+        label: "อื่นๆ ระบุยานพาหนะ",
+        type: "text",
+        showWhen: { field: "evacuationVehicles", equals: "OTHER" },
+      },
+      {
         name: "hasSurvivalKit",
         label: "10. มีการเตรียมถุงยังชีพ/อาหาร/น้ำ/ไฟฉายสำรองไว้หรือไม่",
         type: "boolean",
@@ -400,6 +410,13 @@ export const ENTRY_STEPS: EntryStep[] = [
         type: "checkbox-group",
         masterKey: "resourceTypes",
         hint: "ติ๊ก \"ไม่มี\" = EXPLICIT_NONE · ไม่ติ๊กเลย = ว่างในกระดาษ (QM-09)",
+      },
+      {
+        // resourceTypes มีตัวเลือกรหัส OTHER (อื่นๆ) — ติ๊กแล้วเปิดช่องระบุ
+        name: "householdResourcesOther",
+        label: "อื่นๆ ระบุทรัพยากร",
+        type: "text",
+        showWhen: { field: "householdResources", equals: "OTHER" },
       },
       {
         name: "canBeHostHouse",
@@ -435,10 +452,18 @@ export const ENTRY_STEPS: EntryStep[] = [
       },
       {
         name: "volunteerInterests",
-        label: "4. สนใจเข้าร่วมเป็นอาสาสมัคร (เลือกได้หลายด้าน · ☐ ไม่สะดวก = ติ๊กแยก)",
+        label: "4. สนใจเข้าร่วมเป็นอาสาสมัคร (เลือกได้หลายด้าน · ☐ ไม่สะดวก = ติ๊กแยกด้านล่าง)",
         type: "checkbox-group",
         masterKey: "volunteerSkillTypes",
-        hint: "\"ไม่สะดวก\" เป็นสถานะไม่สมัคร ไม่ใช่ทักษะ (QM-12)",
+        hint: "\"ไม่สะดวก\" เป็นสถานะไม่สมัคร ไม่ใช่ทักษะ จึงแยกเป็นช่องด้านล่าง (QM-12)",
+      },
+      {
+        // ตัวเลือก "ไม่สะดวก" ที่กระดาษให้ติ๊กแยก (Owner Decision 2026-08-03) — เก็บลงคอลัมน์เดิม
+        name: "volunteerNotAvailable",
+        label: "หรือระบุว่า ไม่สะดวกเข้าร่วมเป็นอาสาสมัคร",
+        type: "boolean",
+        booleanLabels: { true: "ไม่สะดวก", false: "สะดวก", trueFirst: false },
+        hint: "ติ๊กเมื่อกระดาษระบุว่าไม่สะดวก — เป็นคนละส่วนกับด้านที่สนใจด้านบน",
       },
       {
         name: "mentalHealthSupport",
@@ -451,18 +476,12 @@ export const ENTRY_STEPS: EntryStep[] = [
     ],
   },
   {
-    id: "final",
-    paperSection: "ส่วนที่ 5 + ท้ายเล่ม",
-    title: "โครงการแก้จน และส่วนสำหรับผู้สำรวจ",
+    // แยกจากส่วนโครงการแก้จน (Owner Decision 2026-08-03) — ส่วนผู้สำรวจขึ้นก่อนเป็นส่วนที่ 5
+    id: "surveyor",
+    paperSection: "ส่วนที่ 5",
+    title: "สำหรับผู้สำรวจ",
     kind: "fields",
     fields: [
-      {
-        name: "povertyProgramInterest",
-        label: "สนใจเข้าร่วมกิจกรรมเสริมรายได้ (โครงการแก้ไขปัญหาความยากจนฯ ม.ทักษิณ)",
-        type: "boolean",
-        // กระดาษเรียง "ไม่สนใจ" ก่อน "สนใจ"
-        booleanLabels: { true: "สนใจ", false: "ไม่สนใจ", trueFirst: false },
-      },
       {
         name: "riskLevelSurveyor",
         label: "ระดับความเสี่ยงครัวเรือน (ตามที่ผู้สำรวจติ๊ก — ห้ามประเมินเอง BR-54)",
@@ -474,6 +493,21 @@ export const ENTRY_STEPS: EntryStep[] = [
         ],
       },
       { name: "surveyorNote", label: "หมายเหตุเพิ่มเติม (ของผู้สำรวจ)", type: "textarea" },
+    ],
+  },
+  {
+    id: "poverty-program",
+    paperSection: "ส่วนที่ 6",
+    title: "โครงการแก้จน",
+    kind: "fields",
+    fields: [
+      {
+        name: "povertyProgramInterest",
+        label: "สนใจเข้าร่วมกิจกรรมเสริมรายได้ (โครงการแก้ไขปัญหาความยากจนฯ ม.ทักษิณ)",
+        type: "boolean",
+        // กระดาษเรียง "ไม่สนใจ" ก่อน "สนใจ"
+        booleanLabels: { true: "สนใจ", false: "ไม่สนใจ", trueFirst: false },
+      },
     ],
   },
 ];
