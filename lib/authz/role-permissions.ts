@@ -14,7 +14,6 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.COMMUNITY_VIEW,
     PERMISSIONS.COMMUNITY_MANAGE,
     PERMISSIONS.HOUSEHOLD_VIEW,
-    PERMISSIONS.BATCH_MANAGE,
     PERMISSIONS.VERIFICATION_VIEW,
     PERMISSIONS.REPORT_VIEW,
   ],
@@ -22,7 +21,6 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.COMMUNITY_VIEW,
     PERMISSIONS.COMMUNITY_MANAGE,
-    PERMISSIONS.BATCH_MANAGE,
     PERMISSIONS.REPORT_VIEW,
   ],
   [UserRoleEnum.VERIFIER]: [PERMISSIONS.VERIFICATION_VIEW],
@@ -35,8 +33,6 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
   [UserRoleEnum.FIELD_SURVEYOR]: [],
 };
 
-// docs/10 §1: ADMIN และ EXECUTIVE มองเห็น "ทั้งระบบ"
-export const GLOBAL_SCOPE_ROLES: readonly UserRoleEnum[] = [
-  UserRoleEnum.ADMIN,
-  UserRoleEnum.EXECUTIVE,
-];
+// Community Scope ถูกยกเลิกทั้งระบบแล้ว (Owner Decision 2026-08-03 #R7-B)
+// ทุกบัญชีเห็นทุกชุมชน — รายการนี้จึงไม่มีความหมายอีกต่อไป และถูกถอดออก
+// การจำกัดที่ยังเหลืออยู่คือ Permission และกฎ "ผู้คีย์เห็นเฉพาะใบของตน"

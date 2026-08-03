@@ -157,7 +157,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     for (const p of [
       PERMISSIONS.USER_MANAGE,
       PERMISSIONS.COMMUNITY_MANAGE,
-      PERMISSIONS.BATCH_MANAGE,
       PERMISSIONS.SURVEY_ENTRY,
       PERMISSIONS.VERIFICATION_VIEW,
       PERMISSIONS.DASHBOARD_VIEW,

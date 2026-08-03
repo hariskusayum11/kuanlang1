@@ -26,7 +26,6 @@ type SheetInfo = {
   id: string;
   sheetNo: string;
   /** null = ใบยังไม่ได้จัดเข้าปึก — ไม่แสดงคำว่า "ปึก" เลย (#R6-B) */
-  batchCode: string | null;
   communityName: string;
 };
 
@@ -82,7 +81,7 @@ export function EntryWizard({
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
     const base = initialDraft?.answers ?? {};
-    // Prefill ชื่อชุมชนจากชุมชนของ Batch เมื่อยังไม่มีค่า — ลดการพิมพ์ผิด
+    // Prefill ชื่อชุมชนจากชุมชนที่ผู้คีย์เลือกไว้ เมื่อยังไม่มีค่า — ลดการพิมพ์ผิด
     // (ยังแก้ได้ เพื่อคงความตรงตามกระดาษ QM-01 หากผู้สำรวจเขียนต่างออกไป)
     if (
       base.communityNameOnPaper == null ||
@@ -122,7 +121,10 @@ export function EntryWizard({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
-  const [submitted, setSubmitted] = useState<{ duplicateSuspected: boolean } | null>(
+  const [submitted, setSubmitted] = useState<{
+    duplicateSuspected: boolean;
+    reopenedForVerify: boolean;
+  } | null>(
     null,
   );
   const touched = useRef(false);
@@ -343,7 +345,10 @@ export function EntryWizard({
     }
     dirty.current = false;
     touched.current = false;
-    setSubmitted({ duplicateSuspected: result.duplicateSuspected });
+    setSubmitted({
+      duplicateSuspected: result.duplicateSuspected,
+      reopenedForVerify: result.reopenedForVerify,
+    });
     setConfirmOpen(false);
   }
 
@@ -373,6 +378,12 @@ export function EntryWizard({
             ใบ <span className="font-mono font-bold">{sheet.sheetNo}</span>{" "}
             ถูกบันทึกเข้าระบบแล้ว (ข้อมูลอ่อนไหวถูกเข้ารหัส) — รอผู้ตรวจยืนยันความถูกต้อง
           </p>
+          {submitted.reopenedForVerify && (
+            <p className="mx-auto mt-3 max-w-sm rounded-xl border-2 border-sun-200 bg-sun-50 px-3 py-2 text-xs font-medium leading-relaxed text-sun-800">
+              ใบนี้เคยตรวจยืนยันแล้ว การแก้ไขทำให้ใบกลับไปรอตรวจใหม่อัตโนมัติ
+              เพื่อให้ตัวเลข &ldquo;ตรวจแล้ว&rdquo; ตรงกับข้อมูลจริงเสมอ
+            </p>
+          )}
           {submitted.duplicateSuspected && (
             <p className="mx-auto mt-3 max-w-sm rounded-xl border-2 border-sun-200 bg-sun-50 px-3 py-2 text-xs font-medium leading-relaxed text-sun-800">
               ⚠ เบอร์โทรผู้ให้ข้อมูลตรงกับใบอื่นในระบบ — ระบบติดธง &ldquo;สงสัยใบซ้ำ&rdquo;
@@ -413,12 +424,6 @@ export function EntryWizard({
             </p>
             <p className="mt-1 text-xs font-medium text-slate-500">
               {sheet.communityName}
-              {sheet.batchCode && (
-                <>
-                  {" · "}
-                  <span className="font-mono">{sheet.batchCode}</span>
-                </>
-              )}
             </p>
 
             {/* Lock = กลไกความปลอดภัยเบื้องหลัง (กันเปิดใบซ้อนกัน) — แสดงแบบไม่รบกวน

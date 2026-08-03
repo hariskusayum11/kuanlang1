@@ -173,7 +173,7 @@ describe.skipIf(!isLocalDevDb)("Integration: เลิกใช้บทบา�
     const u = await prisma.user.findUniqueOrThrow({ where: { id: ids.surveyorOnly } });
     const ctx = await loadContextOrThrow(u); // บัญชียัง active จึงโหลดได้
     expect(ctx.permissions).toEqual([]);
-    expect(ctx.isGlobalScope).toBe(false);
+    expect(ctx.isGlobalScope).toBe(true);
     expect(visibleNavItems(ctx.permissions)).toEqual([]); // ไม่มีเมนูใดเลย
   });
 

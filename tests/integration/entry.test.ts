@@ -31,18 +31,13 @@ const EMAILS = {
 
 const C1_CODE = "TEST-ENTRY-C1";
 const C2_CODE = "TEST-ENTRY-C2";
-const BATCH1_CODE = "TEST-BATCH-ENTRY-1"; // C1 — เปิดคีย์
-const BATCH2_CODE = "TEST-BATCH-ENTRY-2"; // C2 — นอก scope ของ A/B
-const BATCH3_CODE = "TEST-BATCH-ENTRY-3"; // C1 — RECEIVED (ยังไม่เปิดคีย์)
-const SHEET = (batch: 1 | 2 | 3, n: number) =>
-  `TEST-SHEET-ENTRY-${batch}-${String(n).padStart(3, "0")}`;
+// ปึกถูกยกเลิกแล้ว (Owner Decision 2026-08-03) — ใบ fixture สร้างตรงโดยไม่มีปึก
+// ใช้ช่วง SK-99xxxx ซึ่ง SEQUENCE จริงยังไปไม่ถึง จึงไม่ชนกับรหัสที่ระบบออกเอง
+const SHEET = (n: number) => `SK-99${String(n).padStart(4, "0")}`;
 
 async function cleanupFixtures() {
   await prisma.paperSheet.deleteMany({
-    where: { sheetNo: { startsWith: "TEST-SHEET-ENTRY-" } },
-  });
-  await prisma.paperBatch.deleteMany({
-    where: { code: { startsWith: "TEST-BATCH-ENTRY-" } },
+    where: { sheetNo: { startsWith: "SK-99" } },
   });
   await prisma.user.deleteMany({
     where: { email: { in: Object.values(EMAILS) } },
@@ -58,7 +53,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
   let ctxNoScope: AuthorizationContext;
   let ctxNoPerm: AuthorizationContext;
   let c1Id: string;
-  let batch1Id: string;
   const sheet1Ids: Record<string, string> = {};
   let sheetC2Id: string;
 
@@ -99,50 +93,16 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
       ],
     });
 
-    const batch1 = await prisma.paperBatch.create({
-      data: {
-        code: BATCH1_CODE,
-        communityId: c1Id,
-        expectedCount: 3,
-        receivedAt: new Date(),
-        receivedById: userA.id,
-        status: BatchStatus.READY_FOR_ENTRY,
-      },
-    });
-    batch1Id = batch1.id;
-    const batch2 = await prisma.paperBatch.create({
-      data: {
-        code: BATCH2_CODE,
-        communityId: c2.id,
-        expectedCount: 1,
-        receivedAt: new Date(),
-        receivedById: userA.id,
-        status: BatchStatus.READY_FOR_ENTRY,
-      },
-    });
-    const batch3 = await prisma.paperBatch.create({
-      data: {
-        code: BATCH3_CODE,
-        communityId: c1Id,
-        expectedCount: 1,
-        receivedAt: new Date(),
-        receivedById: userA.id,
-        status: BatchStatus.RECEIVED, // ยังไม่เปิดให้คีย์
-      },
-    });
     for (let n = 1; n <= 3; n += 1) {
-      const s = await prisma.paperSheet.create({
-        data: { communityId: c1Id, batchId: batch1.id, sheetNo: SHEET(1, n), sequence: n },
+      const sh = await prisma.paperSheet.create({
+        data: { communityId: c1Id, sheetNo: SHEET(n) },
       });
-      sheet1Ids[SHEET(1, n)] = s.id;
+      sheet1Ids[SHEET(n)] = sh.id;
     }
     const sc2 = await prisma.paperSheet.create({
-      data: { communityId: c2.id, batchId: batch2.id, sheetNo: SHEET(2, 1), sequence: 1 },
+      data: { communityId: c2.id, sheetNo: SHEET(4) },
     });
     sheetC2Id = sc2.id;
-    await prisma.paperSheet.create({
-      data: { communityId: c1Id, batchId: batch3.id, sheetNo: SHEET(3, 1), sequence: 1 },
-    });
 
     const users = [userA, userB, userNoScope, userNoPerm];
     [ctxA, ctxB, ctxNoScope, ctxNoPerm] = await Promise.all(
@@ -162,58 +122,60 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
   });
 
   it("1) ไม่มี survey.entry → NOT_FOUND (ไม่บอกว่าใบมีจริง) และไม่เห็น overview", async () => {
-    const opened = await openSheetByCode(ctxNoPerm, SHEET(1, 1));
+    const opened = await openSheetByCode(ctxNoPerm, SHEET(1));
     expect(opened).toEqual({ ok: false, reason: "NOT_FOUND" });
     const overview = await getEntryOverview(ctxNoPerm);
     expect(overview.allowed).toBe(false);
-    expect(overview.batches).toEqual([]);
+    expect(overview.communities).toEqual([]);
     expect(await getMyActiveSheet(ctxNoPerm)).toBeNull();
   });
 
   it("2) ไม่มี community scope แต่ยังคีย์ได้ (Owner Decision — คีย์ชุมชนไหนก็ได้)", async () => {
     const overview = await getEntryOverview(ctxNoScope);
     expect(overview.allowed).toBe(true);
-    expect(overview.batches.map((b) => b.code)).toContain(BATCH1_CODE);
+    expect(overview.communities.length).toBeGreaterThan(0);
     // เปิดใบได้แม้ไม่มี scope — ใช้ใบอื่น (ไม่ใช่ 1,1) แล้วคืนสถานะ ไม่รบกวนเทสต์ lock
-    const opened = await openSheetByCode(ctxNoScope, SHEET(1, 2));
+    const opened = await openSheetByCode(ctxNoScope, SHEET(2));
     expect(opened.ok).toBe(true);
     if (opened.ok) await releaseSheet(ctxNoScope, opened.sheetId);
   });
 
-  it("3) overview เห็นทุกปึกที่เปิดคีย์ (ทุกชุมชน) · ไม่เห็นปึก RECEIVED", async () => {
+  it("3) overview เห็นทุกชุมชน (ไม่ผูก scope) พร้อมยอดใบของแต่ละชุมชน", async () => {
     const overview = await getEntryOverview(ctxA);
-    const codes = overview.batches.map((b) => b.code);
-    expect(codes).toContain(BATCH1_CODE);
-    expect(codes).toContain(BATCH2_CODE); // ต่างชุมชนก็เห็น (Owner Decision)
-    expect(codes).not.toContain(BATCH3_CODE); // RECEIVED ยังไม่เปิด
+    expect(overview.allowed).toBe(true);
+    const ids = overview.communities.map((c) => c.id);
+    expect(ids).toContain(c1Id); // ชุมชนของตน
+    expect(overview.communities.length).toBeGreaterThanOrEqual(2); // ต่างชุมชนก็เห็น
+    const c1 = overview.communities.find((c) => c.id === c1Id)!;
+    expect(c1.totalSheets).toBeGreaterThanOrEqual(3);
   });
 
-  it("4) รหัสไม่มีจริง → NOT_FOUND · ใบต่างชุมชน → เปิดได้ · ปึก RECEIVED → BATCH_NOT_OPEN", async () => {
-    expect(await openSheetByCode(ctxA, "TEST-SHEET-ENTRY-9-999")).toEqual({
+  it("4) รหัสไม่มีจริง → NOT_FOUND · ใบต่างชุมชน → เปิดได้ · normalize รหัส", async () => {
+    expect(await openSheetByCode(ctxA, "SK-989898")).toEqual({
       ok: false,
       reason: "NOT_FOUND",
     });
-    // ใบอยู่คนละชุมชน (C2) → เปิดได้ (คีย์ชุมชนไหนก็ได้) แล้วคืนสถานะ
-    const c2 = await openSheetByCode(ctxA, SHEET(2, 1));
+    // รูปแบบไม่ตรงกติกา → NOT_FOUND เหมือนกัน ไม่รั่วว่าต่างกันตรงไหน
+    expect(await openSheetByCode(ctxA, "TEST-SHEET-9")).toEqual({
+      ok: false,
+      reason: "NOT_FOUND",
+    });
+    // ใบอยู่คนละชุมชน (C2) → เปิดได้ แล้วคืนสถานะ
+    const c2 = await openSheetByCode(ctxA, SHEET(4));
     expect(c2.ok).toBe(true);
     if (c2.ok) await releaseSheet(ctxA, c2.sheetId);
-    // ใบอยู่ในปึก RECEIVED → บอกตรง ๆ ว่าปึกยังไม่เปิด
-    expect(await openSheetByCode(ctxA, SHEET(3, 1))).toEqual({
-      ok: false,
-      reason: "BATCH_NOT_OPEN",
-    });
-    // รูปแบบ lowercase → normalize ให้ (พิมพ์จากกระดาษ)
-    const lower = await openSheetByCode(ctxA, SHEET(1, 2).toLowerCase());
+    // lowercase → normalize ให้ (พิมพ์จากกระดาษ)
+    const lower = await openSheetByCode(ctxA, SHEET(2).toLowerCase());
     expect(lower.ok).toBe(true);
     if (lower.ok) {
-      await releaseSheet(ctxA, lower.sheetId); // คืนสถานะให้เทสต์ถัดไป
+      await releaseSheet(ctxA, lower.sheetId);
     }
   });
 
   it("5) สองคนเปิดใบเดียวกันพร้อมกัน → มีเจ้าของคนเดียว (atomic)", async () => {
     const [ra, rb] = await Promise.all([
-      openSheetByCode(ctxA, SHEET(1, 1)),
-      openSheetByCode(ctxB, SHEET(1, 1)),
+      openSheetByCode(ctxA, SHEET(1)),
+      openSheetByCode(ctxB, SHEET(1)),
     ]);
     const winners = [ra, rb].filter((r) => r.ok);
     const losers = [ra, rb].filter((r) => !r.ok);
@@ -222,7 +184,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     expect(losers[0]).toEqual({ ok: false, reason: "IN_USE" });
 
     const sheet = await prisma.paperSheet.findUnique({
-      where: { id: sheet1Ids[SHEET(1, 1)] },
+      where: { id: sheet1Ids[SHEET(1)] },
     });
     expect(sheet?.status).toBe(SheetStatus.LOCKED);
     expect([ctxA.userId, ctxB.userId]).toContain(sheet?.lockedById);
@@ -231,21 +193,21 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
 
   it("6) เจ้าของเปิดซ้ำด้วยรหัสเดิม → กลับเข้าใบเดิม (resumed) · คนอื่น → IN_USE", async () => {
     const sheet = await prisma.paperSheet.findUnique({
-      where: { id: sheet1Ids[SHEET(1, 1)] },
+      where: { id: sheet1Ids[SHEET(1)] },
     });
     const holder = sheet!.lockedById === ctxA.userId ? ctxA : ctxB;
     const other = holder === ctxA ? ctxB : ctxA;
 
-    const again = await openSheetByCode(holder, SHEET(1, 1));
+    const again = await openSheetByCode(holder, SHEET(1));
     expect(again).toEqual({ ok: true, sheetId: sheet!.id, resumed: true });
-    expect(await openSheetByCode(other, SHEET(1, 1))).toEqual({
+    expect(await openSheetByCode(other, SHEET(1))).toEqual({
       ok: false,
       reason: "IN_USE",
     });
   });
 
   it("7) getSheetForEntry: เจ้าของ OK · คนอื่น NOT_OWNER · ใบ PENDING NOT_LOCKED · ไม่มีสิทธิ์ NOT_FOUND", async () => {
-    const sheetId = sheet1Ids[SHEET(1, 1)];
+    const sheetId = sheet1Ids[SHEET(1)];
     const sheet = await prisma.paperSheet.findUnique({ where: { id: sheetId } });
     const holder = sheet!.lockedById === ctxA.userId ? ctxA : ctxB;
     const other = holder === ctxA ? ctxB : ctxA;
@@ -262,7 +224,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
   });
 
   it("8) renewLock: เจ้าของต่ออายุได้ · คนอื่นไม่ได้", async () => {
-    const sheetId = sheet1Ids[SHEET(1, 1)];
+    const sheetId = sheet1Ids[SHEET(1)];
     const before = await prisma.paperSheet.findUnique({ where: { id: sheetId } });
     const holder = before!.lockedById === ctxA.userId ? ctxA : ctxB;
     const other = holder === ctxA ? ctxB : ctxA;
@@ -274,7 +236,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
   });
 
   it("9) lock หมดอายุ → เจ้าของเดิมเห็น LOCK_EXPIRED · ผู้อื่นเปิดด้วยรหัสได้ · renew เดิมไม่ได้", async () => {
-    const sheetId = sheet1Ids[SHEET(1, 1)];
+    const sheetId = sheet1Ids[SHEET(1)];
     await prisma.paperSheet.update({
       where: { id: sheetId },
       data: { lockExpiresAt: new Date(Date.now() - 60_000) },
@@ -286,7 +248,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     expect((await getSheetForEntry(oldHolder, sheetId)).kind).toBe("LOCK_EXPIRED");
     expect((await renewLock(oldHolder, sheetId)).ok).toBe(false);
 
-    const taken = await openSheetByCode(other, SHEET(1, 1));
+    const taken = await openSheetByCode(other, SHEET(1));
     expect(taken).toEqual({ ok: true, sheetId, resumed: false });
     const after = await prisma.paperSheet.findUnique({ where: { id: sheetId } });
     expect(after?.lockedById).toBe(other.userId);
@@ -294,7 +256,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
   });
 
   it("10) หยุดคีย์ (release): คนอื่นทำไม่ได้ · เจ้าของทำได้ → กลับ PENDING ล้าง lock", async () => {
-    const sheetId = sheet1Ids[SHEET(1, 1)];
+    const sheetId = sheet1Ids[SHEET(1)];
     const sheet = await prisma.paperSheet.findUnique({ where: { id: sheetId } });
     const holder = sheet!.lockedById === ctxA.userId ? ctxA : ctxB;
     const other = holder === ctxA ? ctxB : ctxA;
@@ -309,22 +271,22 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     expect(after?.lockExpiresAt).toBeNull();
   });
 
-  it("11) เปิดด้วยเลขลำดับในปึก (batchId + sequence) · ใบสถานะอื่น → WRONG_STATUS", async () => {
-    // เปิดใบลำดับ 1 ในปึก 1 ด้วยเลขสั้น
-    const bySeq = await openSheetByCode(ctxA, "1", batch1Id);
-    expect(bySeq).toEqual({
+  it("11) เปิดด้วยเลขล้วน (normalize เป็น SK-) · ใบสถานะอื่น → WRONG_STATUS", async () => {
+    // พิมพ์เฉพาะตัวเลขจากกระดาษ → ระบบเติม SK- และเลข 0 นำหน้าให้
+    const byDigits = await openSheetByCode(ctxA, "990001");
+    expect(byDigits).toEqual({
       ok: true,
-      sheetId: sheet1Ids[SHEET(1, 1)],
+      sheetId: sheet1Ids[SHEET(1)],
       resumed: false,
     });
-    await releaseSheet(ctxA, sheet1Ids[SHEET(1, 1)]);
+    await releaseSheet(ctxA, sheet1Ids[SHEET(1)]);
 
     // ทำใบ 3 เป็น ENTERED_1 → เปิดซ้ำต้องบอกสถานะชัด
     await prisma.paperSheet.update({
-      where: { id: sheet1Ids[SHEET(1, 3)] },
+      where: { id: sheet1Ids[SHEET(3)] },
       data: { status: SheetStatus.ENTERED_1 },
     });
-    const done = await openSheetByCode(ctxA, SHEET(1, 3));
+    const done = await openSheetByCode(ctxA, SHEET(3));
     expect(done).toEqual({
       ok: false,
       reason: "WRONG_STATUS",
@@ -332,13 +294,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Paper Batch + Sheet ID Entry", () =
     });
   });
 
-  it("12) claimSheetById: ไม่มี scope ก็ claim ได้ (Owner Decision) · batch = IN_PROGRESS", async () => {
-    // SHEET(1,1) เป็น PENDING ณ จุดนี้ (ถูก release ในเทสต์ก่อน)
-    const claimed = await claimSheetById(ctxNoScope, sheet1Ids[SHEET(1, 1)]);
+  it("12) claimSheetById: ไม่มี scope ก็ claim ได้ (Owner Decision)", async () => {
+    // SHEET(1) เป็น PENDING ณ จุดนี้ (ถูก release ในเทสต์ก่อน)
+    const claimed = await claimSheetById(ctxNoScope, sheet1Ids[SHEET(1)]);
     expect(claimed.ok).toBe(true);
-    if (claimed.ok) await releaseSheet(ctxNoScope, sheet1Ids[SHEET(1, 1)]);
-    const batch = await prisma.paperBatch.findUnique({ where: { id: batch1Id } });
-    expect(batch?.status).toBe(BatchStatus.IN_PROGRESS);
+    if (claimed.ok) await releaseSheet(ctxNoScope, sheet1Ids[SHEET(1)]);
   });
 
   it("13) เปิด Wizard ไม่สร้าง Household / EntryAttempt / ไม่มี payload ใดถูกบันทึก", async () => {

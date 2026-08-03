@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   AuditAction,
-  BatchStatus,
   PrismaClient,
   SheetStatus,
   UserRoleEnum,
@@ -28,14 +27,12 @@ const EMAILS = {
   noScope: "test-esave-c@test.invalid",
 } as const;
 const C_CODE = "TES1";
-const BATCH_CODE = "BATCH-TES-001";
-const SHEETS = ["TES-910001", "TES-910002", "TES-910003", "TES-910004"];
+const SHEETS = ["SK-970001", "SK-970002", "SK-970003", "SK-970004"];
 
 async function cleanupFixtures() {
-  const batch = await prisma.paperBatch.findUnique({ where: { code: BATCH_CODE } });
-  if (batch) {
+  {
     const households = await prisma.household.findMany({
-      where: { sheet: { batchId: batch.id } },
+      where: { sheet: { sheetNo: { in: SHEETS } } },
       select: { id: true },
     });
     const hids = households.map((h) => h.id);
@@ -48,10 +45,9 @@ async function cleanupFixtures() {
       });
       await prisma.household.deleteMany({ where: { id: { in: hids } } });
     }
-    await prisma.fieldStatus.deleteMany({ where: { sheet: { batchId: batch.id } } });
-    await prisma.entryAttempt.deleteMany({ where: { sheet: { batchId: batch.id } } });
-    await prisma.paperSheet.deleteMany({ where: { batchId: batch.id } });
-    await prisma.paperBatch.delete({ where: { id: batch.id } });
+    await prisma.fieldStatus.deleteMany({ where: { sheet: { sheetNo: { in: SHEETS } } } });
+    await prisma.entryAttempt.deleteMany({ where: { sheet: { sheetNo: { in: SHEETS } } } });
+    await prisma.paperSheet.deleteMany({ where: { sheetNo: { in: SHEETS } } });
   }
   const users = await prisma.user.findMany({
     where: { email: { in: Object.values(EMAILS) } },
@@ -104,19 +100,9 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       ],
     });
 
-    const batch = await prisma.paperBatch.create({
-      data: {
-        code: BATCH_CODE,
-        communityId: community.id,
-        expectedCount: SHEETS.length,
-        receivedAt: new Date(),
-        receivedById: userA.id,
-        status: BatchStatus.READY_FOR_ENTRY,
-      },
-    });
-    for (const [i, sheetNo] of SHEETS.entries()) {
+    for (const sheetNo of SHEETS) {
       const s = await prisma.paperSheet.create({
-        data: { communityId: community.id, batchId: batch.id, sheetNo, sequence: i + 1 },
+        data: { communityId: community.id, sheetNo },
       });
       sheetIds[sheetNo] = s.id;
     }
@@ -286,10 +272,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     ]);
 
     // ตัวนับปึก + audit
-    const batch = await prisma.paperBatch.findUniqueOrThrow({
-      where: { code: BATCH_CODE },
-    });
-    expect(batch.enteredCount).toBe(1);
     const audit = await prisma.auditLog.findFirst({
       where: {
         action: AuditAction.CREATE,
@@ -364,7 +346,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
 
   it("ผู้คีย์ไม่มี community scope เปิดใบได้ (Owner Decision — คีย์ชุมชนไหนก็ได้)", async () => {
     // userC เป็น DATA_ENTRY แต่ไม่มี scope — เดิมจะถูกปฏิเสธ ตอนนี้เปิดใบได้
-    expect(ctxNoScope.isGlobalScope).toBe(false);
+    expect(ctxNoScope.isGlobalScope).toBe(true);
     expect(ctxNoScope.communityIds).toEqual([]);
 
     const opened = await openSheetByCode(ctxNoScope, SHEETS[3]);

@@ -1,33 +1,37 @@
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { getEntryOverview, getMyDraftSheets } from "@/lib/entry/claim";
+import {
+  getEntryOverview,
+  getMyDraftSheets,
+  getMySubmittedSheets,
+} from "@/lib/entry/claim";
+import { listSelectableCommunities } from "@/lib/sheet/create";
+import { StartSheetForm } from "@/components/entry/start-sheet-form";
 import { SheetOpenForm } from "@/components/entry/sheet-open-form";
 import { ResumeRow } from "@/components/entry/resume-card";
+import { MySheetsTable } from "@/components/entry/my-sheets-table";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "คีย์แบบสอบถาม" };
 export const dynamic = "force-dynamic";
 
-const BATCH_STATUS: Record<string, { label: string; cls: string }> = {
-  READY_FOR_ENTRY: { label: "พร้อมคีย์", cls: "badge-brand" },
-  IN_PROGRESS: { label: "กำลังคีย์", cls: "badge-warning" },
-};
-
-// Workflow จริง (Owner Decision): หัวหน้าแจกปึกกระดาษให้เจ้าหน้าที่ —
-// เจ้าหน้าที่ถือกระดาษอยู่แล้ว จึง "เปิดใบจากรหัส" ไม่ใช่ให้ระบบแจกงาน
+// Workflow จริง (Owner Decision 2026-08-03): ระบบออกรหัสให้ตอนเริ่มกรอก
+// เจ้าหน้าที่เลือกชุมชนของกระดาษที่ถืออยู่ → กดเริ่ม → เขียนรหัสลงกระดาษ → คีย์
 export default async function SurveysPage() {
   // RBAC ฝั่ง server — ไม่มี survey.entry → /access-denied
   const ctx = await requirePermission(PERMISSIONS.SURVEY_ENTRY);
-  const [overview, myDrafts] = await Promise.all([
+  const [overview, myDrafts, communities, mySheets] = await Promise.all([
     getEntryOverview(ctx),
     getMyDraftSheets(ctx),
+    listSelectableCommunities(ctx),
+    getMySubmittedSheets(ctx),
   ]);
 
-  const totals = overview.batches.reduce(
-    (acc, b) => ({
-      total: acc.total + b.totalSheets,
-      entered: acc.entered + b.entered,
-      remaining: acc.remaining + b.pending,
+  const totals = overview.communities.reduce(
+    (acc, c) => ({
+      total: acc.total + c.totalSheets,
+      entered: acc.entered + c.entered,
+      remaining: acc.remaining + c.pending,
     }),
     { total: 0, entered: 0, remaining: 0 },
   );
@@ -37,17 +41,17 @@ export default async function SurveysPage() {
       <PageHero
         title="คีย์แบบสอบถาม"
         tone="brand"
-        description="หยิบกระดาษใบถัดไปที่ถืออยู่ แล้วพิมพ์รหัสใบเพื่อเปิดแบบฟอร์ม"
+        description="หยิบกระดาษใบถัดไปที่ถืออยู่ เลือกชุมชน แล้วกดเริ่มกรอกได้ทันที"
         badge={
           <>
             <span className="live-dot" />
-            คงเหลือ {totals.remaining.toLocaleString("th-TH")} ใบในพื้นที่ของคุณ
+            คีย์แล้ว {totals.entered.toLocaleString("th-TH")} ใบ
           </>
         }
       />
 
       {/* ใบที่คีย์ค้างอยู่ — ยึดจากร่างที่บันทึกไว้ ไม่ใช่จาก lock
-          จึงยังเห็นแม้เคยกด "ออกจากแบบฟอร์ม" ไปแล้ว (ไม่ต้องค้นรหัสใบใหม่) */}
+          จึงยังเห็นแม้เคยกด "ออกจากแบบฟอร์ม" ไปแล้ว */}
       {myDrafts.length > 0 && (
         <div className="space-y-2">
           {myDrafts.map((d) => (
@@ -62,88 +66,100 @@ export default async function SurveysPage() {
         </div>
       )}
 
-      {/* Primary Action: เปิดใบจากรหัสบนกระดาษ */}
-      <section className="card p-6">
-        <SheetOpenForm
-          batches={overview.batches.map((b) => ({
-            id: b.id,
-            code: b.code,
-            communityName: b.communityName,
-          }))}
-        />
+      {/* Primary Action: เริ่มใบใหม่ ระบบออกรหัสให้ */}
+      <section className="card space-y-6 p-6">
+        {communities.length === 0 ? (
+          <EmptyState
+            title="ยังไม่มีชุมชนในระบบ"
+            description="กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มข้อมูลชุมชนก่อนเริ่มคีย์"
+          />
+        ) : (
+          <StartSheetForm communities={communities} />
+        )}
+        <div className="border-t-2 border-slate-100 pt-5">
+          <SheetOpenForm />
+        </div>
       </section>
 
-      {/* ความคืบหน้าปึกในพื้นที่ (aggregate เท่านั้น — ไม่มีข้อมูลบุคคล) */}
+      {/* แบบสอบถามที่ตนคีย์ไปแล้ว — ดู/แก้ได้ตลอด (#R7-C) เห็นเฉพาะของตัวเอง */}
       <section className="card overflow-hidden">
         <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
           <SectionTitle
-            title="ความคืบหน้าในพื้นที่ของคุณ"
-            tone="mint"
+            title="แบบสอบถามที่ฉันคีย์"
+            tone="brand"
             aside={
-              overview.batches.length > 0 ? (
+              mySheets.length > 0 ? (
                 <span className="badge badge-neutral tabular-nums">
-                  คีย์แล้ว {totals.entered.toLocaleString("th-TH")} /{" "}
-                  {totals.total.toLocaleString("th-TH")} ใบ · คงเหลือ{" "}
-                  {totals.remaining.toLocaleString("th-TH")}
+                  {mySheets.length.toLocaleString("th-TH")} ใบ
                 </span>
               ) : undefined
             }
           />
         </div>
-        {overview.batches.length === 0 ? (
+        {mySheets.length === 0 ? (
           <EmptyState
             mood="sleep"
-            tone={overview.allowed ? "sun" : "brand"}
-            title={
-              overview.allowed
-                ? "ยังไม่มีแบบสอบถามที่เปิดให้คีย์"
-                : "ไม่มีขอบเขตชุมชนที่คุณเข้าถึงได้"
+            tone="brand"
+            title="ยังไม่มีแบบสอบถามที่คุณคีย์"
+            description="เมื่อคีย์ใบแรกเสร็จ ใบนั้นจะมาอยู่ที่นี่ให้กลับมาดูหรือแก้ไขได้ตลอด"
+          />
+        ) : (
+          <MySheetsTable rows={mySheets} />
+        )}
+      </section>
+
+      {/* ความคืบหน้ารายชุมชน (aggregate เท่านั้น — ไม่มีข้อมูลบุคคล) */}
+      <section className="card overflow-hidden">
+        <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
+          <SectionTitle
+            title="ความคืบหน้ารายชุมชน"
+            tone="mint"
+            aside={
+              totals.total > 0 ? (
+                <span className="badge badge-neutral tabular-nums">
+                  คีย์แล้ว {totals.entered.toLocaleString("th-TH")} /{" "}
+                  {totals.total.toLocaleString("th-TH")} ใบ
+                </span>
+              ) : undefined
             }
-            description={
-              overview.allowed
-                ? "เปิดใบด้วยรหัสบนกระดาษได้เสมอ — ส่วนนี้จะแสดงความคืบหน้าเมื่อเอกสารถูกจัดเป็นปึก"
-                : "กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดชุมชนที่คุณรับผิดชอบ"
-            }
+          />
+        </div>
+        {totals.total === 0 ? (
+          <EmptyState
+            mood="sleep"
+            tone="sun"
+            title="ยังไม่มีแบบสอบถามในระบบ"
+            description="เมื่อเริ่มกรอกใบแรก ความคืบหน้าจะแสดงที่นี่"
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-sm">
+            <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="py-3 pl-6 pr-4">ปึก (Batch)</th>
-                  <th className="py-3 pr-4">ชุมชน</th>
-                  <th className="py-3 pr-4">สถานะ</th>
+                  <th className="py-3 pl-6 pr-4">ชุมชน</th>
                   <th className="py-3 pr-4 text-right">ทั้งหมด</th>
+                  <th className="py-3 pr-4 text-right">กำลังคีย์</th>
                   <th className="py-3 pr-4 text-right">คีย์แล้ว</th>
-                  <th className="py-3 pr-4 text-right">คงเหลือ</th>
                   <th className="py-3 pr-6">ความคืบหน้า</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-50">
-                {overview.batches.map((b) => {
+                {overview.communities.map((c) => {
                   const done =
-                    b.totalSheets > 0 ? Math.round((b.entered / b.totalSheets) * 100) : 0;
-                  const status = BATCH_STATUS[b.status] ?? {
-                    label: b.status,
-                    cls: "badge-neutral",
-                  };
+                    c.totalSheets > 0 ? Math.round((c.entered / c.totalSheets) * 100) : 0;
                   return (
-                    <tr key={b.id} className="transition-colors hover:bg-alert-50/50">
-                      <td className="py-3 pl-6 pr-4 font-mono text-xs font-bold text-slate-700">
-                        {b.code}
-                      </td>
-                      <td className="py-3 pr-4 font-medium text-slate-700">{b.communityName}</td>
-                      <td className="py-3 pr-4">
-                        <span className={`badge ${status.cls}`}>{status.label}</span>
+                    <tr key={c.id} className="transition-colors hover:bg-alert-50/50">
+                      <td className="py-3 pl-6 pr-4 font-medium text-slate-700">
+                        {c.communityName}
                       </td>
                       <td className="py-3 pr-4 text-right tabular-nums text-slate-600">
-                        {b.totalSheets.toLocaleString("th-TH")}
+                        {c.totalSheets.toLocaleString("th-TH")}
                       </td>
                       <td className="py-3 pr-4 text-right tabular-nums text-slate-600">
-                        {b.entered.toLocaleString("th-TH")}
+                        {c.locked.toLocaleString("th-TH")}
                       </td>
                       <td className="py-3 pr-4 text-right font-semibold tabular-nums text-slate-900">
-                        {b.pending.toLocaleString("th-TH")}
+                        {c.entered.toLocaleString("th-TH")}
                       </td>
                       <td className="py-3 pr-6">
                         <div className="flex items-center gap-2">

@@ -176,7 +176,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(read).not.toBeNull();
   });
 
-  it("verifyHousehold: ENTERED_1 → VERIFIED + verifiedBy + counter + version + audit VERIFY", async () => {
+  it("verifyHousehold: ENTERED_1 → VERIFIED + verifiedBy + version + audit VERIFY", async () => {
     const result = await verifyHousehold(ctxVerifier, hh.byKeyer);
     expect(result.ok).toBe(true);
 
@@ -190,7 +190,6 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(household.verifiedAt).not.toBeNull();
 
     const batch = await prisma.paperBatch.findUniqueOrThrow({ where: { code: BATCH_CODE } });
-    expect(batch.verifiedCount).toBe(1);
 
     const version = await prisma.householdVersion.findFirstOrThrow({
       where: { householdId: hh.byKeyer },
@@ -223,12 +222,10 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(sheet.status).toBe(SheetStatus.ENTERED_1);
   });
 
-  it("นอก community scope → NOT_FOUND (review = null, verify = NOT_FOUND)", async () => {
-    expect(await loadHouseholdForReview(ctxOutsider, hh.scope)).toBeNull();
-    expect(await verifyHousehold(ctxOutsider, hh.scope)).toEqual({
-      ok: false,
-      reason: "NOT_FOUND",
-    });
+  it("ผู้ตรวจต่างชุมชนตรวจได้แล้ว — Community Scope ถูกยกเลิก (#R7-B)", async () => {
+    // เดิมตอบ NOT_FOUND เพราะผูกชุมชน · ตอนนี้ทุกบัญชีเห็นทุกชุมชน
+    // สิ่งที่ยังกันอยู่คือ permission และกฎห้ามตรวจงานตัวเอง
+    expect(await loadHouseholdForReview(ctxOutsider, hh.scope)).not.toBeNull();
   });
 
   it("ไม่มีสิทธิ์ verification.view (DATA_ENTRY) → NOT_ALLOWED / review = null", async () => {
@@ -299,14 +296,10 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(after).toBe(before); // transaction rollback
   });
 
-  it("ผู้คีย์แก้งานตัวเอง / นอก scope / ไม่มีสิทธิ์ → ปฏิเสธตามเหตุ", async () => {
+  it("ผู้คีย์แก้งานตัวเอง / ไม่มีสิทธิ์ → ปฏิเสธตามเหตุ", async () => {
     expect(await applyHouseholdEdits(ctxVerifier, hh.bySelf, { houseNo: "1" })).toEqual({
       ok: false,
       reason: "SELF_EDIT",
-    });
-    expect(await applyHouseholdEdits(ctxOutsider, hh.toEdit, { houseNo: "1" })).toEqual({
-      ok: false,
-      reason: "NOT_FOUND",
     });
     expect(await applyHouseholdEdits(ctxKeyer, hh.toEdit, { houseNo: "1" })).toEqual({
       ok: false,

@@ -106,17 +106,18 @@ describe.skipIf(!isLocalDevDb)("Integration: Community management", () => {
     ).toEqual({ ok: false, reason: "NOT_ALLOWED" });
   });
 
-  it("OFFICER แก้ชุมชนนอก scope → NOT_FOUND", async () => {
+  it("OFFICER แก้ชุมชนใดก็ได้ — Community Scope ถูกยกเลิก (#R7-B)", async () => {
     expect(
       await updatePopulation(ctxOfficer, c2Id, { totalHouseholds: 100, targetCoveragePercent: 60 }),
-    ).toEqual({ ok: false, reason: "NOT_FOUND" });
+    ).toEqual({ ok: true });
   });
 
-  it("listCommunities: OFFICER เห็นเฉพาะใน scope · EXECUTIVE (global) เห็นทั้งสอง", async () => {
+  it("listCommunities: ทุกบทบาทเห็นทุกชุมชน (#R7-B) · ยังบังคับ permission ตามเดิม", async () => {
     const officerList = await listCommunities(ctxOfficer);
     expect(officerList.allowed).toBe(true);
-    expect(officerList.communities.map((c) => c.id)).toEqual([c1Id]);
-    expect(officerList.communities[0].totalHouseholds).toBe(120);
+    const officerIds = officerList.communities.map((c) => c.id);
+    expect(officerIds).toContain(c1Id);
+    expect(officerIds).toContain(c2Id);
 
     const execList = await listCommunities(ctxExec);
     const ids = execList.communities.map((c) => c.id);

@@ -248,9 +248,8 @@ describe.skipIf(!isLocalDevDb)("Integration: ย้ายบทบาทเด�
     const coord = await prisma.user.findUniqueOrThrow({ where: { id: ids.coordOnly } });
     const coordCtx = await loadContextOrThrow(coord);
     expect(coordCtx.roles).toEqual([UserRoleEnum.OFFICER]);
-    expect(coordCtx.permissions).toContain(PERMISSIONS.BATCH_MANAGE);
     expect(coordCtx.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
-    expect(coordCtx.isGlobalScope).toBe(false); // COORDINATOR เดิมยังผูกชุมชน
+    expect(coordCtx.isGlobalScope).toBe(true); // ทุกบัญชีเห็นทุกชุมชนแล้ว (#R7-B)
     expect(coordCtx.communityIds).toEqual([communityId]);
 
     const verif = await prisma.user.findUniqueOrThrow({ where: { id: ids.verifOnly } });

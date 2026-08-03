@@ -4,7 +4,7 @@
 // - ทุกการเปิดดูข้อมูลอ่อนไหวต้องมี Audit READ (privacy)
 // - ยืนยันได้เมื่อสถานะ ENTERED_1 เท่านั้น + ตรวจ RBAC/scope ฝั่ง server
 // - ผู้คีย์ยืนยันงานตัวเองไม่ได้ (แยกหน้าที่ผู้คีย์/ผู้ตรวจ)
-// - VERIFIED = transaction: flip สถานะ + verifiedBy/At + batch.verifiedCount++
+// - VERIFIED = transaction: flip สถานะ + verifiedBy/At
 //   + snapshot HouseholdVersion + Audit VERIFY (race-guarded กันกดซ้ำ)
 // - Audit ห้าม log ค่า PII ดิบ — เก็บเฉพาะ entity อ้างอิงและ metadata ปลอดภัย
 
@@ -54,8 +54,6 @@ export interface HouseholdReview {
   householdId: string;
   sheetNo: string;
   communityName: string;
-  /** null = ใบยังไม่ได้จัดเข้าปึก (Batch เป็นทางเลือก #R6-B) */
-  batchCode: string | null;
   status: SheetStatus;
   enteredAt: Date;
   enteredByName: string;
@@ -96,7 +94,7 @@ export async function loadHouseholdForReview(
   const h = await prisma.household.findFirst({
     where: { id: householdId, deletedAt: null },
     include: {
-      sheet: { select: { sheetNo: true, status: true, batch: { select: { code: true } } } },
+      sheet: { select: { sheetNo: true, status: true } },
       community: { select: { nameTh: true } },
       respondentPrefix: { select: { nameTh: true } },
       surveyorPrefix: { select: { nameTh: true } },
@@ -213,7 +211,6 @@ export async function loadHouseholdForReview(
     householdId: h.id,
     sheetNo: h.sheet.sheetNo,
     communityName: h.community.nameTh,
-    batchCode: h.sheet.batch?.code ?? null,
     status: h.sheet.status,
     enteredAt: h.enteredAt,
     enteredByName: h.enteredBy.name,
@@ -248,7 +245,7 @@ export type VerifyResult =
 
 /**
  * ยืนยันครัวเรือนเป็น VERIFIED — สถานะ ENTERED_1 → VERIFIED (race-guarded)
- * + verifiedBy/At + batch.verifiedCount++ + snapshot HouseholdVersion + Audit VERIFY
+ * + verifiedBy/At + snapshot HouseholdVersion + Audit VERIFY
  */
 export async function verifyHousehold(
   ctx: AuthorizationContext,
@@ -263,7 +260,7 @@ export async function verifyHousehold(
       communityId: true,
       sheetId: true,
       enteredById: true,
-      sheet: { select: { status: true, batchId: true } },
+      sheet: { select: { status: true } },
     },
   });
   if (!h) return { ok: false, reason: "NOT_FOUND" };
@@ -305,14 +302,6 @@ export async function verifyHousehold(
         where: { id: h.id },
         data: { verifiedById: ctx.userId, verifiedAt: now },
       });
-
-      // 4) ตัวนับปึก — ข้ามเมื่อใบยังไม่ได้จัดเข้าปึก (Verify ต้องไม่ล้มเพราะไม่มีปึก)
-      if (h.sheet.batchId) {
-        await tx.paperBatch.update({
-          where: { id: h.sheet.batchId },
-          data: { verifiedCount: { increment: 1 } },
-        });
-      }
 
       return { kind: "OK" as const };
     });

@@ -33,12 +33,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: true,
   },
   {
-    label: "เอกสารภาคสนาม",
-    href: "/batches",
-    permission: PERMISSIONS.BATCH_MANAGE,
-    implemented: true,
-  },
-  {
     label: "การตรวจสอบข้อมูล",
     href: "/verification",
     permission: PERMISSIONS.VERIFICATION_VIEW,

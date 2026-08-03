@@ -8,7 +8,6 @@ import {
 } from "../../lib/authz/access";
 import { ALL_PERMISSIONS, PERMISSIONS } from "../../lib/authz/permissions";
 import {
-  GLOBAL_SCOPE_ROLES,
   ROLE_PERMISSIONS,
 } from "../../lib/authz/role-permissions";
 import {
@@ -53,18 +52,17 @@ describe("permissions constants", () => {
     }
   });
 
-  it("global scope roles = ADMIN + EXECUTIVE เท่านั้น", () => {
-    expect([...GLOBAL_SCOPE_ROLES].sort()).toEqual(
-      [UserRoleEnum.ADMIN, UserRoleEnum.EXECUTIVE].sort(),
-    );
+  it("ทุก role เห็นทุกชุมชน — Community Scope ถูกยกเลิกทั้งระบบ (#R7-B)", () => {
+    for (const role of ACTIVE_ROLES) {
+      expect(buildAuthorization([role]).isGlobalScope).toBe(true);
+    }
   });
 });
 
 describe("buildAuthorization", () => {
-  it("ไม่มี role → ไม่มี permission และไม่ global", () => {
+  it("ไม่มี role → ไม่มี permission", () => {
     const authz = buildAuthorization([]);
     expect(authz.permissions).toEqual([]);
-    expect(authz.isGlobalScope).toBe(false);
   });
 
   it("ADMIN ได้ทุก permission และเป็น global scope", () => {
@@ -98,7 +96,6 @@ describe("buildAuthorization", () => {
   it("FIELD_SURVEYOR ไม่มี permission ใดเลย", () => {
     const authz = buildAuthorization([UserRoleEnum.FIELD_SURVEYOR]);
     expect(authz.permissions).toEqual([]);
-    expect(authz.isGlobalScope).toBe(false);
   });
 
   it("หลาย role → union ของ permission ไม่ซ้ำ", () => {
@@ -110,7 +107,6 @@ describe("buildAuthorization", () => {
       [PERMISSIONS.VERIFICATION_VIEW, PERMISSIONS.SURVEY_ENTRY].sort(),
     );
     expect(authz.permissions.length).toBe(new Set(authz.permissions).size);
-    expect(authz.isGlobalScope).toBe(false);
   });
 
   it("VERIFIER ไม่มี dashboard.view (matrix: เห็นเฉพาะคิวตัวเอง)", () => {
@@ -118,49 +114,34 @@ describe("buildAuthorization", () => {
     expect(authz.permissions).not.toContain(PERMISSIONS.DASHBOARD_VIEW);
   });
 
-  it("ไม่มี role ใดนอกจาก ADMIN/EXECUTIVE ที่เป็น global จากชื่อ Role", () => {
-    // Legacy role ที่ยังค้างใน enum ห้ามถูกใช้เป็นกลไกให้ Global Scope
-    // ใครต้องเห็นทั้งระบบให้เปิดธง hasGlobalCommunityScope รายบัญชีแทน
+
+
+
+
+
+  it("ทุก role เป็น global scope — Community Scope ถูกยกเลิก (#R7-B)", () => {
     for (const role of Object.values(UserRoleEnum)) {
-      if (role === UserRoleEnum.ADMIN || role === UserRoleEnum.EXECUTIVE) continue;
-      expect(buildAuthorization([role]).isGlobalScope).toBe(false);
+      expect(buildAuthorization([role]).isGlobalScope).toBe(true);
     }
+    expect(buildAuthorization([]).isGlobalScope).toBe(true);
   });
 
-  it("ธง Global Community Scope ระดับบัญชี ทำให้ OFFICER เห็นทุกชุมชนได้", () => {
-    const scoped = buildAuthorization([UserRoleEnum.OFFICER]);
-    const global = buildAuthorization([UserRoleEnum.OFFICER], {
+  it("ธง hasGlobalCommunityScope ไม่มีผลอีกแล้ว — ทุกค่าให้ผลเหมือนกัน", () => {
+    // ธงยังอยู่ในฐานข้อมูลเพื่อให้เปิด scope กลับได้ แต่ต้องไม่ตัดสินสิทธิ์แล้ว
+    const on = buildAuthorization([UserRoleEnum.OFFICER], {
       hasGlobalCommunityScope: true,
     });
-    expect(scoped.isGlobalScope).toBe(false);
-    expect(global.isGlobalScope).toBe(true);
-    // ให้ scope เพิ่ม ต้องไม่ทำให้ permission เปลี่ยน
-    expect([...global.permissions].sort()).toEqual([...scoped.permissions].sort());
-  });
-
-  it("ธงระดับบัญชีเป็นของใครของมัน — ไม่ทำให้ OFFICER คนอื่นเป็น global", () => {
-    // จำลอง 2 บัญชีที่มี role เดียวกัน ต่างกันแค่ธง
-    const officerA = buildAuthorization([UserRoleEnum.OFFICER], {
-      hasGlobalCommunityScope: true,
-    });
-    const officerB = buildAuthorization([UserRoleEnum.OFFICER], {
+    const off = buildAuthorization([UserRoleEnum.OFFICER], {
       hasGlobalCommunityScope: false,
     });
-    expect(officerA.isGlobalScope).toBe(true);
-    expect(officerB.isGlobalScope).toBe(false);
-    // ยืนยันว่า OFFICER ไม่เคยถูกใส่ใน GLOBAL_SCOPE_ROLES (กันแก้ผิดทาง)
-    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.OFFICER);
+    expect(on.isGlobalScope).toBe(true);
+    expect(off.isGlobalScope).toBe(true);
+    expect([...on.permissions].sort()).toEqual([...off.permissions].sort());
   });
 
-  it("ไม่ส่ง account options = ไม่ global (ค่าเริ่มต้นต้องปลอดภัยเสมอ)", () => {
-    expect(buildAuthorization([UserRoleEnum.OFFICER]).isGlobalScope).toBe(false);
-    expect(buildAuthorization([UserRoleEnum.DATA_ENTRY], {}).isGlobalScope).toBe(false);
-  });
-
-  it("OFFICER ยังคง community scope ตามเดิม — ไม่ใช่ global แม้มี verification.view", () => {
+  it("OFFICER ยังมี verification.view (permission ไม่ถูกกระทบจากการยกเลิก scope)", () => {
     const authz = buildAuthorization([UserRoleEnum.OFFICER]);
     expect(authz.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
-    expect(authz.isGlobalScope).toBe(false);
   });
 
   it("EXECUTIVE ดูได้แต่ไม่มีสิทธิ์จัดการผู้ใช้/ตั้งค่า", () => {
@@ -237,7 +218,6 @@ describe("visibleNavItems", () => {
       "/dashboard",
       "/communities",
       "/surveys",
-      "/batches",
       "/verification",
       "/admin/registrations",
       "/admin/users",

@@ -11,7 +11,7 @@ import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-her
 export const metadata = { title: "การตรวจสอบข้อมูล" };
 export const dynamic = "force-dynamic";
 
-type SearchParams = { community?: string; batch?: string; enteredBy?: string };
+type SearchParams = { community?: string; enteredBy?: string };
 
 export default async function VerificationPage({
   searchParams,
@@ -23,11 +23,10 @@ export default async function VerificationPage({
   const sp = await searchParams;
   const filters = {
     communityId: sp.community || undefined,
-    batchId: sp.batch || undefined,
     enteredById: sp.enteredBy || undefined,
   };
   const overview = await getVerificationOverview(ctx, filters);
-  const filterActive = Boolean(filters.communityId || filters.batchId || filters.enteredById);
+  const filterActive = Boolean(filters.communityId || filters.enteredById);
   const groups = groupVerificationQueue(overview.queue);
 
   const total = overview.waiting + overview.verified;
@@ -96,15 +95,6 @@ export default async function VerificationPage({
             options={overview.filterOptions.communities.map((c) => ({
               value: c.id,
               label: c.nameTh,
-            }))}
-          />
-          <FilterSelect
-            name="batch"
-            label="ปึก"
-            value={filters.batchId}
-            options={overview.filterOptions.batches.map((b) => ({
-              value: b.id,
-              label: b.code,
             }))}
           />
           <FilterSelect
@@ -178,46 +168,21 @@ export default async function VerificationPage({
                   <span className="badge badge-brand tabular-nums">{community.count} ใบ</span>
                 </summary>
 
-                <div className="divide-y divide-slate-50 border-t border-slate-100 bg-slate-50/40 pl-4">
-                  {community.batches.map((batch) => (
-                    <details key={batch.batchId ?? "unbatched"} className="group/batch">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-brand-50/40">
-                        <span className="flex items-center gap-2 text-sm">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3 shrink-0 text-slate-400 transition-transform group-open/batch:rotate-90">
-                            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                <div className="space-y-3 border-t border-slate-100 bg-slate-50/40 px-4 py-3">
+                  {community.enterers.map((enterer) => (
+                    <div key={enterer.enteredById} className="rounded-xl border-2 border-slate-100 bg-white">
+                      <p className="flex items-center justify-between gap-2 border-b-2 border-slate-100 bg-slate-50/70 px-3.5 py-2 text-xs">
+                        <span className="flex items-center gap-1.5 font-bold text-slate-600">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+                            <circle cx="12" cy="8" r="3.6" />
+                            <path d="M5 20v-1c0-3 3.1-5 7-5s7 2 7 5v1" strokeLinecap="round" />
                           </svg>
-                          {/* ใบที่ยังไม่ได้จัดเข้าปึกใช้ป้ายภาษาไทย ไม่ใช่รหัส — จึงไม่ใช้ font-mono */}
-                          <span
-                            className={
-                              batch.batchId === null
-                                ? "font-bold text-slate-500"
-                                : "font-mono font-bold text-slate-700"
-                            }
-                          >
-                            {batch.batchLabel}
-                          </span>
+                          คีย์โดย {enterer.enteredByName}
                         </span>
-                        <span className="badge badge-neutral tabular-nums">{batch.count} ใบ</span>
-                      </summary>
-
-                      <div className="space-y-3 bg-white px-4 py-3">
-                        {batch.enterers.map((enterer) => (
-                          <div key={enterer.enteredById} className="rounded-xl border-2 border-slate-100">
-                            <p className="flex items-center justify-between gap-2 border-b-2 border-slate-100 bg-slate-50/70 px-3.5 py-2 text-xs">
-                              <span className="flex items-center gap-1.5 font-bold text-slate-600">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
-                                  <circle cx="12" cy="8" r="3.6" />
-                                  <path d="M5 20v-1c0-3 3.1-5 7-5s7 2 7 5v1" strokeLinecap="round" />
-                                </svg>
-                                คีย์โดย {enterer.enteredByName}
-                              </span>
-                              <span className="tabular-nums text-slate-400">{enterer.count} ใบ</span>
-                            </p>
-                            <QueueTable items={enterer.items} />
-                          </div>
-                        ))}
-                      </div>
-                    </details>
+                        <span className="tabular-nums text-slate-400">{enterer.count} ใบ</span>
+                      </p>
+                      <QueueTable items={enterer.items} />
+                    </div>
                   ))}
                 </div>
               </details>

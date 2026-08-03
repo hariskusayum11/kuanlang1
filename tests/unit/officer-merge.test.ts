@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { UserRoleEnum } from "@prisma/client";
 import { buildAuthorization } from "../../lib/authz/access";
 import { PERMISSIONS } from "../../lib/authz/permissions";
-import { GLOBAL_SCOPE_ROLES, ROLE_PERMISSIONS } from "../../lib/authz/role-permissions";
+import { ROLE_PERMISSIONS } from "../../lib/authz/role-permissions";
 import {
   ACTIVE_ROLES,
   LEGACY_ROLES,
@@ -51,7 +51,6 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
       PERMISSIONS.COMMUNITY_VIEW,
       PERMISSIONS.COMMUNITY_MANAGE,
       PERMISSIONS.HOUSEHOLD_VIEW,
-      PERMISSIONS.BATCH_MANAGE,
       PERMISSIONS.VERIFICATION_VIEW,
       PERMISSIONS.REPORT_VIEW,
     ]) {
@@ -64,28 +63,23 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
     expect(officer).not.toContain(PERMISSIONS.SETTINGS_VIEW);
   });
 
-  it("3) OFFICER ไม่เป็น Global จากชื่อ Role", () => {
-    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.OFFICER);
-    expect(buildAuthorization([UserRoleEnum.OFFICER]).isGlobalScope).toBe(false);
+  it("3) OFFICER เห็นทุกชุมชน — Community Scope ถูกยกเลิกทั้งระบบ (#R7-B)", () => {
+    expect(buildAuthorization([UserRoleEnum.OFFICER]).isGlobalScope).toBe(true);
   });
 
-  it("4) OFFICER ที่ hasGlobalCommunityScope=true เป็น Global", () => {
+  it("4) ธง hasGlobalCommunityScope ไม่มีผลต่อ permission ของ OFFICER", () => {
     const authz = buildAuthorization([UserRoleEnum.OFFICER], {
       hasGlobalCommunityScope: true,
     });
-    expect(authz.isGlobalScope).toBe(true);
-    // ให้ scope กว้างขึ้น ต้องไม่ทำให้ permission เปลี่ยน
     expect([...authz.permissions].sort()).toEqual(
       [...buildAuthorization([UserRoleEnum.OFFICER]).permissions].sort(),
     );
   });
 
-  it("16) Global Scope ต้องไม่ถูกอนุมานจาก VERIFIER ใน flow ใหม่", () => {
-    expect(GLOBAL_SCOPE_ROLES).not.toContain(UserRoleEnum.VERIFIER);
-    expect(buildAuthorization([UserRoleEnum.VERIFIER]).isGlobalScope).toBe(false);
-    expect(
-      buildAuthorization([UserRoleEnum.VERIFIER, UserRoleEnum.OFFICER]).isGlobalScope,
-    ).toBe(false);
+  it("16) VERIFIER ได้เฉพาะ verification.view — การยกเลิก scope ไม่เพิ่ม permission", () => {
+    expect(buildAuthorization([UserRoleEnum.VERIFIER]).permissions).toEqual([
+      PERMISSIONS.VERIFICATION_VIEW,
+    ]);
   });
 });
 
@@ -124,7 +118,6 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     expect(ROLE_PERMISSIONS[UserRoleEnum.FIELD_SURVEYOR]).toEqual([]);
     const authz = buildAuthorization([UserRoleEnum.FIELD_SURVEYOR]);
     expect(authz.permissions).toEqual([]);
-    expect(authz.isGlobalScope).toBe(false);
     expect(visibleNavItems(authz.permissions)).toEqual([]);
   });
 
@@ -137,7 +130,6 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     expect([...combined.permissions].sort()).toEqual(
       [...dataEntryOnly.permissions].sort(),
     );
-    expect(combined.isGlobalScope).toBe(false);
   });
 
   it("4) คำขอสมัครไม่รับ FIELD_SURVEYOR", () => {
@@ -195,7 +187,6 @@ describe("10) Navigation ของ OFFICER หลังยุบบทบาท"
   it("เห็นเมนูที่รวมงานของ COORDINATOR และ VERIFIER ไว้ด้วยกัน", () => {
     expect(hrefs).toContain("/dashboard");
     expect(hrefs).toContain("/communities"); // เดิมของ COORDINATOR
-    expect(hrefs).toContain("/batches"); // เดิมของ COORDINATOR
     expect(hrefs).toContain("/verification"); // เดิมของ VERIFIER
   });
 

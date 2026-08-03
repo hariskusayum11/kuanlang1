@@ -82,7 +82,6 @@ export default async function EntrySheetPage({
       sheet={{
         id: access.sheet.id,
         sheetNo: access.sheet.sheetNo,
-        batchCode: access.sheet.batchCode,
         communityName: access.sheet.communityName,
       }}
       master={master}

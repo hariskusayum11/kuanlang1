@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
-  BatchStatus,
   PrismaClient,
   SheetStatus,
   UserRoleEnum,
@@ -12,7 +11,6 @@ import type { AuthorizationContext } from "../../lib/authz/types";
 import { encryptText } from "../../lib/crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring } from "../../lib/crypto/keys";
 import { setUserRoles, setUserGlobalScope, listUsers } from "../../lib/admin/users";
-import { listBatches } from "../../lib/batch/core";
 import { getVerificationOverview } from "../../lib/verification/queue";
 import { verifyHousehold } from "../../lib/verification/review";
 
@@ -31,7 +29,6 @@ const EMAILS = {
   keyer: "test-officer-keyer@test.invalid",
 } as const;
 const COMMUNITY_CODE = "TOM1";
-const BATCH_CODE = "BATCH-TOM-001";
 
 async function cleanup() {
   const community = await prisma.community.findUnique({
@@ -49,11 +46,7 @@ async function cleanup() {
       await prisma.household.deleteMany({ where: { id: { in: hids } } });
     }
   }
-  const batch = await prisma.paperBatch.findUnique({ where: { code: BATCH_CODE } });
-  if (batch) {
-    await prisma.paperSheet.deleteMany({ where: { batchId: batch.id } });
-    await prisma.paperBatch.delete({ where: { id: batch.id } });
-  }
+  await prisma.paperSheet.deleteMany({ where: { sheetNo: { startsWith: "SK-98" } } });
   const users = await prisma.user.findMany({
     where: { email: { in: Object.values(EMAILS) } },
     select: { id: true },
@@ -113,25 +106,12 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     ctxAdmin = await loadContextOrThrow(admin);
     ctxOfficer = await loadContextOrThrow(officer);
 
-    const batch = await prisma.paperBatch.create({
-      data: {
-        code: BATCH_CODE,
-        communityId: community.id,
-        expectedCount: 2,
-        receivedAt: new Date(),
-        receivedById: keyer.id,
-        status: BatchStatus.IN_PROGRESS,
-      },
-    });
-
     const keyring = getKeyring();
-    const mkHousehold = async (sheetNo: string, seq: number, enteredById: string) => {
+    const mkHousehold = async (sheetNo: string, enteredById: string) => {
       const sheet = await prisma.paperSheet.create({
         data: {
           communityId: community.id,
-          batchId: batch.id,
           sheetNo,
-          sequence: seq,
           status: SheetStatus.ENTERED_1,
         },
       });
@@ -148,8 +128,8 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
       });
       return h.id;
     };
-    hhByKeyer = await mkHousehold("TOM-940001", 1, keyer.id);
-    hhByOfficer = await mkHousehold("TOM-940002", 2, officer.id);
+    hhByKeyer = await mkHousehold("SK-980001", keyer.id);
+    hhByOfficer = await mkHousehold("SK-980002", officer.id);
   });
 
   afterAll(async () => {
@@ -165,12 +145,6 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     expect(overview.queue.some((q) => q.householdId === hhByKeyer)).toBe(true);
   });
 
-  it("12) OFFICER ใช้ Batch flow ได้ (งานเดิมของ COORDINATOR)", async () => {
-    const batches = await listBatches(ctxOfficer);
-    expect(batches).not.toBeNull();
-    expect(batches!.some((b) => b.code === BATCH_CODE)).toBe(true);
-  });
-
   it("15) กฎ Self-verify ยังบังคับกับ OFFICER", async () => {
     // ใบที่ OFFICER คีย์เอง → ยืนยันเองไม่ได้
     expect(await verifyHousehold(ctxOfficer, hhByOfficer)).toEqual({
@@ -184,8 +158,8 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     expect(after.verifiedById).toBeNull();
   });
 
-  it("OFFICER ยัง bound ด้วย Community Scope — ไม่เห็นข้ามชุมชน", async () => {
-    expect(ctxOfficer.isGlobalScope).toBe(false);
+  it("OFFICER เห็นทุกชุมชน — Community Scope ถูกยกเลิก (#R7-B)", async () => {
+    expect(ctxOfficer.isGlobalScope).toBe(true);
     expect(ctxOfficer.communityIds).toEqual([communityId]);
   });
 
@@ -240,17 +214,16 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     const ctx = await loadAuthorizationForUser(u);
     expect(ctx).not.toBeNull();
     expect(ctx!.roles).toContain(UserRoleEnum.COORDINATOR);
-    expect(ctx!.permissions).toContain(PERMISSIONS.BATCH_MANAGE);
-    expect(ctx!.isGlobalScope).toBe(false);
+    expect(ctx!.isGlobalScope).toBe(true);
   });
 
-  it("13b) บัญชี VERIFIER เดิมยังโหลดได้ — แต่ไม่ได้ Global จากชื่อ Role อีกแล้ว", async () => {
+  it("13b) บัญชี VERIFIER เดิมยังโหลด context ได้ตามปกติ", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: legacyVerifId } });
     const ctx = await loadAuthorizationForUser(u);
     expect(ctx).not.toBeNull();
     expect(ctx!.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
     // พฤติกรรม "เห็นทุกชุมชน" ต้องมาจากธงรายบัญชีที่ Data Migration จะตั้งให้ (Commit ถัดไป)
-    expect(ctx!.isGlobalScope).toBe(false);
+    expect(ctx!.isGlobalScope).toBe(true);
   });
 
   it("บันทึกบทบาทอื่นให้บัญชีเก่า ต้องไม่ถอดบทบาทเดิมทิ้งโดยผลข้างเคียง", async () => {
@@ -279,6 +252,5 @@ describe.skipIf(!isLocalDevDb)("Integration: ยุบ COORDINATOR + VERIFIER �
     expect(ctxAdmin.isGlobalScope).toBe(true);
     expect(ctxAdmin.permissions).toContain(PERMISSIONS.USER_MANAGE);
     expect(ctxAdmin.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
-    expect(ctxAdmin.permissions).toContain(PERMISSIONS.BATCH_MANAGE);
   });
 });

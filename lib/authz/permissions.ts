@@ -4,7 +4,6 @@ export const PERMISSIONS = {
   COMMUNITY_MANAGE: "community.manage",
   HOUSEHOLD_VIEW: "household.view",
   SURVEY_ENTRY: "survey.entry",
-  BATCH_MANAGE: "batch.manage",
   VERIFICATION_VIEW: "verification.view",
   REPORT_VIEW: "report.view",
   SETTINGS_VIEW: "settings.view",

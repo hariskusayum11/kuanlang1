@@ -33,24 +33,17 @@ export type OpenSheetActionResult =
   | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
 
 /**
- * เปิดใบจากรหัสบนกระดาษ (Workflow หลักของเจ้าหน้าที่คีย์)
- * code = รหัสใบเต็ม หรือเลขลำดับในปึกเมื่อส่ง batchId มาด้วย
+ * เปิดใบที่มีอยู่แล้วจากรหัสบนกระดาษ — ใช้เมื่อกลับมาคีย์ใบเดิมต่อ
+ * ใบใหม่ใช้ startSheetAction (ระบบออกรหัสให้) ไม่ผ่านทางนี้
  */
 export async function openSheetAction(
   code: string,
-  batchId?: string,
 ): Promise<OpenSheetActionResult> {
   const ctx = await getAuthorizationContext();
   if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
   const parsedCode = sheetCodeSchema.safeParse(code);
   if (!parsedCode.success) return { ok: false, reason: "INVALID" };
-  let parsedBatchId: string | undefined;
-  if (batchId !== undefined) {
-    const pb = sheetIdSchema.safeParse(batchId);
-    if (!pb.success) return { ok: false, reason: "INVALID" };
-    parsedBatchId = pb.data;
-  }
-  return openSheetByCode(ctx, parsedCode.data, parsedBatchId);
+  return openSheetByCode(ctx, parsedCode.data);
 }
 
 export type ClaimActionResult =

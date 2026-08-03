@@ -73,56 +73,45 @@ describe.skipIf(!isLocalDevDb)("Integration: Global Community Scope ระดั
     await prisma.$disconnect();
   });
 
-  it("1) OFFICER ที่มี Community Scope เห็นเฉพาะพื้นที่ของตน", async () => {
-    const u = await prisma.user.findUniqueOrThrow({ where: { id: scopedId } });
-    const ctx = await loadContextOrThrow(sessionUser(u));
-    expect(ctx.isGlobalScope).toBe(false);
-    expect(ctx.communityIds).toEqual([communityIds[0]]);
+  // Community Scope ถูกยกเลิกทั้งระบบ (Owner Decision 2026-08-03 #R7-B)
+  // เทสต์ชุดนี้จึงเปลี่ยนจาก "พิสูจน์ว่าจำกัดขอบเขตได้" เป็น "พิสูจน์ว่าไม่จำกัดแล้วจริง"
+  // และธง hasGlobalCommunityScope ที่ยังอยู่ในฐานข้อมูลต้องไม่มีผลต่อการตัดสินสิทธิ์
 
-    const cov = await fetchCommunityCoverage({
-      isGlobalScope: ctx.isGlobalScope,
-      communityIds: ctx.communityIds,
-    });
-    expect(cov.rows.length).toBe(1);
-    expect(cov.rows[0].communityId).toBe(communityIds[0]);
-  });
-
-  it("2) OFFICER ที่เป็น Global เห็นทุกพื้นที่ แม้ไม่ได้ผูก UserCommunityScope เลย", async () => {
-    const u = await prisma.user.findUniqueOrThrow({ where: { id: globalId } });
-    const ctx = await loadContextOrThrow(sessionUser(u));
-    expect(ctx.isGlobalScope).toBe(true);
-    expect(ctx.communityIds).toEqual([]); // ไม่ได้ผูกชุมชนใดเลย
-
-    const cov = await fetchCommunityCoverage({
-      isGlobalScope: ctx.isGlobalScope,
-      communityIds: ctx.communityIds,
-    });
-    expect(cov.rows.length).toBe(communityIds.length);
-  });
-
-  it("3) OFFICER ที่ไม่มี Scope และไม่ Global เห็น 0 พื้นที่ (ห้าม fallback เป็นทั้งระบบ)", async () => {
-    const u = await prisma.user.findUniqueOrThrow({ where: { id: noScopeId } });
-    const ctx = await loadContextOrThrow(sessionUser(u));
-    expect(ctx.isGlobalScope).toBe(false);
-    expect(ctx.communityIds).toEqual([]);
-
-    const cov = await fetchCommunityCoverage({
-      isGlobalScope: ctx.isGlobalScope,
-      communityIds: ctx.communityIds,
-    });
-    expect(cov.rows.length).toBe(0);
-  });
-
-  it("4) OFFICER คนหนึ่งเป็น Global ไม่ทำให้ OFFICER คนอื่นเป็น Global", async () => {
+  it("1) ทุกบัญชีเห็นทุกชุมชน ไม่ว่าจะผูก UserCommunityScope ไว้อย่างไร", async () => {
     const [g, s, n] = await Promise.all(
       [globalId, scopedId, noScopeId].map(async (id) => {
         const u = await prisma.user.findUniqueOrThrow({ where: { id } });
         return loadContextOrThrow(sessionUser(u));
       }),
     );
-    expect(g.isGlobalScope).toBe(true);
-    expect(s.isGlobalScope).toBe(false);
-    expect(n.isGlobalScope).toBe(false);
+    for (const ctx of [g, s, n]) {
+      expect(ctx.isGlobalScope).toBe(true);
+      const cov = await fetchCommunityCoverage({
+        isGlobalScope: ctx.isGlobalScope,
+        communityIds: ctx.communityIds,
+      });
+      expect(cov.rows.length).toBe(communityIds.length);
+    }
+  });
+
+  it("2) แถว UserCommunityScope ยังถูกโหลดมาใน context แต่ไม่ได้ใช้จำกัดสิทธิ์แล้ว", async () => {
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: scopedId } });
+    const ctx = await loadContextOrThrow(sessionUser(u));
+    // ข้อมูลยังอยู่ครบ (เปิด scope กลับได้โดยไม่ต้อง migrate)
+    expect(ctx.communityIds).toEqual([communityIds[0]]);
+    // แต่ผลลัพธ์ที่เห็นคือทั้งระบบ ไม่ใช่แค่ชุมชนที่ผูกไว้
+    expect(ctx.isGlobalScope).toBe(true);
+  });
+
+  it("3) ผู้ที่ไม่ได้ผูกชุมชนเลย ก็ยังเห็นครบ — ไม่ตกไปเป็น 0 พื้นที่", async () => {
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: noScopeId } });
+    const ctx = await loadContextOrThrow(sessionUser(u));
+    expect(ctx.communityIds).toEqual([]);
+    const cov = await fetchCommunityCoverage({
+      isGlobalScope: ctx.isGlobalScope,
+      communityIds: ctx.communityIds,
+    });
+    expect(cov.rows.length).toBe(communityIds.length);
   });
 
   it("11) Global Scope แก้ได้เฉพาะผู้มี user.manage — OFFICER แก้ไม่ได้", async () => {

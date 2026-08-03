@@ -19,7 +19,7 @@ export function canVerify(ctx: AuthorizationContext): boolean {
 }
 
 /**
- * เงื่อนไข community scope สำหรับ query household/batch
+ * เงื่อนไข community scope สำหรับ query household
  * - Global scope → ไม่กรอง (เห็นทุกชุมชน)
  * - Scope ว่าง → null = ไม่มีสิทธิ์เห็นงานใด (ห้าม fallback เป็นทั้งระบบ)
  */
@@ -36,9 +36,6 @@ export interface VerificationQueueItem {
   sheetNo: string;
   communityId: string;
   communityName: string;
-  /** null = ใบยังไม่ได้จัดเข้าปึก (Batch เป็นทางเลือก #R6-B) */
-  batchId: string | null;
-  batchCode: string | null;
   enteredAt: Date;
   enteredById: string;
   enteredByName: string;
@@ -53,14 +50,11 @@ export interface VerificationQueueItem {
 /** ตัวกรองที่ผู้ใช้เลือกได้ — ทั้งหมด optional (ไม่กรอง = เห็นตาม scope ทั้งหมด) */
 export interface VerificationFilters {
   communityId?: string;
-  batchId?: string;
   enteredById?: string;
 }
 
 export interface VerificationFilterOptions {
   communities: { id: string; nameTh: string }[];
-  /** narrow ตาม communityId ที่เลือกไว้แล้ว (ถ้ามี) — ไม่งั้นคือทุกปึกใน scope */
-  batches: { id: string; code: string; communityId: string }[];
   enterers: { id: string; name: string }[];
 }
 
@@ -74,7 +68,6 @@ export interface VerificationOverview {
 
 const EMPTY_FILTER_OPTIONS: VerificationFilterOptions = {
   communities: [],
-  batches: [],
   enterers: [],
 };
 
@@ -103,10 +96,9 @@ export async function getVerificationOverview(
     ...waitingWhere,
     ...(filters.communityId ? { communityId: filters.communityId } : {}),
     ...(filters.enteredById ? { enteredById: filters.enteredById } : {}),
-    ...(filters.batchId ? { sheet: { status: SheetStatus.ENTERED_1, batchId: filters.batchId } } : {}),
   };
 
-  const [waiting, verified, rows, communities, enterers, batches] = await Promise.all([
+  const [waiting, verified, rows, communities, enterers] = await Promise.all([
     prisma.household.count({ where: waitingWhere }),
     prisma.household.count({
       where: { deletedAt: null, sheet: { status: SheetStatus.VERIFIED }, ...scope },
@@ -121,7 +113,7 @@ export async function getVerificationOverview(
         illegibleCount: true,
         blankCount: true,
         hasDuplicateFlag: true,
-        sheet: { select: { sheetNo: true, batchId: true, batch: { select: { code: true } } } },
+        sheet: { select: { sheetNo: true } },
         community: { select: { nameTh: true } },
         enteredBy: { select: { name: true } },
         _count: { select: { vulnerablePersons: true } },
@@ -145,16 +137,6 @@ export async function getVerificationOverview(
       select: { enteredById: true, enteredBy: { select: { name: true } } },
       orderBy: { enteredBy: { name: "asc" } },
     }),
-    // ปึก: narrow ตามชุมชนที่เลือกไว้แล้ว (ถ้ามี) ไม่งั้นคือทุกปึกใน scope
-    prisma.paperBatch.findMany({
-      where: {
-        ...scope,
-        ...(filters.communityId ? { communityId: filters.communityId } : {}),
-        sheets: { some: { status: SheetStatus.ENTERED_1 } },
-      },
-      select: { id: true, code: true, communityId: true },
-      orderBy: { code: "asc" },
-    }),
   ]);
 
   return {
@@ -166,8 +148,6 @@ export async function getVerificationOverview(
       sheetNo: h.sheet.sheetNo,
       communityId: h.communityId,
       communityName: h.community.nameTh,
-      batchId: h.sheet.batchId,
-      batchCode: h.sheet.batch?.code ?? null,
       enteredAt: h.enteredAt,
       enteredById: h.enteredById,
       enteredByName: h.enteredBy.name,
@@ -180,7 +160,6 @@ export async function getVerificationOverview(
     filterOptions: {
       communities: communities.map((c) => ({ id: c.communityId, nameTh: c.community.nameTh })),
       enterers: enterers.map((e) => ({ id: e.enteredById, name: e.enteredBy.name })),
-      batches,
     },
   };
 }

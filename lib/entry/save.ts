@@ -111,7 +111,13 @@ export async function loadDraftPayload(
 // ---------------------------------------------------------------------------
 
 export type SubmitEntryResult =
-  | { ok: true; householdId: string; duplicateSuspected: boolean }
+  | {
+      ok: true;
+      householdId: string;
+      duplicateSuspected: boolean;
+      /** ใบนี้เคยตรวจแล้วและถูกแก้ → กลับไปรอตรวจใหม่ (UI ต้องบอกผู้คีย์) */
+      reopenedForVerify: boolean;
+    }
   | {
       ok: false;
       reason: "NOT_ALLOWED" | "LOCK_LOST" | "ALREADY_ENTERED" | "INVALID_MASTER" | "ERROR";
@@ -181,7 +187,7 @@ export async function submitEntry(
 ): Promise<SubmitEntryResult> {
   const access = await getSheetForEntry(ctx, sheetId);
   if (access.kind !== "OK") return { ok: false, reason: "NOT_ALLOWED" };
-  const { batchId, communityId } = access.sheet;
+  const { communityId } = access.sheet;
 
   const clean = sanitizeEntryPayload(payload);
   const keyring = getKeyring();
@@ -311,16 +317,49 @@ export async function submitEntry(
       });
 
       // 3) จับใบซ้ำจาก blind index เบอร์โทร (soft check — QM-03)
+      //    ไม่นับใบของตัวเองตอนแก้ซ้ำ ไม่งั้นการแก้จะติดธง "ซ้ำ" กับตัวเองเสมอ
+      const existing = await tx.household.findUnique({
+        where: { sheetId },
+        select: { id: true, verifiedAt: true },
+      });
       const duplicateSuspected = respondentPhoneIdx
         ? (await tx.household.count({
-            where: { respondentPhoneIdx, deletedAt: null },
+            where: {
+              respondentPhoneIdx,
+              deletedAt: null,
+              ...(existing ? { id: { not: existing.id } } : {}),
+            },
           })) > 0
         : false;
 
       // 4) Household (1:1 กับใบ — unique sheetId กันซ้ำระดับ DB)
-      const household = await tx.household.create({
-        data: { ...householdData, hasDuplicateFlag: duplicateSuspected },
-      });
+      //    ผู้คีย์แก้ใบของตนได้ตลอด (#R7-C) → มีของเดิมให้เขียนทับ ไม่ใช่สร้างซ้ำ
+      //    การแก้ใบที่ตรวจแล้วต้องล้าง verifiedBy/At ด้วย เพราะใบกลับไปรอตรวจใหม่
+      let household: { id: string };
+      if (existing) {
+        household = await tx.household.update({
+          where: { id: existing.id },
+          data: {
+            ...householdData,
+            hasDuplicateFlag: duplicateSuspected,
+            verifiedById: null,
+            verifiedAt: null,
+          },
+          select: { id: true },
+        });
+        // ลูกของ Household ถูกสร้างใหม่ทั้งชุดจาก payload ล่าสุด
+        await tx.assistanceNeed.deleteMany({ where: { householdId: existing.id } });
+        await tx.personVulnerability.deleteMany({
+          where: { person: { householdId: existing.id } },
+        });
+        await tx.vulnerablePerson.deleteMany({ where: { householdId: existing.id } });
+      } else {
+        household = await tx.household.create({
+          data: { ...householdData, hasDuplicateFlag: duplicateSuspected },
+          select: { id: true },
+        });
+      }
+      const wasVerified = existing?.verifiedAt != null;
 
       // 4.1) ความต้องการช่วยเหลือรายข้อ (ส่วนที่ 2 ข้อ 3) — จำนวนคน/รายละเอียดตามกระดาษ
       if (assistanceNeeds.length > 0) {
@@ -387,35 +426,35 @@ export async function submitEntry(
         });
       }
 
-      // 7) ตัวนับบนปึก — ใบที่ยังไม่ได้จัดเข้าปึกไม่มีตัวนับให้ขยับ
-      //    ห้ามให้ Submit ล้มเพราะไม่มีปึก (Batch เป็นทางเลือก #R6-B)
-      if (batchId) {
-        await tx.paperBatch.update({
-          where: { id: batchId },
-          data: { enteredCount: { increment: 1 } },
-        });
-      }
-
       return {
         kind: "OK" as const,
         householdId: household.id,
         duplicateSuspected,
+        wasVerified,
       };
     });
 
     if (result.kind === "LOCK_LOST") return { ok: false, reason: "LOCK_LOST" };
 
+    // แก้ใบที่ตรวจแล้ว = เหตุการณ์คนละอย่างกับการคีย์ครั้งแรก ต้องแยกให้ตรวจย้อนหลังได้
     await writeAuditLog({
       userId: ctx.userId,
-      action: AuditAction.CREATE,
+      action: result.wasVerified ? AuditAction.UPDATE : AuditAction.CREATE,
       entityType: "Household",
       entityId: result.householdId,
-      changes: { sheetStatus: { old: "LOCKED", new: "ENTERED_1" } },
+      changes: result.wasVerified
+        ? {
+            sheetStatus: { old: "VERIFIED", new: "ENTERED_1" },
+            verification: { old: "VERIFIED", new: "CLEARED" },
+            reason: "ผู้คีย์แก้ไขใบที่ตรวจแล้ว — ส่งกลับไปรอตรวจใหม่",
+          }
+        : { sheetStatus: { old: "LOCKED", new: "ENTERED_1" } },
     });
     return {
       ok: true,
       householdId: result.householdId,
       duplicateSuspected: result.duplicateSuspected,
+      reopenedForVerify: result.wasVerified,
     };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {

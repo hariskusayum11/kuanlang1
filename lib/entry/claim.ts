@@ -2,17 +2,21 @@
 // ทุกฟังก์ชันตรวจ permission + community scope จาก ctx ฝั่ง server เท่านั้น
 // ห้ามเชื่อ userId/role/scope จาก client — actions.ts เป็นผู้โหลด ctx จาก session จริง
 
-import { BatchStatus, SheetStatus } from "@prisma/client";
+import { SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 import { isLockExpired, lockExpiryFrom } from "./lock";
+import { normalizeSheetNo } from "../sheet/number";
 
-/** Batch ที่เปิดให้คีย์ได้ (RECEIVED = ยังไม่ติดเลขใบ → ห้ามคีย์, CLOSED = ปิดแล้ว) */
-const CLAIMABLE_BATCH_STATUSES: BatchStatus[] = [
-  BatchStatus.READY_FOR_ENTRY,
-  BatchStatus.IN_PROGRESS,
+/**
+ * สถานะที่ผู้คีย์ "เจ้าของใบ" เปิดกลับมาแก้ได้ (Owner Decision 2026-08-03 #R7-C)
+ * ผู้คีย์แก้ใบของตนได้ตลอด — ถ้าใบตรวจแล้ว การแก้จะส่งกลับไปรอตรวจใหม่
+ */
+const REOPENABLE_STATUSES: SheetStatus[] = [
+  SheetStatus.ENTERED_1,
+  SheetStatus.VERIFIED,
 ];
 
 export type ClaimResult =
@@ -25,12 +29,8 @@ export type SheetAccess =
       sheet: {
         id: string;
         sheetNo: string;
-        /** null = ใบยังไม่ได้จัดเข้าปึก */
-        sequence: number | null;
         status: SheetStatus;
         lockExpiresAt: Date | null;
-        batchId: string | null;
-        batchCode: string | null;
         communityId: string;
         communityName: string;
       };
@@ -62,7 +62,6 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
       id: true,
       sheetNo: true,
       lockExpiresAt: true,
-      batch: { select: { code: true } },
       community: { select: { nameTh: true } },
     },
     orderBy: { lockedAt: "desc" },
@@ -72,7 +71,6 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
     id: sheet.id,
     sheetNo: sheet.sheetNo,
     lockExpiresAt: sheet.lockExpiresAt,
-    batchCode: sheet.batch?.code ?? null,
     communityName: sheet.community.nameTh,
     expired: isLockExpired(sheet.lockExpiresAt, new Date()),
   };
@@ -111,7 +109,6 @@ export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
           status: true,
           lockedById: true,
           lockExpiresAt: true,
-          batch: { select: { code: true } },
           community: { select: { nameTh: true } },
         },
       },
@@ -126,13 +123,54 @@ export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
     return {
       id: d.sheet.id,
       sheetNo: d.sheet.sheetNo,
-      batchCode: d.sheet.batch?.code ?? null,
       communityName: d.sheet.community.nameTh,
       startedAt: d.startedAt,
       /** ต้องกดจองใบก่อนถึงคีย์ต่อได้ (ปล่อยใบไปแล้ว หรือ lock หมดอายุ) */
       needsClaim: !heldByMe || isLockExpired(d.sheet.lockExpiresAt, now),
     };
   });
+}
+
+/**
+ * ใบที่ผู้ใช้ "คีย์ส่งไปแล้ว" — ผู้คีย์ดูและแก้ของตัวเองได้ตลอด (#R7-C)
+ *
+ * กรองด้วย `enteredById` ไม่ใช่ community scope — ผู้คีย์จึงเห็นเฉพาะงานของตน
+ * แม้ระบบจะยกเลิกการจำกัดขอบเขตชุมชนไปแล้ว (#R7-B)
+ */
+export async function getMySubmittedSheets(ctx: AuthorizationContext, limit = 50) {
+  if (!canEnter(ctx)) return [];
+  const rows = await prisma.household.findMany({
+    where: { enteredById: ctx.userId, deletedAt: null },
+    select: {
+      enteredAt: true,
+      verifiedAt: true,
+      illegibleCount: true,
+      blankCount: true,
+      sheet: {
+        select: {
+          id: true,
+          sheetNo: true,
+          status: true,
+          community: { select: { nameTh: true } },
+        },
+      },
+    },
+    orderBy: { enteredAt: "desc" },
+    take: limit,
+  });
+
+  return rows.map((h) => ({
+    id: h.sheet.id,
+    sheetNo: h.sheet.sheetNo,
+    communityName: h.sheet.community.nameTh,
+    status: h.sheet.status,
+    enteredAt: h.enteredAt,
+    verifiedAt: h.verifiedAt,
+    illegibleCount: h.illegibleCount,
+    blankCount: h.blankCount,
+    /** ใบกำลังถูกเปิดแก้อยู่ (โดยตัวเอง) — ยังไม่ได้ส่งกลับ */
+    editing: h.sheet.status === SheetStatus.LOCKED,
+  }));
 }
 
 const ENTERED_STATUSES: SheetStatus[] = [
@@ -142,43 +180,35 @@ const ENTERED_STATUSES: SheetStatus[] = [
 ];
 
 /**
- * ภาพรวมงานคีย์ใน scope — ตัวเลข aggregate เท่านั้น ไม่มี PII
- * นับด้วย groupBy (ฝั่ง DB) แทนการโหลด sheet ทุกใบเข้ามานับใน JS
- * → คงที่แม้ Batch มีใบหลักหมื่น (scalable)
+ * ภาพรวมงานคีย์รายชุมชน — ตัวเลข aggregate เท่านั้น ไม่มีข้อมูลบุคคล
+ *
+ * เดิมจัดกลุ่มตามปึก แต่ปึกถูกยกเลิกจากระบบแล้ว (Owner Decision 2026-08-03)
+ * จึงจัดกลุ่มตามชุมชนแทน ซึ่งเป็นหน่วยที่ยังมีความหมายกับงานสำรวจจริง
+ * นับด้วย groupBy ฝั่งฐานข้อมูล ไม่โหลดใบทั้งหมดเข้ามานับใน JS
  */
 export async function getEntryOverview(ctx: AuthorizationContext) {
-  if (!canEnter(ctx)) return { allowed: false as const, batches: [] };
+  if (!canEnter(ctx)) return { allowed: false as const, communities: [] };
 
-  // ไม่กรอง community — คีย์ชุมชนไหนก็ได้ (Owner Decision)
-  const batches = await prisma.paperBatch.findMany({
-    where: { status: { in: CLAIMABLE_BATCH_STATUSES } },
-    select: {
-      id: true,
-      code: true,
-      status: true,
-      expectedCount: true,
-      community: { select: { nameTh: true } },
-    },
-    orderBy: { code: "asc" },
+  // ไม่กรอง community — คีย์ชุมชนไหนก็ได้ตามกระดาษที่ถืออยู่ (Owner Decision)
+  const communities = await prisma.community.findMany({
+    where: { deletedAt: null, isActive: true },
+    select: { id: true, nameTh: true },
+    orderBy: { nameTh: "asc" },
   });
-  if (batches.length === 0) return { allowed: true as const, batches: [] };
+  if (communities.length === 0) return { allowed: true as const, communities: [] };
 
   const grouped = await prisma.paperSheet.groupBy({
-    by: ["batchId", "status"],
-    where: { batchId: { in: batches.map((b) => b.id) } },
+    by: ["communityId", "status"],
     _count: { _all: true },
   });
 
-  // pivot: batchId → { pending, locked, entered, other, total }
-  const byBatch = new Map<
+  const byCommunity = new Map<
     string,
     { pending: number; locked: number; entered: number; other: number; total: number }
   >();
   for (const g of grouped) {
-    // where กรอง batchId ไว้แล้ว — เช็คซ้ำเพื่อ narrow type ที่เป็น nullable ตามสคีมา
-    if (g.batchId === null) continue;
     const acc =
-      byBatch.get(g.batchId) ??
+      byCommunity.get(g.communityId) ??
       { pending: 0, locked: 0, entered: 0, other: 0, total: 0 };
     const n = g._count._all;
     acc.total += n;
@@ -186,14 +216,14 @@ export async function getEntryOverview(ctx: AuthorizationContext) {
     else if (g.status === SheetStatus.LOCKED) acc.locked += n;
     else if (ENTERED_STATUSES.includes(g.status)) acc.entered += n;
     else acc.other += n;
-    byBatch.set(g.batchId, acc);
+    byCommunity.set(g.communityId, acc);
   }
 
   const now = new Date();
   return {
     allowed: true as const,
-    batches: batches.map((b) => {
-      const c = byBatch.get(b.id) ?? {
+    communities: communities.map((c) => {
+      const n = byCommunity.get(c.id) ?? {
         pending: 0,
         locked: 0,
         entered: 0,
@@ -201,16 +231,13 @@ export async function getEntryOverview(ctx: AuthorizationContext) {
         total: 0,
       };
       return {
-        id: b.id,
-        code: b.code,
-        status: b.status,
-        communityName: b.community.nameTh,
-        expectedCount: b.expectedCount,
-        totalSheets: c.total,
-        pending: c.pending,
-        locked: c.locked,
-        entered: c.entered,
-        other: c.other,
+        id: c.id,
+        communityName: c.nameTh,
+        totalSheets: n.total,
+        pending: n.pending,
+        locked: n.locked,
+        entered: n.entered,
+        other: n.other,
         generatedAt: now,
       };
     }),
@@ -220,63 +247,55 @@ export async function getEntryOverview(ctx: AuthorizationContext) {
 export type OpenSheetResult =
   | { ok: true; sheetId: string; resumed: boolean }
   /**
-   * NOT_FOUND = ไม่มีอยู่ / อยู่นอก community scope / ไม่มีสิทธิ์ — ตอบเหมือนกันหมด (กัน enumeration)
+   * NOT_FOUND = ไม่มีอยู่ / รูปแบบรหัสไม่ถูกต้อง / ไม่มีสิทธิ์ — ตอบเหมือนกันหมด (กัน enumeration)
    * IN_USE = ผู้อื่นถือ lock ที่ยังไม่หมดอายุ (หรือแพ้การแข่งขัน)
-   * BATCH_NOT_OPEN = ปึกยังไม่เปิดให้คีย์ (RECEIVED) หรือปิดแล้ว (CLOSED)
    * WRONG_STATUS = ใบผ่านขั้นคีย์รอบ 1 ไปแล้ว (ENTERED_1 ฯลฯ)
    */
   | {
       ok: false;
-      reason: "NOT_FOUND" | "IN_USE" | "BATCH_NOT_OPEN" | "WRONG_STATUS";
+      reason: "NOT_FOUND" | "IN_USE" | "WRONG_STATUS";
       status?: SheetStatus;
     };
 
 /**
- * เปิดใบตามรหัสบนกระดาษ — Workflow จริง: หัวหน้าแจกปึกกระดาษให้เจ้าหน้าที่
- * เจ้าหน้าที่ถือกระดาษอยู่แล้ว จึงพิมพ์รหัสใบ (sheetNo) หรือลำดับใบในปึกเพื่อเปิดฟอร์ม
- * ระบบไม่ใช่ผู้แจกงาน — lock เป็นเพียงกลไกกันเปิดใบเดียวกันซ้อนกันโดยผิดพลาด
+ * เปิดใบที่มีอยู่แล้วจากรหัสบนกระดาษ — ใช้เมื่อผู้คีย์กลับมาคีย์ใบเดิมต่อ
  *
- * @param code  รหัสใบเต็ม (เช่น "SHEET-DEV-TK01-001-024") หรือเลขลำดับในปึก (เมื่อระบุ batchId)
+ * ใบใหม่ไม่ผ่านทางนี้ — ระบบออกรหัสให้ตอนกด "เริ่มกรอก" (ดู lib/sheet/create.ts)
+ * ทางนี้จึงเหลือไว้สำหรับกรณีถือกระดาษที่มีรหัสเขียนไว้แล้วกลับมาทำต่อ
+ *
+ * @param code รหัสใบ เช่น "SK-000123" · รับ "123" หรือ "sk000123" ได้ (normalize ให้)
  */
 export async function openSheetByCode(
   ctx: AuthorizationContext,
   code: string,
-  batchId?: string,
 ): Promise<OpenSheetResult> {
   if (!canEnter(ctx)) return { ok: false, reason: "NOT_FOUND" };
 
-  const normalized = code.trim().toUpperCase();
-  if (!normalized) return { ok: false, reason: "NOT_FOUND" };
+  const sheetNo = normalizeSheetNo(code);
+  if (!sheetNo) return { ok: false, reason: "NOT_FOUND" };
 
-  // เลขล้วน + เลือกปึกไว้ → ตีความเป็น "ลำดับใบในปึก" (พิมพ์สั้นกว่ารหัสเต็ม)
-  // ไม่ระบุปึก = เปิดด้วยรหัสเต็มเท่านั้น — sequence เดี่ยว ๆ ไม่ระบุใบได้ (#R6-F)
-  const selectSheet = {
-    id: true,
-    status: true,
-    lockedById: true,
-    lockExpiresAt: true,
-    batchId: true,
-    batch: { select: { status: true } },
-  } as const;
-  const sheet =
-    batchId && /^\d{1,5}$/.test(normalized)
-      ? await prisma.paperSheet.findFirst({
-          where: { batchId, sequence: Number(normalized) },
-          select: selectSheet,
-        })
-      : await prisma.paperSheet.findUnique({
-          where: { sheetNo: normalized },
-          select: selectSheet,
-        });
+  const sheet = await prisma.paperSheet.findUnique({
+    where: { sheetNo },
+    select: {
+      id: true,
+      status: true,
+      lockedById: true,
+      lockExpiresAt: true,
+      household: { select: { enteredById: true } },
+    },
+  });
   if (!sheet) return { ok: false, reason: "NOT_FOUND" };
 
-  // ใบที่ยังไม่ได้จัดเข้าปึกไม่มีสถานะปึกให้ตรวจ — เปิดคีย์ได้เลย (Batch เป็นทางเลือก)
-  if (sheet.batch && !CLAIMABLE_BATCH_STATUSES.includes(sheet.batch.status)) {
-    return { ok: false, reason: "BATCH_NOT_OPEN" };
-  }
-
   const now = new Date();
-  if (sheet.status !== SheetStatus.PENDING && sheet.status !== SheetStatus.LOCKED) {
+  // ใบที่ตนคีย์ส่งไปแล้ว เปิดกลับมาแก้ได้ตลอด (#R7-C) — ของคนอื่นยังปิดตามเดิม
+  const mineReopenable =
+    REOPENABLE_STATUSES.includes(sheet.status) &&
+    sheet.household?.enteredById === ctx.userId;
+  if (
+    sheet.status !== SheetStatus.PENDING &&
+    sheet.status !== SheetStatus.LOCKED &&
+    !mineReopenable
+  ) {
     return { ok: false, reason: "WRONG_STATUS", status: sheet.status };
   }
   const heldByOther =
@@ -298,6 +317,7 @@ export async function openSheetByCode(
         { status: SheetStatus.PENDING },
         { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
         { status: SheetStatus.LOCKED, lockedById: ctx.userId },
+        { status: { in: REOPENABLE_STATUSES }, household: { enteredById: ctx.userId } },
       ],
     },
     data: {
@@ -308,21 +328,10 @@ export async function openSheetByCode(
     },
   });
   if (claimed.count !== 1) return { ok: false, reason: "IN_USE" };
-
-  // ปึกเริ่มมีการคีย์ → IN_PROGRESS (idempotent) · ใบเดี่ยวไม่มีปึกให้ขยับ
-  if (sheet.batchId) {
-    await prisma.paperBatch.updateMany({
-      where: { id: sheet.batchId, status: BatchStatus.READY_FOR_ENTRY },
-      data: { status: BatchStatus.IN_PROGRESS },
-    });
-  }
   return { ok: true, sheetId: sheet.id, resumed };
 }
 
-/**
- * เปิดใบที่ระบุด้วย id (ใช้จากหน้า gate / กลับมาคีย์ต่อ)
- * เงื่อนไขเดียวกับ openSheetByCode + ยอมรับใบที่ตนถืออยู่ (ต่ออายุ)
- */
+/** จองใบจาก id ภายในระบบ — ใช้ตอนกลับมาคีย์ใบที่ค้างไว้จากหน้ารายการ */
 export async function claimSheetById(
   ctx: AuthorizationContext,
   sheetId: string,
@@ -333,16 +342,12 @@ export async function claimSheetById(
   const claimed = await prisma.paperSheet.updateMany({
     where: {
       id: sheetId,
-      AND: [
-        // ใบเดี่ยว (ไม่มีปึก) เปิดได้เสมอ · ใบในปึกต้องอยู่ในปึกที่เปิดให้คีย์
-        { OR: [{ batchId: null }, { batch: { status: { in: CLAIMABLE_BATCH_STATUSES } } }] },
-        {
-          OR: [
-            { status: SheetStatus.PENDING },
-            { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
-            { status: SheetStatus.LOCKED, lockedById: ctx.userId },
-          ],
-        },
+      OR: [
+        { status: SheetStatus.PENDING },
+        { status: SheetStatus.LOCKED, lockExpiresAt: { lte: now } },
+        { status: SheetStatus.LOCKED, lockedById: ctx.userId },
+        // ใบที่ตนคีย์ส่งไปแล้ว — เปิดกลับมาแก้ได้ตลอด (Owner Decision #R7-C)
+        { status: { in: REOPENABLE_STATUSES }, household: { enteredById: ctx.userId } },
       ],
     },
     data: {
@@ -356,16 +361,33 @@ export async function claimSheetById(
   return { ok: true, sheetId, resumed: false };
 }
 
-/** หยุดคีย์ใบนี้ (ปลด lock กลับเป็น PENDING) — เฉพาะเจ้าของ lock เท่านั้น */
+/**
+ * หยุดคีย์ใบนี้ (ปลด lock) — เฉพาะเจ้าของ lock เท่านั้น
+ *
+ * ต้องคืนสถานะ "ตามที่เคยเป็น" ไม่ใช่ PENDING เสมอ — ใบที่ส่งแล้วถูกเปิดกลับมาแก้
+ * ถ้าปล่อยกลับเป็น PENDING จะทำให้ใบที่คีย์เสร็จ/ตรวจแล้ว กลายเป็นใบว่างและข้อมูลหาย
+ * จากคิวตรวจทันที (บั๊กที่ทำให้ตัวเลข "ตรวจแล้ว" เพี้ยนโดยไม่มีใครรู้)
+ */
 export async function releaseSheet(
   ctx: AuthorizationContext,
   sheetId: string,
 ): Promise<boolean> {
   if (!canEnter(ctx)) return false;
+  const sheet = await prisma.paperSheet.findUnique({
+    where: { id: sheetId },
+    select: { household: { select: { verifiedAt: true } } },
+  });
+  if (!sheet) return false;
+  const restored = !sheet.household
+    ? SheetStatus.PENDING
+    : sheet.household.verifiedAt
+      ? SheetStatus.VERIFIED
+      : SheetStatus.ENTERED_1;
+
   const released = await prisma.paperSheet.updateMany({
     where: { id: sheetId, lockedById: ctx.userId, status: SheetStatus.LOCKED },
     data: {
-      status: SheetStatus.PENDING,
+      status: restored,
       lockedById: null,
       lockedAt: null,
       lockExpiresAt: null,
@@ -409,21 +431,26 @@ export async function getSheetForEntry(
     select: {
       id: true,
       sheetNo: true,
-      sequence: true,
       status: true,
       lockedById: true,
       lockExpiresAt: true,
-      batchId: true,
       communityId: true,
-      batch: { select: { code: true } },
       community: { select: { nameTh: true } },
+      household: { select: { enteredById: true } },
     },
   });
   if (!sheet) return { kind: "NOT_FOUND" };
 
   if (sheet.status === SheetStatus.PENDING) return { kind: "NOT_LOCKED" };
-  if (sheet.status !== SheetStatus.LOCKED)
-    return { kind: "WRONG_STATUS", status: sheet.status };
+  if (sheet.status !== SheetStatus.LOCKED) {
+    // ใบที่ตนคีย์ส่งไปแล้ว → เสนอให้กดเปิดแก้ (ผ่านด่าน claim เดิม) ไม่ใช่ปิดตาย
+    const mine =
+      REOPENABLE_STATUSES.includes(sheet.status) &&
+      sheet.household?.enteredById === ctx.userId;
+    return mine
+      ? { kind: "NOT_LOCKED" }
+      : { kind: "WRONG_STATUS", status: sheet.status };
+  }
   if (sheet.lockedById !== ctx.userId) return { kind: "NOT_OWNER" };
   if (isLockExpired(sheet.lockExpiresAt, new Date()))
     return { kind: "LOCK_EXPIRED" };
@@ -433,12 +460,8 @@ export async function getSheetForEntry(
     sheet: {
       id: sheet.id,
       sheetNo: sheet.sheetNo,
-      sequence: sheet.sequence,
       status: sheet.status,
       lockExpiresAt: sheet.lockExpiresAt,
-      batchId: sheet.batchId,
-      batchCode: sheet.batch?.code ?? null,
-      // ชุมชนมาจากใบโดยตรง ไม่ผ่านปึก — ใบที่ไม่มีปึกจึงยังมีชุมชนเสมอ (#R6-F)
       communityId: sheet.communityId,
       communityName: sheet.community.nameTh,
     },

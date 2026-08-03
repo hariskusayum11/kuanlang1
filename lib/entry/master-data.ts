@@ -28,7 +28,7 @@ export interface EntryMasterData {
   volunteerSkillTypes: MasterOption[];
 }
 
-/** ตัวเลือกทั้งหมดสำหรับใบใน community ที่กำหนด (ตำบล/หมู่ จำกัดตามชุมชนของ Batch) */
+/** ตัวเลือกทั้งหมดสำหรับใบใน community ที่กำหนด (ตำบล/หมู่ จำกัดตามชุมชนของใบ) */
 export async function getEntryMasterData(
   communityId: string,
 ): Promise<EntryMasterData> {

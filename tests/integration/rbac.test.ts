@@ -77,7 +77,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.roles).toEqual([]);
     expect(ctx.permissions).toEqual([]);
-    expect(ctx.isGlobalScope).toBe(false);
+    expect(ctx.isGlobalScope).toBe(true);
   });
 
   it("2) role isActive=false → ไม่ถูกนับ", async () => {
@@ -113,7 +113,7 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     expect([...ctx.permissions].sort()).toEqual(
       [PERMISSIONS.VERIFICATION_VIEW, PERMISSIONS.SURVEY_ENTRY].sort(),
     );
-    expect(ctx.isGlobalScope).toBe(false);
+    expect(ctx.isGlobalScope).toBe(true);
   });
 
   it("5) scoped user (VOLUNTEER + scope TK01) → communityIds ตรง DB", async () => {
@@ -126,17 +126,19 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     });
     const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.communityIds).toEqual([tk01Id]);
-    expect(ctx.isGlobalScope).toBe(false);
+    expect(ctx.isGlobalScope).toBe(true);
     expect(ctx.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);
   });
 
-  it("6) canAccessCommunity: scoped user เข้าชุมชนอื่นไม่ได้", async () => {
+  it("6) canAccessCommunity: เข้าได้ทุกชุมชน — Community Scope ถูกยกเลิก (#R7-B)", async () => {
     const u = await prisma.user.findUnique({
       where: { email: FIXTURE_EMAILS.scoped },
     });
     const ctx = await loadContextOrThrow(toSessionUser(u!));
+    // แม้ผูก UserCommunityScope ไว้กับชุมชนเดียว ก็เข้าชุมชนอื่นได้แล้ว
+    expect(ctx.communityIds).toEqual([tk01Id]);
     expect(canAccessCommunity(ctx, tk01Id)).toBe(true);
-    expect(canAccessCommunity(ctx, otherCommunityId)).toBe(false);
+    expect(canAccessCommunity(ctx, otherCommunityId)).toBe(true);
   });
 
   it("7) global scope → scoped counts = counts ทั้งระบบ", async () => {
