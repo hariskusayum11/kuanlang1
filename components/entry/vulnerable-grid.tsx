@@ -27,21 +27,52 @@ export function emptyVulnerableRow(): VulnerableRow {
   };
 }
 
+type CellMark = "ILLEGIBLE" | "BLANK_IN_PAPER" | null;
+
 type Props = {
   master: EntryMasterData;
   rows: VulnerableRow[];
   onChange: (rows: VulnerableRow[]) => void;
   /** คีย์ของช่องที่ยังขาด (จาก lib/entry/validation) — ใช้ขึ้นกรอบแดงหลังกดส่ง */
   missingKeys?: ReadonlySet<string>;
+  /** มาร์ก F2/F3 รายเซลล์ คีย์ `vg-{i}-firstName|lastName|age|phone` */
+  marks?: Record<string, CellMark>;
+  /** ล้างมาร์กของเซลล์เมื่อผู้คีย์เริ่มพิมพ์ (แก้แล้ว = ไม่ใช่อ่านไม่ออกอีก) */
+  onClearMark?: (key: string) => void;
+  /** ลบแถว i — wizard เป็นผู้ remap คีย์มาร์กหลังลบ ถ้าไม่ส่งมาจะลบเฉพาะ rows */
+  onDeleteRow?: (index: number) => void;
 };
 
+/** border สีเหลือง/เทา ตามสถานะ F2/F3 ของเซลล์ (ตรงกับ field-input) */
+function markBorder(mark: CellMark): string {
+  if (mark === "ILLEGIBLE") return "!border-sun-400 !bg-sun-50";
+  if (mark === "BLANK_IN_PAPER") return "!border-slate-300 !bg-slate-100";
+  return "";
+}
+
 /** ตารางกลุ่มเปราะบาง — 1 แถวต่อ 1 คน เพิ่มแถวได้ไม่จำกัด (FR-ENT-10/11) */
-export function VulnerableGrid({ master, rows, onChange, missingKeys }: Props) {
+export function VulnerableGrid({
+  master,
+  rows,
+  onChange,
+  missingKeys,
+  marks,
+  onClearMark,
+  onDeleteRow,
+}: Props) {
   // id ของคำนำหน้า "อื่นๆ" — ใช้เปิดช่องระบุเมื่อเลือก (ไม่ hardcode ค่า แต่เทียบด้วย code)
   const otherPrefixId = master.namePrefixes.find((p) => p.code === "OTHER")?.id ?? null;
 
+  const markOf = (i: number, cell: string): CellMark => marks?.[`vg-${i}-${cell}`] ?? null;
+
   function update(index: number, patch: Partial<VulnerableRow>) {
     onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  // แก้ค่าเซลล์ที่รองรับ F2/F3 — พิมพ์แล้วล้างมาร์กเดิม (แก้ได้ = อ่านออกแล้ว)
+  function editMarkableCell(i: number, cell: "firstName" | "lastName" | "age" | "phone", value: string) {
+    update(i, { [cell]: value } as Partial<VulnerableRow>);
+    if (markOf(i, cell)) onClearMark?.(`vg-${i}-${cell}`);
   }
 
   function toggleVulnerability(index: number, typeId: string) {
@@ -71,7 +102,9 @@ export function VulnerableGrid({ master, rows, onChange, missingKeys }: Props) {
             {rows.length > 1 && (
               <button
                 type="button"
-                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                onClick={() =>
+                  onDeleteRow ? onDeleteRow(i) : onChange(rows.filter((_, j) => j !== i))
+                }
                 className="flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-red-600"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5">
@@ -114,51 +147,61 @@ export function VulnerableGrid({ master, rows, onChange, missingKeys }: Props) {
                 )}
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">
+                <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">
                   ชื่อ <span className="text-red-500">*</span>{" "}
                   <span className="text-alert-500">⭐</span>
+                  <CellMarkBadge mark={markOf(i, "firstName")} />
                 </label>
                 <input
+                  data-field-name={`vg-${i}-firstName`}
                   value={row.firstName}
-                  onChange={(e) => update(i, { firstName: e.target.value })}
+                  onChange={(e) => editMarkableCell(i, "firstName", e.target.value)}
                   className={`field ${
-                    missingKeys?.has(`vg-${i}-firstName`) ? "!border-red-400 !bg-red-50" : ""
+                    missingKeys?.has(`vg-${i}-firstName`) ? "!border-red-400 !bg-red-50" : markBorder(markOf(i, "firstName"))
                   }`}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">
+                <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">
                   นามสกุล <span className="text-red-500">*</span>
+                  <CellMarkBadge mark={markOf(i, "lastName")} />
                 </label>
                 <input
+                  data-field-name={`vg-${i}-lastName`}
                   value={row.lastName}
-                  onChange={(e) => update(i, { lastName: e.target.value })}
+                  onChange={(e) => editMarkableCell(i, "lastName", e.target.value)}
                   className={`field ${
-                    missingKeys?.has(`vg-${i}-lastName`) ? "!border-red-400 !bg-red-50" : ""
+                    missingKeys?.has(`vg-${i}-lastName`) ? "!border-red-400 !bg-red-50" : markBorder(markOf(i, "lastName"))
                   }`}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">อายุ (ปี)</label>
+                <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">
+                  อายุ (ปี)
+                  <CellMarkBadge mark={markOf(i, "age")} />
+                </label>
                 <input
                   type="text"
                   inputMode="numeric"
+                  data-field-name={`vg-${i}-age`}
                   value={row.age}
-                  onChange={(e) => update(i, { age: sanitizeIntString(e.target.value, 120) })}
-                  className="field"
+                  onChange={(e) => editMarkableCell(i, "age", sanitizeIntString(e.target.value, 120))}
+                  className={`field ${markBorder(markOf(i, "age"))}`}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">
+                <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">
                   เบอร์โทรศัพท์ (ถ้ามี) <span className="text-alert-500">⭐</span>
+                  <CellMarkBadge mark={markOf(i, "phone")} />
                 </label>
                 <input
                   type="tel"
                   inputMode="numeric"
                   maxLength={10}
+                  data-field-name={`vg-${i}-phone`}
                   value={row.phone}
-                  onChange={(e) => update(i, { phone: sanitizePhone(e.target.value) })}
-                  className="field"
+                  onChange={(e) => editMarkableCell(i, "phone", sanitizePhone(e.target.value))}
+                  className={`field ${markBorder(markOf(i, "phone"))}`}
                 />
               </div>
             </div>
@@ -239,4 +282,11 @@ export function VulnerableGrid({ master, rows, onChange, missingKeys }: Props) {
       </button>
     </div>
   );
+}
+
+/** ป้าย F2/F3 รายเซลล์ — เหลือง = อ่านไม่ออก · เทา = ว่างในกระดาษ */
+function CellMarkBadge({ mark }: { mark: CellMark }) {
+  if (mark === "ILLEGIBLE") return <span className="badge badge-warning">อ่านไม่ออก · F2</span>;
+  if (mark === "BLANK_IN_PAPER") return <span className="badge badge-neutral">ว่าง · F3</span>;
+  return null;
 }

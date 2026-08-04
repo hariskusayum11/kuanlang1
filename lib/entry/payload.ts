@@ -32,6 +32,14 @@ const answerValueSchema = z.union([
 
 export const fieldMarkSchema = z.enum(["ILLEGIBLE", "BLANK_IN_PAPER"]);
 
+/**
+ * คีย์มาร์ก F2/F3 ของเซลล์ในตารางกลุ่มเปราะบาง เช่น "vg-0-phone" / "vg-2-detail-<id>"
+ * — ไม่ได้อยู่ใน KNOWN_FIELD_NAMES เพราะแถวเพิ่มได้ไม่จำกัด จึง whitelist ด้วยรูปแบบแทน
+ */
+export function isVulnerableGridMarkKey(key: string): boolean {
+  return /^vg-\d{1,3}-[A-Za-z0-9-]{1,48}$/.test(key);
+}
+
 export const vulnerableRowSchema = z.object({
   prefix: z.string().max(64).default(""), // id ของ NamePrefix (master)
   prefixOther: z.string().max(64).default(""), // ระบุคำนำหน้า เมื่อเลือก "อื่นๆ"
@@ -64,7 +72,7 @@ export function sanitizeEntryPayload(payload: EntryPayload): EntryPayload {
   }
   const marks: EntryPayload["marks"] = {};
   for (const [k, v] of Object.entries(payload.marks)) {
-    if (KNOWN_FIELD_NAMES.has(k) && v) marks[k] = v;
+    if (v && (KNOWN_FIELD_NAMES.has(k) || isVulnerableGridMarkKey(k))) marks[k] = v;
   }
   return { ...payload, answers, marks };
 }

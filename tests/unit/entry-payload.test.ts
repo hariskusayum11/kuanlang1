@@ -118,6 +118,41 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
     expect(row.phoneStatus).toBe(FieldStatusEnum.BLANK_IN_PAPER);
   });
 
+  it("แถวว่างแต่ถูกมาร์ก F2/F3 ต้องคงไว้ — สถานะรายช่องตามมาร์ก", () => {
+    const mapped = mapVulnerableRows(
+      [
+        { prefix: "", prefixOther: "", firstName: "", lastName: "", age: "", phone: "", vulnerabilities: [], details: {} },
+      ],
+      { "vg-0-firstName": "ILLEGIBLE", "vg-0-phone": "BLANK_IN_PAPER" },
+    );
+    expect(mapped).toHaveLength(1);
+    expect(mapped[0].nameStatus).toBe(FieldStatusEnum.ILLEGIBLE);
+    expect(mapped[0].phoneStatus).toBe(FieldStatusEnum.BLANK_IN_PAPER);
+  });
+
+  it("มาร์กอิงดัชนีเดิม (origIndex) ไม่ใช่ลำดับหลังตัดแถวว่าง", () => {
+    // แถว 0 ว่างล้วนถูกตัด — มาร์กของแถว 1 (vg-1-*) ต้องยังตรงกับคนที่เหลือ
+    const mapped = mapVulnerableRows(
+      [
+        { prefix: "", prefixOther: "", firstName: "", lastName: "", age: "", phone: "", vulnerabilities: [], details: {} },
+        { prefix: "", prefixOther: "", firstName: "สม", lastName: "ชาย", age: "", phone: "", vulnerabilities: [], details: {} },
+      ],
+      { "vg-1-age": "BLANK_IN_PAPER" },
+    );
+    expect(mapped).toHaveLength(1);
+    expect(mapped[0].seq).toBe(1);
+    expect(mapped[0].ageStatus).toBe(FieldStatusEnum.BLANK_IN_PAPER);
+  });
+
+  it("sanitizeEntryPayload คงคีย์มาร์กของตาราง (vg-N-cell) ไว้", () => {
+    const payload = entryPayloadSchema.parse({
+      marks: { "vg-0-firstName": "ILLEGIBLE", "vg-99-evil-x!": "ILLEGIBLE" },
+    });
+    const clean = sanitizeEntryPayload(payload);
+    expect(clean.marks["vg-0-firstName"]).toBe("ILLEGIBLE");
+    expect(clean.marks["vg-99-evil-x!"]).toBeUndefined(); // ผิดรูปแบบ → ตัดทิ้ง
+  });
+
   it("detail ผูกตาม vulnerabilityTypeId และ trim ค่าว่างเป็น null", () => {
     const [row] = mapVulnerableRows([
       {

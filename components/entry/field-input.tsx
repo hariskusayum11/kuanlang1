@@ -1,6 +1,6 @@
 "use client";
 
-import type { EntryField } from "@/lib/entry/steps";
+import { EXPLICIT_NONE, type EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import { maskThaiDate, sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
 import { parseThaiDate } from "@/lib/entry/payload";
@@ -135,29 +135,68 @@ export function FieldInput({
       case "number": {
         const raw =
           typeof value === "number" || typeof value === "string" ? String(value) : "";
-        if (field.integer) {
-          return (
-            <input
-              type="text"
-              inputMode="numeric"
-              data-field-name={field.name}
-              value={raw}
-              onChange={(e) => {
-                const s = sanitizeIntString(e.target.value, field.max);
-                onChange(s === "" ? "" : Number(s));
-              }}
-              className={`field max-w-52 ${markInput}`}
-            />
-          );
-        }
-        return (
+        const current = raw === "" ? null : Number(raw);
+        const atMin = current == null || !Number.isFinite(current) || current <= 0;
+        const atMax =
+          field.max != null && current != null && Number.isFinite(current)
+            ? current >= field.max
+            : false;
+        // ปุ่ม +/- เพิ่มลดทีละ 1 (สะดวกบนแท็บเล็ต) — clamp ที่ 0 และ field.max
+        // tabIndex=-1 เพื่อไม่ขวางลำดับ Tab ระหว่างช่อง ผู้คีย์ยังพิมพ์ตัวเลขได้ตามปกติ
+        const bump = (delta: number) => {
+          const base = current != null && Number.isFinite(current) ? current : 0;
+          let next = base + delta;
+          if (next < 0) next = 0;
+          if (field.max != null && next > field.max) next = field.max;
+          onChange(next);
+        };
+        const stepBtn =
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 text-xl font-bold leading-none text-slate-600 transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent";
+        const inner = field.integer ? (
+          <input
+            type="text"
+            inputMode="numeric"
+            data-field-name={field.name}
+            value={raw}
+            onChange={(e) => {
+              const s = sanitizeIntString(e.target.value, field.max);
+              onChange(s === "" ? "" : Number(s));
+            }}
+            className={`field w-24 text-center ${markInput}`}
+          />
+        ) : (
           <input
             type="number"
             data-field-name={field.name}
             value={raw}
             onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
-            className={`field max-w-52 ${markInput}`}
+            className={`field w-24 text-center ${markInput}`}
           />
+        );
+        return (
+          <div className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="ลดลง 1"
+              disabled={atMin}
+              onClick={() => bump(-1)}
+              className={stepBtn}
+            >
+              −
+            </button>
+            {inner}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="เพิ่มขึ้น 1"
+              disabled={atMax}
+              onClick={() => bump(1)}
+              className={stepBtn}
+            >
+              +
+            </button>
+          </div>
         );
       }
       /**
@@ -295,7 +334,9 @@ export function FieldInput({
             onChange={(e) => onChange(e.target.value)}
             className={`field max-w-52 ${markInput}`}
           >
-            <option value="">— ไม่ระบุ —</option>
+            {/* มี explicitNone: ช่องว่าง = "ยังไม่เลือก" · "ไม่ระบุ" เป็นตัวเลือกที่นับว่าตอบแล้ว */}
+            <option value="">{field.explicitNone ? "— เลือก —" : "— ไม่ระบุ —"}</option>
+            {field.explicitNone && <option value={EXPLICIT_NONE}>{field.explicitNone}</option>}
             {options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}

@@ -673,6 +673,31 @@ export function EntryWizard({
               master={master}
               rows={vulnerableRows}
               missingKeys={showValidation ? missingKeys : undefined}
+              marks={marks}
+              onClearMark={(key) =>
+                setMarks((prev) => (prev[key] ? { ...prev, [key]: null } : prev))
+              }
+              onDeleteRow={(index) => {
+                touched.current = true;
+                dirty.current = true;
+                setVulnerableRows(vulnerableRows.filter((_, j) => j !== index));
+                // ลบแถวแล้วต้อง remap คีย์มาร์กที่อิงดัชนี: ทิ้งของแถวที่ลบ
+                // เลื่อนแถวที่อยู่ถัดลงมา 1 (ไม่งั้นมาร์กจะไปติดผิดคน)
+                setMarks((prev) => {
+                  const next: Record<string, FieldMark> = {};
+                  for (const [k, v] of Object.entries(prev)) {
+                    const m = /^vg-(\d+)-(.+)$/.exec(k);
+                    if (!m) {
+                      next[k] = v;
+                      continue;
+                    }
+                    const rowIdx = Number(m[1]);
+                    if (rowIdx === index) continue;
+                    next[rowIdx > index ? `vg-${rowIdx - 1}-${m[2]}` : k] = v;
+                  }
+                  return next;
+                });
+              }}
               onChange={(rows) => {
                 touched.current = true;
                 dirty.current = true;

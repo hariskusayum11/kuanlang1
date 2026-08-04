@@ -35,8 +35,18 @@ import {
   type EntryPayload,
   type VulnerableRowInput,
 } from "./payload";
+import { EXPLICIT_NONE } from "./steps";
 
 const ATTEMPT_NO = 1; // Single-Entry (R4-1)
+
+/**
+ * คำนำหน้า (FK master): ค่า EXPLICIT_NONE = ผู้คีย์ยืนยัน "ไม่ระบุ" → เก็บ null
+ * (ไม่ใช่ id จริง จะชน FK) แต่ยังนับว่าตอบแล้วในฝั่ง validation
+ */
+function prefixIdOf(clean: EntryPayload, name: string): string | null {
+  const v = answerString(clean, name);
+  return v === EXPLICIT_NONE ? null : v;
+}
 
 export type SaveDraftResult =
   | { ok: true; savedAt: string }
@@ -138,41 +148,62 @@ interface VulnerableRowMapped {
   vulnerabilities: { typeId: string; detail: string | null }[];
 }
 
-/** แถวกลุ่มเปราะบางที่มีข้อมูลจริง → mapping พร้อมสถานะรายช่อง (pure) */
-export function mapVulnerableRows(rows: VulnerableRowInput[]): VulnerableRowMapped[] {
-  const nonEmpty = rows.filter(
-    (r) =>
-      r.prefix.trim() !== "" ||
-      r.prefixOther.trim() !== "" ||
-      r.firstName.trim() !== "" ||
-      r.lastName.trim() !== "" ||
-      String(r.age).trim() !== "" ||
-      r.phone.trim() !== "" ||
-      r.vulnerabilities.length > 0,
-  );
-  return nonEmpty.map((r, i) => {
+/** สถานะของช่องว่าง — ถ้าผู้คีย์กด F2 = ILLEGIBLE, F3 = BLANK_IN_PAPER, ไม่กด = BLANK ตามเดิม */
+function emptyStatusFromMark(mark: "ILLEGIBLE" | "BLANK_IN_PAPER" | null | undefined): FieldStatusEnum {
+  return mark === "ILLEGIBLE" ? FieldStatusEnum.ILLEGIBLE : FieldStatusEnum.BLANK_IN_PAPER;
+}
+
+/**
+ * แถวกลุ่มเปราะบางที่มีข้อมูลจริง → mapping พร้อมสถานะรายช่อง (pure)
+ * marks: มาร์ก F2/F3 รายเซลล์ (คีย์ `vg-{ดัชนีเดิม}-firstName|lastName|age|phone`)
+ * — แถวที่ว่างแต่ถูกมาร์กไว้ (เช่น กระดาษมีชื่อแต่อ่านไม่ออก) ต้องคงไว้ ไม่ตัดทิ้ง
+ */
+export function mapVulnerableRows(
+  rows: VulnerableRowInput[],
+  marks: Record<string, "ILLEGIBLE" | "BLANK_IN_PAPER" | null> = {},
+): VulnerableRowMapped[] {
+  const markOf = (origIndex: number, cell: string) => marks[`vg-${origIndex}-${cell}`] ?? null;
+  const rowHasMark = (origIndex: number) =>
+    (["firstName", "lastName", "age", "phone"] as const).some(
+      (cell) => markOf(origIndex, cell) != null,
+    );
+  const kept = rows
+    .map((r, origIndex) => ({ r, origIndex }))
+    .filter(
+      ({ r, origIndex }) =>
+        r.prefix.trim() !== "" ||
+        r.prefixOther.trim() !== "" ||
+        r.firstName.trim() !== "" ||
+        r.lastName.trim() !== "" ||
+        String(r.age).trim() !== "" ||
+        r.phone.trim() !== "" ||
+        r.vulnerabilities.length > 0 ||
+        rowHasMark(origIndex),
+    );
+  return kept.map(({ r, origIndex }, i) => {
     const ageRaw = String(r.age).trim();
     const ageNum = Number(ageRaw);
     const ageValid = ageRaw !== "" && Number.isInteger(ageNum) && ageNum >= 0 && ageNum <= 120;
     const hasName = r.firstName.trim() !== "" || r.lastName.trim() !== "";
+    const nameMark = markOf(origIndex, "firstName") ?? markOf(origIndex, "lastName");
     return {
       seq: i + 1,
       namePrefixId: r.prefix.trim() || null,
       prefixOther: r.prefixOther.trim() || null,
       firstName: r.firstName.trim() || null,
       lastName: r.lastName.trim() || null,
-      nameStatus: hasName ? FieldStatusEnum.HAS_VALUE : FieldStatusEnum.BLANK_IN_PAPER,
+      nameStatus: hasName ? FieldStatusEnum.HAS_VALUE : emptyStatusFromMark(nameMark),
       age: ageValid ? ageNum : null,
       ageStatus:
         ageRaw === ""
-          ? FieldStatusEnum.BLANK_IN_PAPER
+          ? emptyStatusFromMark(markOf(origIndex, "age"))
           : ageValid
             ? FieldStatusEnum.HAS_VALUE
             : FieldStatusEnum.ILLEGIBLE, // เขียนมาแต่ไม่ใช่อายุที่เป็นไปได้ (เช่น 999)
       phone: r.phone.trim() || null,
       phoneStatus: r.phone.trim()
         ? FieldStatusEnum.HAS_VALUE
-        : FieldStatusEnum.BLANK_IN_PAPER,
+        : emptyStatusFromMark(markOf(origIndex, "phone")),
       vulnerabilities: r.vulnerabilities.map((typeId) => ({
         typeId,
         detail: r.details[typeId]?.trim() || null,
@@ -196,7 +227,7 @@ export async function submitEntry(
   const now = new Date();
 
   // --- เตรียมข้อมูล Household (ฟิลด์อ่อนไหวเข้ารหัสก่อนเข้า transaction) ---
-  const respondentPrefixId = answerString(clean, "respondentPrefix");
+  const respondentPrefixId = prefixIdOf(clean, "respondentPrefix");
   const respondentFirstName = answerString(clean, "respondentFirstName");
   const respondentLastName = answerString(clean, "respondentLastName");
   const respondentPhone = answerString(clean, "respondentPhone");
@@ -214,7 +245,7 @@ export async function submitEntry(
   const marks = Object.entries(clean.marks).filter(([, v]) => v != null);
   const illegibleCount = marks.filter(([, v]) => v === "ILLEGIBLE").length;
   const blankCount = marks.filter(([, v]) => v === "BLANK_IN_PAPER").length;
-  const vulnerableRows = mapVulnerableRows(clean.vulnerableRows);
+  const vulnerableRows = mapVulnerableRows(clean.vulnerableRows, clean.marks);
   const hasVulnerable = answerBoolean(clean, "hasVulnerable");
   // ความต้องการช่วยเหลือรายข้อ — detail เป็นข้อมูลอ่อนไหว 🔒 จึงเข้ารหัสก่อนเก็บ
   const assistanceNeeds = assistanceNeedsFromPayload(clean).map((a) => ({
@@ -231,7 +262,7 @@ export async function submitEntry(
     surveyNo: answerString(clean, "surveyNo"),
     communityNameOnPaper: answerString(clean, "communityNameOnPaper"),
     // ชื่อผู้สำรวจ (staff) เก็บ plaintext — คำนำหน้าเป็น FK master (Prisma ตรวจ FK)
-    surveyorPrefixId: answerString(clean, "surveyorPrefix"),
+    surveyorPrefixId: prefixIdOf(clean, "surveyorPrefix"),
     surveyorPrefixOther: answerString(clean, "surveyorPrefixOther"),
     surveyorFirstNameOnPaper: answerString(clean, "surveyorFirstNameOnPaper"),
     surveyorLastNameOnPaper: answerString(clean, "surveyorLastNameOnPaper"),
@@ -272,6 +303,7 @@ export async function submitEntry(
     assistanceTotalPersonCount: answerCount(clean, "assistanceTotalPersonCount"),
     // ส่วนที่ 4-5 (คอลัมน์ตรงบน Household — ส่วนที่เหลือของฟอร์มคงอยู่ใน payload
     // เข้ารหัส รอ materialize ลงตารางย่อย เช่น FloodRiskProfile ใน slice ถัดไป)
+    hasNoResources: answerBoolean(clean, "hasNoResources"),
     mentalHealthSupport: answerBoolean(clean, "mentalHealthSupport"),
     volunteerNotAvailable: answerBoolean(clean, "volunteerNotAvailable"),
     suggestion: answerString(clean, "suggestion"),

@@ -147,6 +147,7 @@ export function collectMissing(args: CollectMissingArgs): MissingItem[] {
       collectVulnerableMissing(
         vulnerableRows,
         vulnerabilityTypes,
+        marks,
         step.id,
         stepIndex,
         out,
@@ -191,6 +192,7 @@ export function collectMissing(args: CollectMissingArgs): MissingItem[] {
 function collectVulnerableMissing(
   rows: VulnerableRowLike[],
   types: VulnerabilityTypeLike[],
+  marks: MarkMap,
   stepId: string,
   stepIndex: number,
   out: MissingItem[],
@@ -198,13 +200,17 @@ function collectVulnerableMissing(
   const byId = new Map(types.map((t) => [t.id, t]));
 
   rows.forEach((row, ri) => {
-    if (!isRowStarted(row)) return;
+    // แถวที่ยังไม่เริ่มกรอกและไม่มีมาร์กใด ๆ = ข้าม (แถวเปล่าไม่ถือว่าขาด)
+    const marked = (cell: string) => Boolean(marks[`vg-${ri}-${cell}`]);
+    const rowMarked = ["firstName", "lastName", "age", "phone"].some(marked);
+    if (!isRowStarted(row) && !rowMarked) return;
     const who = `กลุ่มเปราะบาง คนที่ ${ri + 1}`;
 
-    if (row.firstName.trim() === "") {
+    // มาร์ก F2/F3 นับเป็นคำตอบ — ชื่อ/สกุลที่อ่านไม่ออกไม่ถือว่าขาด (ห้ามบังคับเดา)
+    if (row.firstName.trim() === "" && !marked("firstName")) {
       out.push({ key: `vg-${ri}-firstName`, label: `${who}: ชื่อ`, stepId, stepIndex });
     }
-    if (row.lastName.trim() === "") {
+    if (row.lastName.trim() === "" && !marked("lastName")) {
       out.push({ key: `vg-${ri}-lastName`, label: `${who}: นามสกุล`, stepId, stepIndex });
     }
 

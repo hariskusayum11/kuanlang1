@@ -9,7 +9,7 @@ import {
   type CollectMissingArgs,
   type VulnerableRowLike,
 } from "../../lib/entry/validation";
-import type { EntryField, EntryStep } from "../../lib/entry/steps";
+import { EXPLICIT_NONE, type EntryField, type EntryStep } from "../../lib/entry/steps";
 
 const VULN_TYPES = [
   { id: "v-eld", label: "ผู้สูงอายุ", requiresDetail: false },
@@ -99,6 +99,19 @@ describe("isAnswered", () => {
     expect(isAnswered(false)).toBe(true);
     expect(isAnswered(0)).toBe(true);
   });
+
+  it('เลือก "ไม่ระบุ" (EXPLICIT_NONE) ถือว่าตอบแล้ว — ต่างจากช่องว่าง', () => {
+    // ผู้คีย์เลือก "ไม่ระบุ" อย่างจงใจ = คำตอบที่ถูกต้อง ไม่ต้องกด F3
+    expect(isAnswered(EXPLICIT_NONE)).toBe(true);
+    const prefixStep: EntryStep = {
+      id: "p",
+      paperSection: "ส่วนที่ 0",
+      title: "ผู้สำรวจ",
+      kind: "fields",
+      fields: [{ name: "surveyorPrefix", label: "คำนำหน้า", type: "select", explicitNone: "ไม่ระบุ" }],
+    };
+    expect(run({ steps: [prefixStep], answers: { surveyorPrefix: EXPLICIT_NONE } })).toHaveLength(0);
+  });
 });
 
 describe("ทุกช่องต้องถูกตอบ (กันข้อมูลตกหล่นจากกระดาษ)", () => {
@@ -157,6 +170,24 @@ describe("ตารางกลุ่มเปราะบาง", () => {
       vulnerableRows: [emptyRow({ firstName: "สมชาย" })],
     });
     expect(missing.map((m) => m.key)).toEqual(["vg-0-lastName"]);
+  });
+
+  it("ชื่อ/สกุลที่มาร์ก F2/F3 นับว่าตอบแล้ว — ห้ามบังคับเดา (เหมือนช่องปกติ)", () => {
+    const missing = run({
+      steps: [GRID_STEP],
+      vulnerableRows: [emptyRow({ firstName: "สมชาย" })], // สกุลว่าง แต่มาร์กไว้
+      marks: { "vg-0-lastName": "ILLEGIBLE" },
+    });
+    expect(missing).toHaveLength(0);
+  });
+
+  it("แถวว่างล้วนแต่มีมาร์กรายเซลล์ = ถือว่าเริ่มกรอก และมาร์กปิดช่องบังคับ", () => {
+    const missing = run({
+      steps: [GRID_STEP],
+      vulnerableRows: [emptyRow()],
+      marks: { "vg-0-firstName": "ILLEGIBLE", "vg-0-lastName": "BLANK_IN_PAPER" },
+    });
+    expect(missing).toHaveLength(0);
   });
 
   it("ติ๊กหญิงตั้งครรภ์แล้วไม่กรอกรายละเอียด = ส่งไม่ได้", () => {

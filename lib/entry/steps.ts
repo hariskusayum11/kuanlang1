@@ -67,7 +67,18 @@ export interface EntryField {
   hint?: string;
   /** แสดงเมื่อฟิลด์อื่นมีค่าที่กำหนด (skip logic ระดับฟิลด์ เช่น "อื่นๆ ระบุ") */
   showWhen?: { field: string; equals: string };
+  /**
+   * select: เพิ่มตัวเลือก "ไม่ระบุ" ที่ *นับว่าตอบแล้ว* (ค่าเก็บเป็น EXPLICIT_NONE)
+   * ต่างจากช่องว่างที่แปลว่า "ยังไม่คีย์" — map เป็น null ตอนบันทึก (ไม่ใช่ FK)
+   */
+  explicitNone?: string;
 }
+
+/**
+ * ค่าที่หมายถึง "ผู้คีย์ยืนยันว่าไม่ระบุ" — ต่างจากค่าว่างที่แปลว่า "ยังไม่คีย์"
+ * isAnswered() คืน true เพราะเป็นสตริงไม่ว่าง แต่ save.ts map เป็น null ก่อนลง FK
+ */
+export const EXPLICIT_NONE = "__none__";
 
 export interface EntryStep {
   id: string;
@@ -84,7 +95,10 @@ export interface EntryStep {
 const YES_NO: EntryField["booleanLabels"] = { true: "มี", false: "ไม่มี", trueFirst: true };
 
 /** ข้อความช่วยเหลือช่องคำนำหน้า — แยก "กระดาษไม่ได้เขียน" ออกจาก "ยังไม่ได้คีย์" */
-const PREFIX_HINT = "ถ้ากระดาษไม่ได้เขียนคำนำหน้า ปล่อยว่างไว้ได้ (หรือกด F3 = ว่างในกระดาษ) — ไม่ต้องเดา";
+const PREFIX_HINT =
+  'ถ้ากระดาษเขียนว่า "ไม่ระบุ" ให้เลือก "ไม่ระบุ (ยืนยัน)" · ถ้ากระดาษไม่ได้เขียนช่องนี้เลย ปล่อยว่างแล้วกด F3 (ว่างในกระดาษ) — ไม่ต้องเดา';
+
+const PREFIX_NONE_LABEL = "ไม่ระบุ (ยืนยันว่าไม่มีคำนำหน้า)";
 
 export const ENTRY_STEPS: EntryStep[] = [
   {
@@ -106,6 +120,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "คำนำหน้า (ผู้สำรวจ)",
         type: "select",
         masterKey: "namePrefixes",
+        explicitNone: PREFIX_NONE_LABEL,
         hint: PREFIX_HINT,
       },
       {
@@ -150,6 +165,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "คำนำหน้า (ผู้ให้ข้อมูล/เจ้าของ/ผู้ดูแล)",
         type: "select",
         masterKey: "namePrefixes",
+        explicitNone: PREFIX_NONE_LABEL,
         hint: PREFIX_HINT,
       },
       {
@@ -417,6 +433,15 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "อื่นๆ ระบุทรัพยากร",
         type: "text",
         showWhen: { field: "householdResources", equals: "OTHER" },
+      },
+      {
+        // ช่อง "☐ ไม่มี" ของข้อ 11 — "ไม่มี" ไม่ใช่ประเภททรัพยากร จึงเก็บที่ Household.hasNoResources
+        // (ไม่อยู่ใน master resourceTypes ตาม QM-09) · ติ๊ก = EXPLICIT_NONE
+        name: "hasNoResources",
+        label: "หรือติ๊กยืนยันว่า ไม่มีเครื่องมือ/ทรัพยากร",
+        type: "boolean",
+        booleanLabels: { true: "ไม่มี (ยืนยัน)", false: "มี (ดูรายการด้านบน)", trueFirst: false },
+        hint: "ติ๊ก \"ไม่มี\" = ยืนยันว่าไม่มีทรัพยากร (EXPLICIT_NONE) · ถ้ามีให้ติ๊กรายการด้านบนแทน (QM-09)",
       },
       {
         name: "canBeHostHouse",
