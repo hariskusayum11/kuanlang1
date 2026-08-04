@@ -72,6 +72,11 @@ export interface EntryField {
    * ต่างจากช่องว่างที่แปลว่า "ยังไม่คีย์" — map เป็น null ตอนบันทึก (ไม่ใช่ FK)
    */
   explicitNone?: string;
+  /**
+   * text: เติมค่าจากรหัสใบ (sheetNo) อัตโนมัติและแก้ไขไม่ได้ — รหัสที่ระบบออกให้ตอนเริ่มใบ
+   * คือ "แบบสอบถามลำดับที่" (#R7-A) ผู้คีย์เขียนรหัสนี้ลงกระดาษ ไม่ต้องพิมพ์เอง
+   */
+  readOnlyFromSheet?: boolean;
 }
 
 /**
@@ -108,7 +113,14 @@ export const ENTRY_STEPS: EntryStep[] = [
     description: "ข้อมูลสำหรับผู้บันทึก — คีย์ตามที่เขียนบนกระดาษ ห้ามเติมเอง",
     kind: "fields",
     fields: [
-      { name: "surveyNo", label: "แบบสอบถามลำดับที่", type: "text", required: true },
+      {
+        name: "surveyNo",
+        label: "รหัสแบบสอบถาม",
+        type: "text",
+        required: true,
+        readOnlyFromSheet: true,
+        hint: "รหัสที่ระบบออกให้ตอนเริ่มใบ — เขียนรหัสนี้ลงบนกระดาษ · แก้ไม่ได้",
+      },
       {
         name: "communityNameOnPaper",
         label: "ชื่อชุมชน (ตามที่ผู้สำรวจเขียน)",

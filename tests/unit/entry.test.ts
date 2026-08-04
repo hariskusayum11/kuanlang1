@@ -17,9 +17,9 @@ import {
 describe("lock helpers", () => {
   const now = new Date("2026-07-22T10:00:00Z");
 
-  it("lockExpiryFrom = now + 10 นาที", () => {
+  it("lockExpiryFrom = now + 45 นาที (ผ่อนคลายล็อก #9)", () => {
     expect(lockExpiryFrom(now).getTime()).toBe(now.getTime() + LOCK_DURATION_MS);
-    expect(LOCK_DURATION_MS).toBe(10 * 60 * 1000);
+    expect(LOCK_DURATION_MS).toBe(45 * 60 * 1000);
   });
 
   it("isLockExpired: null = หมดอายุ, อนาคต = ยังไม่หมด, อดีต/พอดี = หมด", () => {

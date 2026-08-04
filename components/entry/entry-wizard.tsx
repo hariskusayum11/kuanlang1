@@ -41,7 +41,8 @@ type Props = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const LOCK_FULL_MS = 10 * 60 * 1000;
+// ให้ตรงกับ LOCK_DURATION_MS ฝั่ง server (lib/entry/lock.ts) — ใช้ตอน reclaim สำเร็จ
+const LOCK_FULL_MS = 45 * 60 * 1000;
 
 function formatRemaining(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -89,7 +90,10 @@ export function EntryWizard({
   const [stepIndex, setStepIndex] = useState(initialDraft?.stepIndex ?? 0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
-    const base = initialDraft?.answers ?? {};
+    const base = { ...(initialDraft?.answers ?? {}) };
+    // รหัสแบบสอบถามยึดรหัสใบที่ระบบออกให้เสมอ (#R7-A) — ผู้คีย์แก้ไม่ได้
+    // เขียนทับค่าในร่างเก่าด้วย เผื่อร่างถูกบันทึกก่อนกติกานี้
+    base.surveyNo = sheet.sheetNo;
     // Prefill ชื่อชุมชนจากชุมชนที่ผู้คีย์เลือกไว้ เมื่อยังไม่มีค่า — ลดการพิมพ์ผิด
     // (ยังแก้ได้ เพื่อคงความตรงตามกระดาษ QM-01 หากผู้สำรวจเขียนต่างออกไป)
     if (
@@ -97,7 +101,7 @@ export function EntryWizard({
       (typeof base.communityNameOnPaper === "string" &&
         base.communityNameOnPaper.trim() === "")
     ) {
-      return { ...base, communityNameOnPaper: sheet.communityName };
+      base.communityNameOnPaper = sheet.communityName;
     }
     return base;
   });
@@ -122,6 +126,8 @@ export function EntryWizard({
   // ค่าเริ่มต้นจาก server (deterministic) — interval จะ recompute จาก expiry หลัง mount
   const [remainingMs, setRemainingMs] = useState(Math.max(0, initialRemainingMs));
   const [busy, setBusy] = useState<"release" | "reclaim" | null>(null);
+  // true = จองซ้ำอัตโนมัติแล้วไม่สำเร็จ (มีผู้อื่นถือใบไปจริง) — จึงค่อยเด้งกล่องให้รับรู้
+  const [reclaimBlocked, setReclaimBlocked] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>(
     initialDraft ? "saved" : "idle",
   );
@@ -242,6 +248,28 @@ export function EntryWizard({
     return () => clearInterval(heartbeat);
   }, [lockExpired, renew]);
 
+  // ผ่อนคลายล็อก (Owner feedback #9): ถ้าล็อกหมดอายุระหว่างฟอร์มเปิดอยู่ ให้จองซ้ำเงียบ ๆ
+  // ก่อน — ต่ออายุให้อัตโนมัติโดยไม่เด้งกล่อง จะขึ้นกล่องเฉพาะเมื่อจองไม่ได้จริง (มีผู้อื่น
+  // ถือใบไปแล้ว) ซึ่งเป็นการชนกันจริงที่ต้องหยุดตามกฎกันสองคนหยิบใบเดียวกัน
+  useEffect(() => {
+    if (!lockExpired || busy || reclaimBlocked) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await claimSheetAction(sheet.id);
+      if (cancelled) return;
+      if (result.ok) {
+        const next = Date.now() + LOCK_FULL_MS;
+        setExpiry(next);
+        setRemainingMs(next - Date.now());
+      } else {
+        setReclaimBlocked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lockExpired, busy, reclaimBlocked, sheet.id]);
+
   function setAnswer(name: string, value: unknown) {
     touched.current = true;
     dirty.current = true;
@@ -315,6 +343,10 @@ export function EntryWizard({
 
   async function goTo(index: number) {
     setStepIndex(Math.max(0, Math.min(index, steps.length - 1)));
+    // เลื่อนขึ้นบนสุดเมื่อเปลี่ยนขั้นตอน — ไม่ให้ผู้คีย์เริ่มขั้นใหม่กลางหน้า (ตกหล่นช่องบน)
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     if (!lockExpired) {
       void renew();
       void persistDraft(); // เปลี่ยนขั้นตอน = จุดบันทึกร่างธรรมชาติ
@@ -368,6 +400,7 @@ export function EntryWizard({
       const next = Date.now() + LOCK_FULL_MS;
       setExpiry(next);
       setRemainingMs(next - Date.now());
+      setReclaimBlocked(false);
       setBusy(null);
       return;
     }
@@ -855,14 +888,15 @@ export function EntryWizard({
           </div>
       </Modal>
 
-      {/* Overlay เมื่อ lock หมดอายุ */}
-      <Modal open={lockExpired}>
+      {/* Overlay เฉพาะเมื่อชนกันจริง — จองซ้ำอัตโนมัติไม่สำเร็จเพราะมีผู้อื่นถือใบไปแล้ว
+          (ล็อกหมดอายุเฉย ๆ ระบบต่อให้เงียบ ไม่รบกวนผู้กำลังคีย์ — Owner feedback #9) */}
+      <Modal open={reclaimBlocked}>
           <div className="animate-rise rounded-3xl bg-white p-7 text-center shadow-lg">
             <Mascot role="entry" mood="sleep" tone="sun" motion="float" size={96} decorative className="mx-auto" />
-            <h3 className="mt-4 text-lg font-bold text-slate-900">การจองใบหมดอายุ</h3>
+            <h3 className="mt-4 text-lg font-bold text-slate-900">ใบนี้ถูกผู้อื่นเปิดแล้ว</h3>
             <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
-              คุณไม่ได้ใช้งานสักพัก ระบบจึงปล่อยใบนี้ให้ผู้อื่นเปิดได้ —
-              กด “คีย์ใบนี้ต่อ” เพื่อจองอีกครั้ง (หากยังไม่มีผู้อื่นเปิด)
+              ระหว่างที่พักไว้ ใบนี้ถูกเจ้าหน้าที่ท่านอื่นเปิดคีย์ต่อ — ร่างของคุณถูกเก็บไว้แล้ว
+              กด “ลองจองอีกครั้ง” หากใบว่างแล้ว หรือกลับไปหยิบใบอื่น
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <button
@@ -871,7 +905,7 @@ export function EntryWizard({
                 disabled={busy !== null}
                 className="btn btn-primary btn-md"
               >
-                {busy === "reclaim" ? "กำลังจองใบ…" : "คีย์ใบนี้ต่อ"}
+                {busy === "reclaim" ? "กำลังจองใบ…" : "ลองจองอีกครั้ง"}
               </button>
               <button
                 type="button"

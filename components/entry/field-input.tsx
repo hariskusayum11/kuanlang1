@@ -101,6 +101,17 @@ export function FieldInput({
   const control = (() => {
     switch (field.type) {
       case "text":
+        // รหัสใบระบบออกให้ — แสดงเป็นค่าคงที่ อ่านอย่างเดียว (ไม่มี data-field-name → F2/F3 ไม่จับ)
+        if (field.readOnlyFromSheet) {
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 py-2 font-mono text-base font-bold tabular-nums text-slate-800">
+                {typeof value === "string" && value !== "" ? value : "—"}
+              </span>
+              <span className="badge badge-neutral">ระบบออกให้</span>
+            </div>
+          );
+        }
         return (
           <input
             type="text"

@@ -6,7 +6,7 @@ import {
   getMySubmittedSheets,
 } from "@/lib/entry/claim";
 import { listSelectableCommunities } from "@/lib/sheet/create";
-import { StartSheetForm } from "@/components/entry/start-sheet-form";
+import { StartSheetLauncher } from "@/components/entry/start-sheet-launcher";
 import { SheetOpenForm } from "@/components/entry/sheet-open-form";
 import { ResumeRow } from "@/components/entry/resume-card";
 import { MySheetsTable } from "@/components/entry/my-sheets-table";
@@ -74,7 +74,7 @@ export default async function SurveysPage() {
             description="กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มข้อมูลชุมชนก่อนเริ่มคีย์"
           />
         ) : (
-          <StartSheetForm communities={communities} />
+          <StartSheetLauncher communities={communities} />
         )}
         <div className="border-t-2 border-slate-100 pt-5">
           <SheetOpenForm />

@@ -42,7 +42,7 @@ datasource db {
 /// สถานะของใบกระดาษในกระบวนการคีย์
 enum SheetStatus {
   PENDING // รอคีย์
-  LOCKED // มีคนหยิบไปคีย์อยู่ (Lock 10 นาที)
+  LOCKED // มีคนหยิบไปคีย์อยู่ (Lock 45 นาที · ต่ออายุอัตโนมัติระหว่างคีย์)
   ENTERED_1 // คีย์ครั้งที่ 1 แล้ว รอ Entry 2
   ENTERED_2 // คีย์ครั้งที่ 2 แล้ว รอเทียบ
   DISCREPANCY // Entry 1 ≠ Entry 2 รอตัดสิน
@@ -732,7 +732,7 @@ model PaperSheet {
   // --- Lock Management ---
   lockedById    String? /// ใครหยิบไปคีย์อยู่
   lockedAt      DateTime? /// เวลาที่ Lock
-  lockExpiresAt DateTime? /// หมดอายุ Lock (lockedAt + 10 นาที)
+  lockExpiresAt DateTime? /// หมดอายุ Lock (lockedAt + 45 นาที)
 
   // --- Storage ---
   storageSlot  String? /// ตำแหน่งจัดเก็บในตู้ เช่น "A3-24"
