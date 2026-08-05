@@ -61,33 +61,42 @@ async function main() {
   // =========================================================================
   // 3. ชุมชน 5 แห่ง (รหัสไม่ผูกตำบล) + CommunityTambon (M:N)
   // =========================================================================
+  // centroid = จุดศูนย์กลางโดยประมาณระดับชุมชน (ตำบลควนลัง อ.หาดใหญ่ จ.สงขลา)
+  // ⚠️ ค่าโดยประมาณสำหรับวางหมุดบนแผนที่ภาพรวม — ไม่ใช่พิกัดรายบ้าน/ขอบเขตจริง
   const communities: {
     code: string;
     nameTh: string;
+    centroidLat: number;
+    centroidLng: number;
     tambons: { tambonId: string; isPrimary: boolean }[];
   }[] = [
-    { code: "TK01", nameTh: "ชุมชนท่าเคียน", tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
-    { code: "PM01", nameTh: "ชุมชนประสานมิตร", tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
+    { code: "TK01", nameTh: "ชุมชนท่าเคียน", centroidLat: 7.0075, centroidLng: 100.418, tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
+    { code: "PM01", nameTh: "ชุมชนประสานมิตร", centroidLat: 7.013, centroidLng: 100.4225, tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
     {
       code: "KS01",
       nameTh: "ชุมชนควนสันติ",
+      centroidLat: 6.998,
+      centroidLng: 100.429,
       // ควนสันติครอบคลุม 2 ตำบล — ยังไม่มีตำบลหลักที่ยืนยัน → isPrimary=false ทั้งคู่ (คำตัดสิน #8)
       tambons: [
         { tambonId: khuanLang.id, isPrimary: false },
         { tambonId: hatyaiTambon.id, isPrimary: false },
       ],
     },
-    { code: "PW01", nameTh: "ชุมชนปลักหว้า", tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
-    { code: "NK01", nameTh: "ชุมชนหน้าควน", tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
+    { code: "PW01", nameTh: "ชุมชนปลักหว้า", centroidLat: 7.004, centroidLng: 100.409, tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
+    { code: "NK01", nameTh: "ชุมชนหน้าควน", centroidLat: 7.019, centroidLng: 100.43, tambons: [{ tambonId: khuanLang.id, isPrimary: true }] },
   ];
 
   for (const c of communities) {
     const community = await prisma.community.upsert({
       where: { code: c.code },
-      update: { nameTh: c.nameTh }, // รองรับเปลี่ยนชื่อ (Idempotent)
+      // รองรับเปลี่ยนชื่อ/ตำแหน่ง (Idempotent)
+      update: { nameTh: c.nameTh, centroidLat: c.centroidLat, centroidLng: c.centroidLng },
       create: {
         code: c.code,
         nameTh: c.nameTh,
+        centroidLat: c.centroidLat,
+        centroidLng: c.centroidLng,
         totalHouseholds: null, // ยังไม่ทราบ — ห้ามใช้ 0
         targetCoveragePercent: 60,
       },

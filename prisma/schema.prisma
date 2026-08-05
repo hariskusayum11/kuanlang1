@@ -489,6 +489,10 @@ model Community {
   leaderName  String? /// ชื่อประธานชุมชน
   leaderPhone String? /// เบอร์โทรประธาน 🔒 (L3)
   // boundary จัดการผ่าน CommunityBoundary (MultiPolygon) + raw SQL
+  // จุดศูนย์กลางโดยประมาณ — ใช้วางหมุดบนแผนที่ภาพรวมก่อนมีขอบเขตจริง (nullable)
+  // ไม่ใช่พิกัดรายบ้าน (aggregate ระดับชุมชน) จึงไม่ใช่ PII อ่อนไหว
+  centroidLat Decimal?  @db.Decimal(10, 7)
+  centroidLng Decimal?  @db.Decimal(10, 7)
   isActive    Boolean   @default(true)
   deletedAt   DateTime? /// Soft Delete (BR-29)
 
@@ -924,7 +928,8 @@ model Household {
 
   // --- ส่วนที่ 1 ข้อ 3: ที่ตั้ง ---
   houseNo  String? /// บ้านเลขที่ ⭐ double-entry
-  mooId    String? /// FK หมู่ที่ ⭐ double-entry
+  mooNo    Int? /// หมู่ที่ (ตัวเลขดิบตามกระดาษ — paper-first, ไม่ผูก Master Moo) ⭐
+  mooId    String? /// FK หมู่ที่ (คงไว้เผื่อ map เข้า Master Moo ภายหลัง — entry ไม่เขียนแล้ว)
   soi      String? /// ซอย
   road     String? /// ถนน
   tambonId String? /// FK ตำบล (ควนลัง/หาดใหญ่)
