@@ -1,0 +1,44 @@
+# SKL-FRIS — Production/Test deploy (VPS)
+# ใช้บน VPS: วางไฟล์นี้ + .env.production (คัดจาก .env.production.example) ในโฟลเดอร์เดียวกัน
+# แล้วรัน:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# db ไม่ publish port ออก host — เข้าถึงได้เฉพาะผ่าน network ภายในของ compose (app -> db)
+# app publish 3000 ออก host ให้ reverse proxy/ผู้ทดสอบเข้าถึง
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: skl_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - skl_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    # ตั้ง IMAGE ใน .env.production เป็น <dockerhub-user>/skl-fris:v1
+    image: ${IMAGE}
+    container_name: skl_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY}
+      SEARCH_HASH_KEY: ${SEARCH_HASH_KEY}
+      # ตั้ง true เฉพาะรอบแรก (หรือคงไว้ได้ — seed เป็น idempotent) เพื่อ seed ข้อมูลหลัก
+      SEED_ON_START: ${SEED_ON_START:-false}
+    ports:
+      - "3000:3000"
+
+volumes:
+  skl_db_data:

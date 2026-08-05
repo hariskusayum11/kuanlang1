@@ -1,0 +1,28 @@
+# ไม่ส่งของที่สร้างในเครื่องเข้าไปใน build context — ให้ image สร้างใหม่ในตัวเอง
+node_modules
+.next
+out
+dist
+build
+
+# secrets / env — ต้องส่งผ่าน runtime env เท่านั้น ห้ามฝังลง image
+.env
+.env.*
+!.env.production.example
+
+# dev-only / ไม่เกี่ยวกับ production build
+.git
+.gitignore
+.claude
+tests
+coverage
+*.tsbuildinfo
+next-env.d.ts
+database/drafts
+database/migrations-draft
+docs
+*.log
+.vscode
+.idea
+Dockerfile
+docker-compose*.yml
