@@ -83,7 +83,7 @@ describe("wizard step config (ยึด Data Dictionary)", () => {
     for (const expected of [
       "respondentPhone",
       "houseNo",
-      "mooId",
+      "mooNo",
       "latitudeText", // พิกัดแยกเป็นสองช่อง ละติจูด(primary)/ลองจิจูด(pair)
       "floodDepthMetersRaw", // measure-pair — คำถามเดียวคุมทั้งเมตร+ซม.
     ]) {

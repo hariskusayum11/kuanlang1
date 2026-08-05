@@ -285,7 +285,7 @@ export async function submitEntry(
       : null,
     respondentPhoneIdx,
     houseNo: answerString(clean, "houseNo"),
-    mooId: answerString(clean, "mooId"),
+    mooNo: answerCount(clean, "mooNo"),
     soi: answerString(clean, "soi"),
     road: answerString(clean, "road"),
     tambonId: answerString(clean, "tambonId"),

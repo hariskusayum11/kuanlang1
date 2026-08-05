@@ -2,8 +2,9 @@
 // ทุกฟังก์ชันตรวจ permission + community scope จาก ctx ฝั่ง server เท่านั้น
 // ห้ามเชื่อ userId/role/scope จาก client — actions.ts เป็นผู้โหลด ctx จาก session จริง
 
-import { SheetStatus } from "@prisma/client";
+import { AuditAction, SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
@@ -39,8 +40,10 @@ export type SheetAccess =
   | { kind: "NOT_FOUND" }
   | { kind: "NOT_OWNER" }
   | { kind: "LOCK_EXPIRED" }
-  /** ใบยังไม่ถูกหยิบ (PENDING) — เสนอให้ claim ก่อนเข้า */
-  | { kind: "NOT_LOCKED" }
+  /** ใบยังไม่ถูกหยิบ — เสนอให้ claim ก่อนเข้า
+   *  reopen=true → เป็นใบที่ตนคีย์ส่งไปแล้วและกำลังกดกลับมาแก้ (ไม่ใช่ใบว่าง PENDING)
+   *  ใช้เลือกถ้อยคำบนหน้า Gate ให้ตรง ("แก้ไข" ไม่ใช่ "เริ่มคีย์") */
+  | { kind: "NOT_LOCKED"; reopen?: boolean }
   /** สถานะอื่น (ENTERED_1 ฯลฯ) — ไม่ใช่งานคีย์ Entry 1 แล้ว */
   | { kind: "WRONG_STATUS"; status: SheetStatus };
 
@@ -83,50 +86,53 @@ export async function getMyActiveSheet(ctx: AuthorizationContext) {
  * "ออกจากแบบฟอร์ม" ระบบจะคืนใบเป็น PENDING และล้าง lock → ใบที่คีย์ค้างหายไป
  * จากหน้าจอทั้งที่ร่างยังอยู่ครบ ผู้คีย์ต้องไปค้นรหัสใบใหม่เองทุกครั้ง
  *
- * เกณฑ์: มี EntryAttempt ที่ยังไม่ส่ง (submittedAt = null) ของผู้ใช้คนนี้
- * และใบยังคีย์ต่อได้ (PENDING หรือ LOCKED โดยตัวเอง — ถ้าคนอื่นถืออยู่จะไม่แสดง)
+ * เกณฑ์ (ยึดจาก "ใบที่ยังไม่ส่ง" ไม่ใช่แค่ร่างที่บันทึกแล้ว):
+ *  1) ใบที่ผู้ใช้ถือ lock อยู่เองและยังไม่มี Household — รวมใบที่ "เพิ่งออกรหัสแต่ยัง
+ *     ไม่ได้กรอกอะไร" ด้วย (startSheet ไม่สร้าง EntryAttempt จึงต้องดูจาก lock)
+ *  2) ใบที่เคยบันทึกร่างไว้แล้วปล่อยใบไป (กลับเป็น PENDING) — ยังคีย์ต่อได้
+ * ตัดใบที่มี Household แล้วออก เพราะนั่นคือใบที่ส่งแล้ว (อยู่ในรายการ "ที่ฉันคีย์")
  */
 export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
   if (!canEnter(ctx)) return [];
   const now = new Date();
-  const drafts = await prisma.entryAttempt.findMany({
+  const sheets = await prisma.paperSheet.findMany({
     where: {
-      enteredById: ctx.userId,
-      submittedAt: null,
-      sheet: {
-        OR: [
-          { status: SheetStatus.PENDING },
-          { status: SheetStatus.LOCKED, lockedById: ctx.userId },
-        ],
-      },
+      OR: [
+        {
+          status: SheetStatus.LOCKED,
+          lockedById: ctx.userId,
+          household: { is: null },
+        },
+        {
+          status: SheetStatus.PENDING,
+          entryAttempts: { some: { enteredById: ctx.userId, submittedAt: null } },
+        },
+      ],
     },
     select: {
-      startedAt: true,
-      sheet: {
-        select: {
-          id: true,
-          sheetNo: true,
-          status: true,
-          lockedById: true,
-          lockExpiresAt: true,
-          community: { select: { nameTh: true } },
-        },
-      },
+      id: true,
+      sheetNo: true,
+      status: true,
+      lockedById: true,
+      lockedAt: true,
+      lockExpiresAt: true,
+      createdAt: true,
+      community: { select: { nameTh: true } },
     },
-    orderBy: { startedAt: "desc" },
+    orderBy: { createdAt: "desc" },
     take: limit,
   });
 
-  return drafts.map((d) => {
+  return sheets.map((s) => {
     const heldByMe =
-      d.sheet.status === SheetStatus.LOCKED && d.sheet.lockedById === ctx.userId;
+      s.status === SheetStatus.LOCKED && s.lockedById === ctx.userId;
     return {
-      id: d.sheet.id,
-      sheetNo: d.sheet.sheetNo,
-      communityName: d.sheet.community.nameTh,
-      startedAt: d.startedAt,
+      id: s.id,
+      sheetNo: s.sheetNo,
+      communityName: s.community.nameTh,
+      startedAt: s.lockedAt ?? s.createdAt,
       /** ต้องกดจองใบก่อนถึงคีย์ต่อได้ (ปล่อยใบไปแล้ว หรือ lock หมดอายุ) */
-      needsClaim: !heldByMe || isLockExpired(d.sheet.lockExpiresAt, now),
+      needsClaim: !heldByMe || isLockExpired(s.lockExpiresAt, now),
     };
   });
 }
@@ -416,6 +422,63 @@ export async function renewLock(
   return renewed.count === 1 ? { ok: true, lockExpiresAt: expiry } : { ok: false };
 }
 
+export type ChangeCommunityResult =
+  | { ok: true; communityName: string }
+  | { ok: false; reason: "FORBIDDEN" | "NOT_FOUND" | "INVALID_COMMUNITY" | "NOT_HOLDING" };
+
+/**
+ * เปลี่ยนชุมชนของใบ — เผื่อผู้คีย์เลือกผิดตอนเริ่ม (Owner feedback)
+ * รหัสไม่ผูกชุมชน (#R7-A) จึงเปลี่ยนชุมชนได้โดยรหัสเดิมคงอยู่ ไม่ต้องออกไปเริ่มใบใหม่
+ * เงื่อนไข: ต้องถือ lock ของใบอยู่จริง (กำลังคีย์) และชุมชนใหม่ต้องมีอยู่และ active
+ * บันทึก Audit UPDATE เก็บค่า community เดิม→ใหม่ (ตรวจย้อนหลังได้)
+ */
+export async function changeSheetCommunity(
+  ctx: AuthorizationContext,
+  sheetId: string,
+  communityId: string,
+): Promise<ChangeCommunityResult> {
+  if (!canEnter(ctx)) return { ok: false, reason: "FORBIDDEN" };
+
+  const community = await prisma.community.findFirst({
+    where: { id: communityId, deletedAt: null, isActive: true },
+    select: { id: true, nameTh: true },
+  });
+  if (!community) return { ok: false, reason: "INVALID_COMMUNITY" };
+
+  const sheet = await prisma.paperSheet.findUnique({
+    where: { id: sheetId },
+    select: { communityId: true, lockedById: true, status: true, lockExpiresAt: true },
+  });
+  if (!sheet) return { ok: false, reason: "NOT_FOUND" };
+
+  // เฉพาะคนที่ถือ lock อยู่จริง (กำลังคีย์ใบนี้) เท่านั้นจึงเปลี่ยนชุมชนได้
+  if (
+    sheet.status !== SheetStatus.LOCKED ||
+    sheet.lockedById !== ctx.userId ||
+    isLockExpired(sheet.lockExpiresAt, new Date())
+  ) {
+    return { ok: false, reason: "NOT_HOLDING" };
+  }
+  if (sheet.communityId === communityId) {
+    return { ok: true, communityName: community.nameTh }; // เลือกซ้ำเดิม — ไม่ต้องทำอะไร
+  }
+
+  const updated = await prisma.paperSheet.updateMany({
+    where: { id: sheetId, lockedById: ctx.userId, status: SheetStatus.LOCKED },
+    data: { communityId },
+  });
+  if (updated.count !== 1) return { ok: false, reason: "NOT_HOLDING" };
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "PaperSheet",
+    entityId: sheetId,
+    changes: { communityId: { old: sheet.communityId, new: communityId } },
+  });
+  return { ok: true, communityName: community.nameTh };
+}
+
 /**
  * ตรวจสิทธิ์เข้า Wizard ของใบหนึ่ง — ใช้โดย server page เท่านั้น
  * นอก scope ตอบ NOT_FOUND (ไม่บอกว่ามีใบอยู่จริง — กัน IDOR probing)
@@ -448,7 +511,7 @@ export async function getSheetForEntry(
       REOPENABLE_STATUSES.includes(sheet.status) &&
       sheet.household?.enteredById === ctx.userId;
     return mine
-      ? { kind: "NOT_LOCKED" }
+      ? { kind: "NOT_LOCKED", reopen: true }
       : { kind: "WRONG_STATUS", status: sheet.status };
   }
   if (sheet.lockedById !== ctx.userId) return { kind: "NOT_OWNER" };

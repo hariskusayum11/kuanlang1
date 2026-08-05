@@ -77,6 +77,29 @@ export interface EntryField {
    * คือ "แบบสอบถามลำดับที่" (#R7-A) ผู้คีย์เขียนรหัสนี้ลงกระดาษ ไม่ต้องพิมพ์เอง
    */
   readOnlyFromSheet?: boolean;
+  /**
+   * ค่าถูกกำหนดตั้งแต่ตอนเริ่มใบแล้ว (รหัสที่ระบบออก + ชุมชนที่ผู้คีย์เลือก) — ไม่ต้อง
+   * ให้กรอกซ้ำ Wizard แสดงเป็น "ส่วนที่กรอกแล้ว" (read-only) ให้ข้ามไปช่องถัดไปได้ทันที
+   * (ค่ายัง prefill ลง payload เพื่อบันทึกตามเดิม — แค่ไม่แสดงเป็นช่องกรอก)
+   */
+  confirmedFromStart?: boolean;
+  /**
+   * checkbox-group: ตัวเลือก "ไม่มี/ไม่สะดวก" แบบ exclusive อยู่ในกลุ่มเดียวกัน
+   * (ติ๊ก none → ล้าง+ปิดตัวเลือกอื่น · ติ๊กตัวเลือกอื่น → ยกเลิก none อัตโนมัติ)
+   * ค่า none เก็บเป็น boolean แยกคีย์ (`key`) — ต้องใส่ `key` นั้นใน `extraKeys` ด้วย
+   * เพื่อให้ payload whitelist ยอมรับ · validation นับว่า "ตอบแล้ว" เมื่อ none = true
+   */
+  exclusiveNone?: { key: string; label: string };
+  /**
+   * บังคับให้ฟิลด์นี้ "ขึ้นต้นแถวใหม่" ในเลย์เอาต์หลายคอลัมน์ (col-start-1)
+   * ใช้จัดกลุ่มที่ต้องอยู่แถวเดียวกัน เช่น คำนำหน้า/ชื่อ/นามสกุล ไม่ให้ถูกฟิลด์ก่อนหน้าดันแยกแถว
+   */
+  startsRow?: boolean;
+  /**
+   * บังคับให้ฟิลด์นี้กินเต็มความกว้าง (span ทุกคอลัมน์) → อยู่แถวของตัวเองเสมอ
+   * ใช้กับคำถามป้ายยาวที่ถ้าวางคู่กันจะเบียด/ล้นแถว เช่น ข้อ boolean คำถามยาว
+   */
+  fullWidth?: boolean;
 }
 
 /**
@@ -99,11 +122,10 @@ export interface EntryStep {
 
 const YES_NO: EntryField["booleanLabels"] = { true: "มี", false: "ไม่มี", trueFirst: true };
 
-/** ข้อความช่วยเหลือช่องคำนำหน้า — แยก "กระดาษไม่ได้เขียน" ออกจาก "ยังไม่ได้คีย์" */
-const PREFIX_HINT =
-  'ถ้ากระดาษเขียนว่า "ไม่ระบุ" ให้เลือก "ไม่ระบุ (ยืนยัน)" · ถ้ากระดาษไม่ได้เขียนช่องนี้เลย ปล่อยว่างแล้วกด F3 (ว่างในกระดาษ) — ไม่ต้องเดา';
+// ไม่มีคำนำหน้าในกระดาษ → เลือก "ไม่ระบุ" ได้เลย (Owner: ให้ติ๊กง่าย ๆ สถานะเท่ากับเว้นว่าง)
+const PREFIX_HINT = 'ถ้าไม่มีคำนำหน้า เลือก "ไม่ระบุ" ได้เลย';
 
-const PREFIX_NONE_LABEL = "ไม่ระบุ (ยืนยันว่าไม่มีคำนำหน้า)";
+const PREFIX_NONE_LABEL = "ไม่ระบุ";
 
 export const ENTRY_STEPS: EntryStep[] = [
   {
@@ -119,13 +141,15 @@ export const ENTRY_STEPS: EntryStep[] = [
         type: "text",
         required: true,
         readOnlyFromSheet: true,
+        confirmedFromStart: true,
         hint: "รหัสที่ระบบออกให้ตอนเริ่มใบ — เขียนรหัสนี้ลงบนกระดาษ · แก้ไม่ได้",
       },
       {
         name: "communityNameOnPaper",
-        label: "ชื่อชุมชน (ตามที่ผู้สำรวจเขียน)",
+        label: "ชุมชน",
         type: "text",
-        hint: "คีย์ตามตัวอักษร — ระบบจะเทียบกับชุมชนของใบนี้ให้ภายหลัง",
+        confirmedFromStart: true,
+        hint: "ชุมชนที่เลือกไว้ตอนเริ่มใบ — บันทึกให้อัตโนมัติ",
       },
       {
         name: "surveyorPrefix",
@@ -149,7 +173,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "วันที่สำรวจ (วันที่/เดือน/ปี ตามกระดาษ)",
         required: true,
         type: "date",
-        hint: "ห้ามใส่วันที่วันนี้แทนค่าว่าง (BR-47) — กระดาษเขียน พ.ศ. ให้คีย์ตามกระดาษ",
+        hint: "ห้ามใส่วันที่วันนี้แทนค่าว่าง — กระดาษเขียน พ.ศ. ให้คีย์ตามกระดาษ",
       },
     ],
   },
@@ -179,6 +203,8 @@ export const ENTRY_STEPS: EntryStep[] = [
         masterKey: "namePrefixes",
         explicitNone: PREFIX_NONE_LABEL,
         hint: PREFIX_HINT,
+        // ขึ้นแถวใหม่ให้ คำนำหน้า/ชื่อ/นามสกุล อยู่แถวเดียวกัน (ไม่ถูก "ชื่อสถานที่" ดันแยก)
+        startsRow: true,
       },
       {
         name: "respondentPrefixOther",
@@ -215,8 +241,8 @@ export const ENTRY_STEPS: EntryStep[] = [
     kind: "fields",
     fields: [
       { name: "houseNo", label: "เลขที่", type: "text", critical: true, required: true },
-      { name: "mooId", label: "หมู่ที่", type: "radio", masterKey: "moos", critical: true, required: true },
-      { name: "soi", label: "ซอย", type: "text" },
+      { name: "mooNo", label: "หมู่ที่", type: "number", integer: true, max: 999, critical: true, required: true },
+      { name: "soi", label: "ซอย", type: "text", startsRow: true },
       { name: "road", label: "ถนน", type: "text" },
       { name: "tambonId", label: "ตำบล", type: "radio", masterKey: "tambons", required: true },
       {
@@ -228,7 +254,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         critical: true,
         sensitive: true,
         pair: { name: "longitudeText", unit: "" },
-        hint: "คีย์ตามตัวเลขที่เขียนมา ห้ามจัดรูปแบบใหม่ — ระบบจะอ่านค่าให้ทานเองด้านล่าง (QM-04)",
+        hint: "คีย์ตามตัวเลขที่เขียนมา ห้ามจัดรูปแบบใหม่ — ระบบจะอ่านค่าให้ทานเองด้านล่าง",
       },
       {
         name: "memberCount",
@@ -305,7 +331,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         type: "number",
         integer: true,
         max: 5000,
-        hint: "ช่องรวมระดับครัวเรือน — ระบบจะเทียบกับผลรวมรายข้อเป็นคำเตือน (QM-07)",
+        hint: "ช่องรวมระดับครัวเรือน — ระบบจะเทียบกับผลรวมรายข้อเป็นคำเตือน",
       },
       {
         name: "assistanceNeeds",
@@ -351,12 +377,13 @@ export const ENTRY_STEPS: EntryStep[] = [
         critical: true,
         hint: "กรอกตามช่องบนกระดาษ — เขียนไว้ช่องไหนใส่ช่องนั้น ไม่ต้องคิดเลขรวมเอง",
       },
-      { name: "lastFloodDurationDays", label: "4. น้ำท่วมครั้งล่าสุดนานกี่วัน", type: "number" },
+      { name: "lastFloodDurationDays", label: "4. น้ำท่วมครั้งล่าสุดนานกี่วัน", type: "number", fullWidth: true },
       {
         name: "hasSafeParking",
         label: "5. มีพื้นที่จอดรถที่ปลอดภัยจากน้ำท่วมในสถานที่หรือไม่",
         type: "boolean",
         booleanLabels: YES_NO,
+        fullWidth: true,
       },
       {
         name: "hasAlternateParking",
@@ -364,6 +391,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         type: "boolean",
         // กระดาษเรียง "ไม่มี" ก่อน "มี" — ต้องเรียงตาม (FR-ENT-01)
         booleanLabels: { true: "มี", false: "ไม่มี", trueFirst: false },
+        fullWidth: true,
       },
       {
         name: "alternateParkingLocation",
@@ -434,10 +462,14 @@ export const ENTRY_STEPS: EntryStep[] = [
       },
       {
         name: "householdResources",
-        label: "11. เครื่องมือ/ทรัพยากรที่ใช้รับมืออุทกภัย (☐ ไม่มี = ติ๊กยืนยันว่าไม่มี)",
+        label: "11. เครื่องมือ/ทรัพยากรที่ใช้รับมืออุทกภัย (เลือกได้หลายข้อ)",
         type: "checkbox-group",
         masterKey: "resourceTypes",
-        hint: "ติ๊ก \"ไม่มี\" = EXPLICIT_NONE · ไม่ติ๊กเลย = ว่างในกระดาษ (QM-09)",
+        // "ไม่มี" อยู่ในกลุ่มเดียวกัน (exclusive) — ติ๊กแล้วติ๊กอย่างอื่นไม่ได้
+        // เก็บลง Household.hasNoResources (ไม่ใช่ประเภททรัพยากรใน master resourceTypes)
+        exclusiveNone: { key: "hasNoResources", label: "ไม่มี" },
+        extraKeys: ["hasNoResources"],
+        hint: "ติ๊ก \"ไม่มี\" เมื่อยืนยันว่าไม่มีทรัพยากร · ไม่ติ๊กเลย = ว่างในกระดาษ (กด F3)",
       },
       {
         // resourceTypes มีตัวเลือกรหัส OTHER (อื่นๆ) — ติ๊กแล้วเปิดช่องระบุ
@@ -445,15 +477,6 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "อื่นๆ ระบุทรัพยากร",
         type: "text",
         showWhen: { field: "householdResources", equals: "OTHER" },
-      },
-      {
-        // ช่อง "☐ ไม่มี" ของข้อ 11 — "ไม่มี" ไม่ใช่ประเภททรัพยากร จึงเก็บที่ Household.hasNoResources
-        // (ไม่อยู่ใน master resourceTypes ตาม QM-09) · ติ๊ก = EXPLICIT_NONE
-        name: "hasNoResources",
-        label: "หรือติ๊กยืนยันว่า ไม่มีเครื่องมือ/ทรัพยากร",
-        type: "boolean",
-        booleanLabels: { true: "ไม่มี (ยืนยัน)", false: "มี (ดูรายการด้านบน)", trueFirst: false },
-        hint: "ติ๊ก \"ไม่มี\" = ยืนยันว่าไม่มีทรัพยากร (EXPLICIT_NONE) · ถ้ามีให้ติ๊กรายการด้านบนแทน (QM-09)",
       },
       {
         name: "canBeHostHouse",
@@ -480,27 +503,25 @@ export const ENTRY_STEPS: EntryStep[] = [
         label: "2. สมาชิกใช้สมาร์ทโฟน (iPhone/Android) หรือไม่",
         type: "boolean",
         booleanLabels: { true: "ใช้", false: "ไม่ใช้", trueFirst: true },
+        fullWidth: true,
       },
       {
         name: "canScanQR",
         label: "3. สามารถสแกน QR Code ได้หรือไม่",
         type: "boolean",
         booleanLabels: { true: "ได้", false: "ไม่ได้", trueFirst: true },
+        fullWidth: true,
       },
       {
         name: "volunteerInterests",
-        label: "4. สนใจเข้าร่วมเป็นอาสาสมัคร (เลือกได้หลายด้าน · ☐ ไม่สะดวก = ติ๊กแยกด้านล่าง)",
+        label: "4. สนใจเข้าร่วมเป็นอาสาสมัคร (เลือกได้หลายด้าน)",
         type: "checkbox-group",
         masterKey: "volunteerSkillTypes",
-        hint: "\"ไม่สะดวก\" เป็นสถานะไม่สมัคร ไม่ใช่ทักษะ จึงแยกเป็นช่องด้านล่าง (QM-12)",
-      },
-      {
-        // ตัวเลือก "ไม่สะดวก" ที่กระดาษให้ติ๊กแยก (Owner Decision 2026-08-03) — เก็บลงคอลัมน์เดิม
-        name: "volunteerNotAvailable",
-        label: "หรือระบุว่า ไม่สะดวกเข้าร่วมเป็นอาสาสมัคร",
-        type: "boolean",
-        booleanLabels: { true: "ไม่สะดวก", false: "สะดวก", trueFirst: false },
-        hint: "ติ๊กเมื่อกระดาษระบุว่าไม่สะดวก — เป็นคนละส่วนกับด้านที่สนใจด้านบน",
+        // "ไม่สะดวก" อยู่ในกลุ่มเดียวกัน (exclusive) — ติ๊กแล้วติ๊กด้านอื่นไม่ได้
+        // เก็บลง Household.volunteerNotAvailable (ไม่ใช่ทักษะใน master volunteerSkillTypes)
+        exclusiveNone: { key: "volunteerNotAvailable", label: "ไม่สะดวกเข้าร่วม" },
+        extraKeys: ["volunteerNotAvailable"],
+        hint: "ติ๊ก \"ไม่สะดวกเข้าร่วม\" เมื่อกระดาษระบุว่าไม่สะดวก · ไม่ติ๊กเลย = ว่างในกระดาษ (กด F3)",
       },
       {
         name: "mentalHealthSupport",

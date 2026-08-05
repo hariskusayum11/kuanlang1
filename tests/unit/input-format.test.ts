@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  isoToThaiDate,
   maskThaiDate,
+  sanitizeDecimal,
   sanitizeIntString,
   sanitizePhone,
+  thaiDateToISO,
 } from "../../lib/entry/input-format";
 
 describe("sanitizePhone", () => {
@@ -53,5 +56,48 @@ describe("maskThaiDate", () => {
 
   it("ค่าว่าง = สตริงว่าง", () => {
     expect(maskThaiDate("")).toBe("");
+  });
+});
+
+describe("sanitizeDecimal", () => {
+  it("จำกัดหลังจุดไม่เกิน 6 ตำแหน่ง (พิกัด GPS)", () => {
+    expect(sanitizeDecimal("7.8202131")).toBe("7.820213");
+    expect(sanitizeDecimal("99.943592")).toBe("99.943592");
+  });
+
+  it("ไม่ปัดค่า/ไม่เติม 0 — แค่ตัดหลักเกิน (paper-first)", () => {
+    expect(sanitizeDecimal("7.8202139")).toBe("7.820213"); // ตัด ไม่ปัดขึ้น
+    expect(sanitizeDecimal("7.5")).toBe("7.5");
+    expect(sanitizeDecimal("7")).toBe("7");
+  });
+
+  it("รับจุดเดียว ตัดจุดเกิน และคงเครื่องหมายลบนำหน้า", () => {
+    expect(sanitizeDecimal("7.82.02")).toBe("7.8202");
+    expect(sanitizeDecimal("-7.820213")).toBe("-7.820213");
+    expect(sanitizeDecimal("7a.8b2")).toBe("7.82");
+  });
+});
+
+describe("thaiDateToISO / isoToThaiDate (ปฏิทิน ค.ศ. ↔ กระดาษ พ.ศ.)", () => {
+  it("พ.ศ. → ISO ค.ศ. สำหรับ input[type=date]", () => {
+    expect(thaiDateToISO("15/07/2567")).toBe("2024-07-15");
+    expect(thaiDateToISO("01/02/2567")).toBe("2024-02-01");
+  });
+
+  it("ISO จากปฏิทิน → วว/ดด/ปปปป พ.ศ.", () => {
+    expect(isoToThaiDate("2024-07-15")).toBe("15/07/2567");
+    expect(isoToThaiDate("2024-02-01")).toBe("01/02/2567");
+  });
+
+  it("ไป-กลับได้ค่าเดิม (round-trip)", () => {
+    expect(isoToThaiDate(thaiDateToISO("29/02/2567"))).toBe("29/02/2567"); // 2024 อธิกสุรทิน
+  });
+
+  it("รูปแบบผิด/วันเกินจริง → สตริงว่าง (ไม่เดา)", () => {
+    expect(thaiDateToISO("31/02/2567")).toBe(""); // 31 ก.พ. ไม่มีจริง
+    expect(thaiDateToISO("1/1/25")).toBe("");
+    expect(thaiDateToISO("")).toBe("");
+    expect(isoToThaiDate("2024/07/15")).toBe("");
+    expect(isoToThaiDate("")).toBe("");
   });
 });

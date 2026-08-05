@@ -163,6 +163,10 @@ export function collectMissing(args: CollectMissingArgs): MissingItem[] {
         continue;
       }
 
+      // checkbox-group ที่มีตัวเลือก "ไม่มี/ไม่สะดวก" แบบ exclusive — ติ๊ก none = ตอบแล้ว
+      // (แม้ array ทรัพยากร/ทักษะจะว่าง) ไม่ถือว่าขาด
+      if (f.exclusiveNone && answers[f.exclusiveNone.key] === true) continue;
+
       // Owner Decision 2026-07-26: ทุกช่องที่มองเห็นต้อง "ถูกตอบ" เสมอ
       // ตอบ = มีค่า / F2 (อ่านไม่ออก) / F3 (ว่างในกระดาษ)
       // เหตุผล: ถ้าปล่อยให้เว้นว่างเงียบ ๆ ผ่านได้ จะแยกไม่ออกว่า

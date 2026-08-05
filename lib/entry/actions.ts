@@ -5,12 +5,13 @@
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
+  changeSheetCommunity,
   claimSheetById,
   openSheetByCode,
   releaseSheet,
   renewLock,
 } from "./claim";
-import type { OpenSheetResult } from "./claim";
+import type { ChangeCommunityResult, OpenSheetResult } from "./claim";
 import { entryPayloadSchema } from "./payload";
 import {
   saveDraft,
@@ -106,6 +107,25 @@ export async function submitEntryAction(
     return { ok: false, reason: "INVALID" };
   }
   return submitEntry(ctx, parsedId.data, parsedPayload.data);
+}
+
+export type ChangeCommunityActionResult =
+  | ChangeCommunityResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** เปลี่ยนชุมชนของใบที่กำลังคีย์ (เผื่อเลือกผิดตอนเริ่ม) — รหัสเดิมไม่เสีย */
+export async function changeSheetCommunityAction(
+  sheetId: string,
+  communityId: string,
+): Promise<ChangeCommunityActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsedId = sheetIdSchema.safeParse(sheetId);
+  const parsedCommunity = z.string().cuid().safeParse(communityId);
+  if (!parsedId.success || !parsedCommunity.success) {
+    return { ok: false, reason: "INVALID" };
+  }
+  return changeSheetCommunity(ctx, parsedId.data, parsedCommunity.data);
 }
 
 export async function renewLockAction(

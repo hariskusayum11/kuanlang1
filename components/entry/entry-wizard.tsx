@@ -7,6 +7,7 @@ import { collectMissing, missingCountByStep } from "@/lib/entry/validation";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import type { EntryPayload } from "@/lib/entry/payload";
 import {
+  changeSheetCommunityAction,
   claimSheetAction,
   releaseSheetAction,
   renewLockAction,
@@ -25,12 +26,14 @@ import { Modal } from "@/components/ui/modal";
 type SheetInfo = {
   id: string;
   sheetNo: string;
-  /** null = ใบยังไม่ได้จัดเข้าปึก — ไม่แสดงคำว่า "ปึก" เลย (#R6-B) */
+  communityId: string;
   communityName: string;
 };
 
 type Props = {
   sheet: SheetInfo;
+  /** ชุมชนที่เลือกเปลี่ยนได้ (เผื่อเลือกผิดตอนเริ่ม) — รหัสใบเดิมไม่เสีย */
+  communities: { id: string; nameTh: string }[];
   master: EntryMasterData;
   lockExpiresAt: string;
   /** เวลาที่เหลือ (ms) คำนวณฝั่ง server — กัน hydration mismatch จาก Date.now() */
@@ -47,6 +50,29 @@ const LOCK_FULL_MS = 45 * 60 * 1000;
 function formatRemaining(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
+}
+
+/**
+ * ฟิลด์ที่กินความกว้างเต็มแถวในเลย์เอาต์หลายคอลัมน์ — ชนิดที่มีตัวเลือก/ข้อความยาว
+ * จะอึดอัดถ้าบีบลงช่องแคบ ส่วนช่องสั้น (ข้อความ/ตัวเลข/วันที่/เลือก) วางเรียงข้างกันได้
+ * ลำดับ DOM = ลำดับ Tab เสมอ (ตรงกระดาษ) — Grid เติมซ้ายไปขวาบนลงล่างตาม source order
+ */
+const FULL_WIDTH_FIELD_TYPES: ReadonlySet<EntryField["type"]> = new Set([
+  "textarea",
+  "checkbox-group",
+  "assistance-needs",
+  "radio",
+  "coordinate",
+  "measure-pair",
+]);
+
+function fieldSpanClass(field: EntryField): string {
+  const span = FULL_WIDTH_FIELD_TYPES.has(field.type) || field.fullWidth
+    ? "md:col-span-2 2xl:col-span-3"
+    : "";
+  // startsRow: บังคับขึ้นคอลัมน์แรกของแถวใหม่ เพื่อจัดกลุ่มฟิลด์ให้อยู่แถวเดียวกัน
+  const rowStart = field.startsRow ? "md:col-start-1 2xl:col-start-1" : "";
+  return `${span} ${rowStart}`.trim();
 }
 
 /**
@@ -81,12 +107,17 @@ function fieldVisible(
 
 export function EntryWizard({
   sheet,
+  communities,
   master,
   lockExpiresAt,
   initialRemainingMs,
   initialDraft,
 }: Props) {
   const router = useRouter();
+  // ชุมชนของใบ — เปลี่ยนได้เผื่อเลือกผิดตอนเริ่ม (รหัสเดิมไม่เสีย)
+  const [communityId, setCommunityId] = useState(sheet.communityId);
+  const [changingCommunity, setChangingCommunity] = useState(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(initialDraft?.stepIndex ?? 0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
@@ -126,6 +157,8 @@ export function EntryWizard({
   // ค่าเริ่มต้นจาก server (deterministic) — interval จะ recompute จาก expiry หลัง mount
   const [remainingMs, setRemainingMs] = useState(Math.max(0, initialRemainingMs));
   const [busy, setBusy] = useState<"release" | "reclaim" | null>(null);
+  // ถามยืนยันก่อนออกจากฟอร์ม — กันกดออกโดยไม่ตั้งใจแล้วต้องกลับมาเปิดใบใหม่
+  const [confirmExit, setConfirmExit] = useState(false);
   // true = จองซ้ำอัตโนมัติแล้วไม่สำเร็จ (มีผู้อื่นถือใบไปจริง) — จึงค่อยเด้งกล่องให้รับรู้
   const [reclaimBlocked, setReclaimBlocked] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>(
@@ -155,6 +188,13 @@ export function EntryWizard({
   const step = steps[safeIndex];
   const lockExpired = remainingMs <= 0;
   const lowLock = !lockExpired && remainingMs < 2 * 60 * 1000;
+
+  // แยกช่องที่กำหนดตั้งแต่เริ่มใบ (รหัส + ชุมชน) ออกจากช่องที่ผู้คีย์ต้องกรอกจริง
+  // ช่อง confirmed แสดงเป็นสรุปอ่านอย่างเดียว · ช่อง interactive คุมด้วย fieldVisible
+  const confirmedFields = step.fields.filter((f) => f.confirmedFromStart);
+  const interactiveFields = step.fields.filter(
+    (f) => !f.confirmedFromStart && fieldVisible(f, answers, master),
+  );
 
   /**
    * รายการที่ยังไม่ถูกตอบทั้งใบ — คำนวณด้วย Pure Function (lib/entry/validation.ts)
@@ -187,11 +227,6 @@ export function EntryWizard({
   );
   const missingByStep = useMemo(() => missingCountByStep(missing), [missing]);
   const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
-  /** เฉพาะของ step ที่เปิดอยู่ — ใช้บอกชื่อช่องที่ยังขาดตรงหัวเรื่อง */
-  const stepMissing = useMemo(
-    () => missing.filter((m) => m.stepId === step.id),
-    [missing, step.id],
-  );
 
   // นับถอยหลัง lock
   useEffect(() => {
@@ -248,6 +283,22 @@ export function EntryWizard({
     return () => clearInterval(heartbeat);
   }, [lockExpired, renew]);
 
+  // เบราว์เซอร์หยุด/หน่วง timer ของแท็บที่ถูกซ่อนไว้ ทำให้ heartbeat ไม่ทันต่ออายุ
+  // → พอผู้ใช้กลับมาที่แท็บ (visible/focus) ต่ออายุทันที ลดโอกาสเซสชันหมดแล้วถูกเด้ง
+  // ออกไปหน้า login กลางคัน (renew → getSession ต่ออายุเซสชันด้วย เพราะ updateAge=0)
+  useEffect(() => {
+    if (lockExpired) return;
+    function onWake() {
+      if (document.visibilityState === "visible") void renew();
+    }
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, [lockExpired, renew]);
+
   // ผ่อนคลายล็อก (Owner feedback #9): ถ้าล็อกหมดอายุระหว่างฟอร์มเปิดอยู่ ให้จองซ้ำเงียบ ๆ
   // ก่อน — ต่ออายุให้อัตโนมัติโดยไม่เด้งกล่อง จะขึ้นกล่องเฉพาะเมื่อจองไม่ได้จริง (มีผู้อื่น
   // ถือใบไปแล้ว) ซึ่งเป็นการชนกันจริงที่ต้องหยุดตามกฎกันสองคนหยิบใบเดียวกัน
@@ -275,6 +326,26 @@ export function EntryWizard({
     dirty.current = true;
     setAnswers((prev) => ({ ...prev, [name]: value }));
     setMarks((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
+  }
+
+  // เปลี่ยนชุมชนของใบ (เลือกผิดตอนเริ่ม) — รหัสเดิมไม่เสีย · โหลด master ของชุมชนใหม่ด้วย
+  // (ตัวเลือกตำบล/หมู่ต่างกันตามชุมชน) จึง router.refresh() หลังเปลี่ยนสำเร็จ
+  async function changeCommunity(nextId: string) {
+    if (nextId === communityId || changingCommunity) return;
+    const prevId = communityId;
+    setCommunityError(null);
+    setChangingCommunity(true);
+    setCommunityId(nextId);
+    const result = await changeSheetCommunityAction(sheet.id, nextId);
+    if (result.ok) {
+      // ชื่อชุมชนตามกระดาษเดินตามชุมชนที่เลือก (ผู้คีย์ยังแก้เป็นค่าตามกระดาษได้ภายหลัง)
+      setAnswer("communityNameOnPaper", result.communityName);
+      router.refresh();
+    } else {
+      setCommunityId(prevId);
+      setCommunityError("เปลี่ยนชุมชนไม่สำเร็จ — ลองใหม่อีกครั้ง");
+    }
+    setChangingCommunity(false);
   }
 
   /** payload ปัจจุบันของฟอร์ม — server เป็นผู้เข้ารหัสก่อนเก็บ */
@@ -447,53 +518,43 @@ export function EntryWizard({
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-5 p-4 md:flex-row md:p-6 lg:p-8">
+    <div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-5 p-4 md:flex-row md:p-6 lg:p-8">
       {/* ── รางซ้าย: ข้อมูลใบ + ล็อก + ขั้นตอน ── */}
       <aside className="shrink-0 md:w-72">
         <div className="space-y-4 md:sticky md:top-6">
-          {/* ข้อมูลใบ */}
-          <div className="card p-5">
-            <div className="flex items-center gap-2.5">
-              <span className="chip chip-accent h-9 w-9 shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
-                  <path d="M8 4h9a1 1 0 011 1v15l-3-2-3 2-3-2V5a1 1 0 011-1z" strokeLinejoin="round" />
-                </svg>
-              </span>
-              <span className="badge badge-accent">กำลังคีย์ใบนี้</span>
-            </div>
-            <p className="mt-3 break-all font-mono text-base font-bold text-slate-900">
+          {/* ข้อมูลใบ — แบบกระชับ (Owner: การ์ดเดิมมุมซ้ายบนใหญ่เกินไป)
+              รหัส + ชุมชน เป็นบรรทัดเล็ก ๆ ไว้อ้างอิงระหว่างคีย์ทุกขั้นตอน */}
+          <div className="px-1">
+            <p className="break-all font-mono text-sm font-bold text-slate-800">
               {sheet.sheetNo}
             </p>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              {sheet.communityName}
-            </p>
-
-            {/* Lock = กลไกความปลอดภัยเบื้องหลัง (กันเปิดใบซ้อนกัน) — แสดงแบบไม่รบกวน
-                ต่ออายุอัตโนมัติเมื่อเปลี่ยนขั้นตอน · เตือนเฉพาะเมื่อใกล้หมด */}
-            <p
-              className={`mt-3 flex items-center gap-1.5 text-[11px] ${
-                lowLock ? "font-bold text-sun-700" : "text-slate-500"
-              }`}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3">
-                <rect x="5" y="11" width="14" height="9" rx="2" />
-                <path d="M8 11V8a4 4 0 018 0v3" />
-              </svg>
-              {lockExpired
-                ? "การจองใบหมดอายุ"
-                : lowLock
-                  ? `การจองใบใกล้หมดอายุ (${formatRemaining(remainingMs)}) — `
-                  : "จองใบนี้ไว้ให้คุณแล้ว (ต่ออายุอัตโนมัติ)"}
-              {lowLock && !lockExpired && (
-                <button
-                  type="button"
-                  onClick={() => void renew()}
-                  className="font-medium text-brand-600 underline hover:text-brand-700"
-                >
-                  ต่ออายุ
-                </button>
-              )}
-            </p>
+            <p className="text-xs font-medium text-slate-500">{sheet.communityName}</p>
+            {/* Lock = กลไกเบื้องหลัง (กันเปิดใบซ้อนกัน) ต่ออายุอัตโนมัติเมื่อเปลี่ยนขั้น
+                เตือนเฉพาะเมื่อใกล้หมด/หมดอายุ — ปกติไม่ต้องแสดงให้รกจอ */}
+            {(lowLock || lockExpired) && (
+              <p
+                className={`mt-2 flex items-center gap-1.5 text-[11px] ${
+                  lockExpired ? "text-slate-500" : "font-bold text-sun-700"
+                }`}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3">
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                  <path d="M8 11V8a4 4 0 018 0v3" />
+                </svg>
+                {lockExpired
+                  ? "การจองใบหมดอายุ"
+                  : `การจองใบใกล้หมดอายุ (${formatRemaining(remainingMs)}) — `}
+                {lowLock && !lockExpired && (
+                  <button
+                    type="button"
+                    onClick={() => void renew()}
+                    className="font-medium text-brand-600 underline hover:text-brand-700"
+                  >
+                    ต่ออายุ
+                  </button>
+                )}
+              </p>
+            )}
           </div>
 
           {/* ขั้นตอน */}
@@ -563,7 +624,7 @@ export function EntryWizard({
 
           <button
             type="button"
-            onClick={handleRelease}
+            onClick={() => setConfirmExit(true)}
             disabled={busy !== null}
             className="btn btn-secondary btn-sm w-full"
           >
@@ -571,6 +632,40 @@ export function EntryWizard({
           </button>
         </div>
       </aside>
+
+      {/* ยืนยันก่อนออก — ร่างถูกบันทึกและใบยังกลับมาคีย์ต่อได้ทุกเมื่อ */}
+      <Modal open={confirmExit} onClose={() => setConfirmExit(false)}>
+        <div className="animate-rise max-w-sm rounded-3xl bg-white p-7 text-center shadow-lg">
+          <span className="chip chip-lg chip-sun mx-auto mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-7 w-7">
+              <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <h3 className="text-lg font-bold text-slate-900">ออกจากแบบฟอร์มนี้?</h3>
+          <p className="mt-1.5 text-sm text-slate-500">
+            ระบบบันทึกร่างที่คีย์ไว้แล้ว ใบ <span className="font-mono text-xs font-bold">{sheet.sheetNo}</span>{" "}
+            จะยังอยู่ในรายการ &ldquo;ใบที่คีย์ค้างอยู่&rdquo; ให้กลับมาคีย์ต่อได้เสมอ
+          </p>
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmExit(false)}
+              disabled={busy !== null}
+              className="btn btn-secondary btn-md flex-1"
+            >
+              คีย์ต่อ
+            </button>
+            <button
+              type="button"
+              onClick={handleRelease}
+              disabled={busy !== null}
+              className="btn btn-primary btn-md flex-1"
+            >
+              {busy === "release" ? "กำลังออก…" : "ออกจริง"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* ── เนื้อหา step ── */}
       <div className="min-w-0 flex-1 space-y-4">
@@ -669,36 +764,6 @@ export function EntryWizard({
             {step.description && (
               <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{step.description}</p>
             )}
-            {/* อธิบายตัวเลขในแถบซ้าย: นับเฉพาะ "ช่องบังคับ" ไม่ใช่ช่องว่างทั้งหมด
-                ช่องอื่นเว้นว่างได้ตามกระดาษ (paper-first) */}
-            {stepMissing.length > 0 ? (
-              <div className="mt-3 rounded-xl border-2 border-sun-200 bg-sun-50 px-3.5 py-2.5">
-                <p className="text-xs font-bold text-sun-800">
-                  ส่วนนี้ยังไม่ได้ตอบ {stepMissing.length} ช่อง
-                </p>
-                <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                  {stepMissing.slice(0, 8).map((m) => (
-                    <li key={m.key} className="text-xs font-medium text-sun-800">
-                      • {m.label}
-                    </li>
-                  ))}
-                  {stepMissing.length > 8 && (
-                    <li className="text-xs font-medium text-sun-700">
-                      และอีก {stepMissing.length - 8} ช่อง
-                    </li>
-                  )}
-                </ul>
-                <p className="mt-1.5 text-[11px] font-medium text-sun-700">
-                  ทุกช่องต้องถูกตอบ เพื่อไม่ให้ข้อมูลจากกระดาษตกหล่น —
-                  กระดาษไม่ได้เขียนกด <span className="kbd">F3</span> ·
-                  เขียนมาแต่อ่านไม่ออกกด <span className="kbd">F2</span>
-                </p>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs font-medium text-emerald-700">
-                ✓ ส่วนนี้ตอบครบทุกช่องแล้ว
-              </p>
-            )}
           </header>
 
           {step.kind === "vulnerable-grid" ? (
@@ -739,30 +804,90 @@ export function EntryWizard({
             />
           ) : (
             <div className="space-y-6">
-              {step.fields
-                .filter((f) => fieldVisible(f, answers, master))
-                .map((f) => (
-                  <FieldInput
-                    key={f.name}
-                    field={f}
-                    master={master}
-                    value={answers[f.name]}
-                    mark={marks[f.name] ?? null}
-                    onChange={(v) => setAnswer(f.name, v)}
-                    pairValue={f.pair ? answers[f.pair.name] : undefined}
-                    pairMark={f.pair ? (marks[f.pair.name] ?? null) : undefined}
-                    onPairChange={
-                      f.pair ? (v) => setAnswer(f.pair!.name, v) : undefined
-                    }
-                    extraValues={
-                      f.extraKeys
-                        ? Object.fromEntries(f.extraKeys.map((k) => [k, answers[k]]))
-                        : undefined
-                    }
-                    onExtraChange={(k, v) => setAnswer(k, v)}
-                    missingKeys={showValidation ? missingKeys : undefined}
-                  />
+              {/* ค่าที่กำหนดตั้งแต่เริ่มใบ (รหัส + ชุมชน) — แสดงเป็นส่วนที่กรอกแล้ว
+                  ไม่ต้องให้ผู้คีย์กรอกซ้ำ ข้ามไปช่องถัดไปได้ทันที (Owner feedback) */}
+              {confirmedFields.length > 0 && (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 px-4 py-3.5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3.5 w-3.5">
+                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    กรอกให้แล้วตั้งแต่เริ่มใบ — ข้ามไปช่องถัดไปได้เลย
+                  </p>
+                  <dl className="mt-2.5 grid grid-cols-1 items-start gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {confirmedFields.map((f) =>
+                      // ชุมชน: เปลี่ยนได้ (เผื่อเลือกผิดตอนเริ่ม) — รหัสเดิมไม่เสีย
+                      f.name === "communityNameOnPaper" ? (
+                        <div key={f.name}>
+                          <dt className="text-[11px] font-semibold text-slate-500">ชุมชน</dt>
+                          <dd className="mt-0.5">
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={communityId}
+                                onChange={(e) => void changeCommunity(e.target.value)}
+                                disabled={changingCommunity}
+                                aria-label="เปลี่ยนชุมชนของใบนี้"
+                                className="field w-full max-w-56 py-1.5 text-sm font-bold disabled:opacity-60"
+                              >
+                                {communities.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nameTh}
+                                  </option>
+                                ))}
+                              </select>
+                              {changingCommunity && (
+                                <span className="text-[11px] font-medium text-slate-400">
+                                  กำลังเปลี่ยน…
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-[11px] font-medium text-slate-400">
+                              เลือกผิดตอนเริ่ม? เปลี่ยนได้ที่นี่ — รหัส {sheet.sheetNo} เดิมไม่เสีย
+                            </p>
+                          </dd>
+                        </div>
+                      ) : (
+                        <div key={f.name}>
+                          <dt className="text-[11px] font-semibold text-slate-500">
+                            {f.label}
+                          </dt>
+                          <dd className="mt-0.5 text-sm font-bold text-slate-900">
+                            {String(answers[f.name] ?? "—") || "—"}
+                          </dd>
+                        </div>
+                      ),
+                    )}
+                  </dl>
+                  {communityError && (
+                    <p className="mt-2 text-xs font-semibold text-red-600">{communityError}</p>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-1 items-start gap-x-6 gap-y-5 md:grid-cols-2 2xl:grid-cols-3">
+                {interactiveFields.map((f) => (
+                  <div key={f.name} className={fieldSpanClass(f)}>
+                    <FieldInput
+                      field={f}
+                      master={master}
+                      value={answers[f.name]}
+                      mark={marks[f.name] ?? null}
+                      onChange={(v) => setAnswer(f.name, v)}
+                      pairValue={f.pair ? answers[f.pair.name] : undefined}
+                      pairMark={f.pair ? (marks[f.pair.name] ?? null) : undefined}
+                      onPairChange={
+                        f.pair ? (v) => setAnswer(f.pair!.name, v) : undefined
+                      }
+                      extraValues={
+                        f.extraKeys
+                          ? Object.fromEntries(f.extraKeys.map((k) => [k, answers[k]]))
+                          : undefined
+                      }
+                      onExtraChange={(k, v) => setAnswer(k, v)}
+                      missingKeys={showValidation ? missingKeys : undefined}
+                    />
+                  </div>
                 ))}
+              </div>
             </div>
           )}
 

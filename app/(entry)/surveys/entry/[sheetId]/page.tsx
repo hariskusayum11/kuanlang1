@@ -4,6 +4,7 @@ import { getAuthorizationContext } from "@/lib/authz/context";
 import { hasPermission } from "@/lib/authz/access";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getSheetForEntry } from "@/lib/entry/claim";
+import { listSelectableCommunities } from "@/lib/sheet/create";
 import { loadDraftPayload } from "@/lib/entry/save";
 import { getEntryMasterData } from "@/lib/entry/master-data";
 import { EntryWizard } from "@/components/entry/entry-wizard";
@@ -59,11 +60,17 @@ export default async function EntrySheetPage({
       );
     case "NOT_LOCKED":
     case "LOCK_EXPIRED":
-      // ใบว่าง/ล็อกของตนหมดอายุ — ให้กดหยิบ (claim) ก่อนเข้าฟอร์ม
+      // ใบว่าง/ล็อกของตนหมดอายุ/ใบที่ตนคีย์แล้วกดกลับมาแก้ — หยิบ (claim) ก่อนเข้าฟอร์ม
       return (
         <SheetGate
           sheetId={sheetId}
-          expired={access.kind === "LOCK_EXPIRED"}
+          mode={
+            access.kind === "LOCK_EXPIRED"
+              ? "expired"
+              : access.reopen
+                ? "reopen"
+                : "fresh"
+          }
         />
       );
     case "OK":
@@ -71,9 +78,11 @@ export default async function EntrySheetPage({
   }
 
   // โหลดร่างที่ค้างไว้ (ถอดรหัสฝั่ง server หลังยืนยันเจ้าของ lock แล้ว)
-  const [master, initialDraft] = await Promise.all([
+  // + รายชื่อชุมชนให้เลือก เผื่อผู้คีย์เลือกผิดตอนเริ่มแล้วอยากเปลี่ยน (รหัสเดิมไม่เสีย)
+  const [master, initialDraft, communities] = await Promise.all([
     getEntryMasterData(access.sheet.communityId),
     loadDraftPayload(ctx, sheetId),
+    listSelectableCommunities(ctx),
   ]);
   const lockExpiry = access.sheet.lockExpiresAt ?? new Date();
 
@@ -82,8 +91,10 @@ export default async function EntrySheetPage({
       sheet={{
         id: access.sheet.id,
         sheetNo: access.sheet.sheetNo,
+        communityId: access.sheet.communityId,
         communityName: access.sheet.communityName,
       }}
+      communities={communities}
       master={master}
       lockExpiresAt={lockExpiry.toISOString()}
       initialRemainingMs={Math.max(0, lockExpiry.getTime() - Date.now())}

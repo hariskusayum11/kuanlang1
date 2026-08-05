@@ -6,17 +6,41 @@ import { useRouter } from "next/navigation";
 import { claimSheetAction } from "@/lib/entry/actions";
 import { Mascot } from "@/components/brand/mascot";
 
+type GateMode = "fresh" | "reopen" | "expired";
+
 type Props = {
   sheetId: string;
-  /** true = ล็อกเดิมของผู้ใช้หมดอายุ, false = ใบยังว่าง (PENDING) */
-  expired: boolean;
+  /** fresh = ใบว่างเริ่มคีย์ · reopen = ใบที่ตนคีย์แล้วกดกลับมาแก้ · expired = ล็อกเดิมหมดอายุ */
+  mode: GateMode;
+};
+
+// ถ้อยคำแยกตามบริบท — "แก้ไข" ไม่ใช่ "เริ่มคีย์" เมื่อเป็นใบที่คีย์ส่งไปแล้ว (Owner feedback)
+const GATE_COPY: Record<GateMode, { title: string; detail: string; cta: string }> = {
+  fresh: {
+    title: "พร้อมเริ่มคีย์ใบนี้",
+    detail: "ระบบจะจองใบนี้ให้คุณระหว่างคีย์ เพื่อป้องกันการคีย์ซ้ำซ้อนกับเจ้าหน้าที่ท่านอื่น",
+    cta: "เริ่มคีย์ใบนี้",
+  },
+  reopen: {
+    title: "เปิดใบนี้เพื่อแก้ไข",
+    detail:
+      "ใบนี้คุณคีย์ส่งไปแล้ว — เปิดกลับมาแก้ได้ทุกเมื่อ ระบบจะจองใบไว้ให้ระหว่างแก้ไข " +
+      "หากใบนี้เคยตรวจยืนยันแล้ว การแก้จะทำให้กลับไปรอตรวจใหม่อัตโนมัติ",
+    cta: "เปิดแก้ไข",
+  },
+  expired: {
+    title: "การจองใบหมดอายุ",
+    detail: "จองใบนี้อีกครั้งเพื่อคีย์ต่อ — หากมีผู้อื่นเปิดอยู่จะเปิดไม่ได้",
+    cta: "คีย์ใบนี้ต่อ",
+  },
 };
 
 /** หน้าประตูก่อนเข้าฟอร์ม — ต้องหยิบ (ล็อก) ใบก่อนคีย์เสมอ */
-export function SheetGate({ sheetId, expired }: Props) {
+export function SheetGate({ sheetId, mode }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const copy = GATE_COPY[mode];
 
   async function handleClaim() {
     setPending(true);
@@ -35,22 +59,18 @@ export function SheetGate({ sheetId, expired }: Props) {
       <div className="w-full max-w-md animate-rise rounded-3xl border-2 border-slate-200/80 bg-white p-8 text-center shadow-lg">
         <div className="animate-drop-in">
           <Mascot
-            role={expired ? "notify" : "entry"}
-            mood={expired ? "sleep" : "wink"}
-            tone={expired ? "sun" : undefined}
+            role={mode === "expired" ? "notify" : mode === "reopen" ? "verify" : "entry"}
+            mood={mode === "expired" ? "sleep" : "wink"}
+            tone={mode === "expired" ? "sun" : mode === "reopen" ? "mint" : undefined}
             motion="float"
             size={104}
             decorative
             className="mx-auto"
           />
         </div>
-        <h1 className="mt-4 text-xl font-bold text-slate-900">
-          {expired ? "การจองใบหมดอายุ" : "พร้อมเริ่มคีย์ใบนี้"}
-        </h1>
+        <h1 className="mt-4 text-xl font-bold text-slate-900">{copy.title}</h1>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
-          {expired
-            ? "จองใบนี้อีกครั้งเพื่อคีย์ต่อ — หากมีผู้อื่นเปิดอยู่จะเปิดไม่ได้"
-            : "ระบบจะจองใบนี้ให้คุณระหว่างคีย์ เพื่อป้องกันการคีย์ซ้ำซ้อนกับเจ้าหน้าที่ท่านอื่น"}
+          {copy.detail}
         </p>
         <div className="mt-7 flex justify-center gap-3">
           <button
@@ -59,7 +79,7 @@ export function SheetGate({ sheetId, expired }: Props) {
             disabled={pending}
             className="btn btn-accent btn-lg"
           >
-            {pending ? "กำลังเปิด…" : expired ? "คีย์ใบนี้ต่อ" : "เริ่มคีย์ใบนี้"}
+            {pending ? "กำลังเปิด…" : copy.cta}
           </button>
           <Link href="/surveys" className="btn btn-secondary btn-lg">
             กลับหน้าคีย์แบบสอบถาม

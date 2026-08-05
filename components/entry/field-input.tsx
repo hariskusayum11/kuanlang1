@@ -2,7 +2,14 @@
 
 import { EXPLICIT_NONE, type EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
-import { maskThaiDate, sanitizeIntString, sanitizePhone } from "@/lib/entry/input-format";
+import {
+  isoToThaiDate,
+  maskThaiDate,
+  sanitizeDecimal,
+  sanitizeIntString,
+  sanitizePhone,
+  thaiDateToISO,
+} from "@/lib/entry/input-format";
 import { parseThaiDate } from "@/lib/entry/payload";
 import {
   composeCoordinateText,
@@ -70,6 +77,11 @@ const OPTION_BASE =
 const OPTION_ON = "border-brand-500 bg-brand-50 font-bold text-brand-800";
 const OPTION_OFF = "border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40";
 
+// ปุ่ม +/- ของช่องจำนวน (ใช้ในช่องตัวเลขและช่องจำนวนคนของความต้องการช่วยเหลือ)
+// tabIndex=-1 เพื่อไม่ขวางลำดับ Tab ระหว่างช่อง — ผู้คีย์ยังพิมพ์ตัวเลขได้ตามปกติ
+const STEP_BTN =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 text-xl font-bold leading-none text-slate-600 transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent";
+
 export function FieldInput({
   field,
   master,
@@ -88,7 +100,9 @@ export function FieldInput({
   const isFieldAnswered =
     Boolean(mark) ||
     hasValue(value) ||
-    (field.pair ? Boolean(pairMark) || hasValue(pairValue) : false);
+    (field.pair ? Boolean(pairMark) || hasValue(pairValue) : false) ||
+    // ติ๊ก "ไม่มี/ไม่สะดวก" (exclusive) = ตอบแล้ว แม้ array ว่าง
+    (field.exclusiveNone ? extraValues?.[field.exclusiveNone.key] === true : false);
 
   // สถานะ F2/F3 ทำให้ input ดูเป็นเหลือง/เทา
   const markInput = markBorder(mark);
@@ -133,7 +147,7 @@ export function FieldInput({
               data-field-name={field.name}
               value={phone}
               onChange={(e) => onChange(sanitizePhone(e.target.value))}
-              className={`field max-w-52 ${markInput}`}
+              className={`field w-full ${markInput}`}
             />
             {short && (
               <p className="text-xs font-semibold text-sun-700">
@@ -236,7 +250,7 @@ export function FieldInput({
                   inputMode="decimal"
                   data-field-name={field.name}
                   value={latRaw}
-                  onChange={(e) => onChange(e.target.value)}
+                  onChange={(e) => onChange(sanitizeDecimal(e.target.value, 6))}
                   placeholder="7.820213"
                   className={`field w-40 font-mono ${markInput}`}
                 />
@@ -248,7 +262,7 @@ export function FieldInput({
                   inputMode="decimal"
                   data-field-name={field.pair?.name ?? `${field.name}-lng`}
                   value={lngRaw}
-                  onChange={(e) => onPairChange?.(e.target.value)}
+                  onChange={(e) => onPairChange?.(sanitizeDecimal(e.target.value, 6))}
                   placeholder="99.943592"
                   className={`field w-40 font-mono ${markBorder(pairMark ?? null)}`}
                 />
@@ -306,23 +320,47 @@ export function FieldInput({
       case "date": {
         const raw = typeof value === "string" ? value : "";
         const invalid = raw.length === 10 && parseThaiDate(raw) === null;
+        const isoValue = thaiDateToISO(raw); // "" ถ้ายังกรอกไม่ครบ/ไม่ถูกต้อง
         return (
           <div className="space-y-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)"
-              maxLength={10}
-              data-field-name={field.name}
-              value={raw}
-              onChange={(e) => onChange(maskThaiDate(e.target.value))}
-              className={`field max-w-72 ${markInput} ${invalid ? "!border-red-400 !bg-red-50" : ""}`}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)"
+                maxLength={10}
+                data-field-name={field.name}
+                value={raw}
+                onChange={(e) => onChange(maskThaiDate(e.target.value))}
+                className={`field w-44 ${markInput} ${invalid ? "!border-red-400 !bg-red-50" : ""}`}
+              />
+              <label
+                className="relative inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-2 border-slate-200 text-slate-500 transition-colors hover:border-brand-300 hover:bg-brand-50"
+                title="เลือกจากปฏิทิน"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+                  <rect x="4" y="5" width="16" height="16" rx="2" />
+                  <path d="M4 9h16M8 3v4M16 3v4" strokeLinecap="round" />
+                </svg>
+                {/* input[type=date] แสดงปฏิทิน ค.ศ. — แปลงเป็น พ.ศ. ตอนเลือก ให้เก็บรูปแบบเดียวกับที่พิมพ์ */}
+                <input
+                  type="date"
+                  value={isoValue}
+                  onChange={(e) => onChange(isoToThaiDate(e.target.value))}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  tabIndex={-1}
+                  aria-label="เลือกวันที่สำรวจจากปฏิทิน"
+                />
+              </label>
+            </div>
             {invalid && (
               <p className="text-xs text-red-600">
                 วันที่ไม่ถูกต้อง — ตรวจรูปแบบ วว/ดด/ปปปป (พ.ศ. ตามกระดาษ)
               </p>
             )}
+            <p className="text-xs text-slate-500">
+              พิมพ์ตามกระดาษ (พ.ศ.) หรือกดปฏิทินเพื่อเลือก — ระบบเก็บเป็น พ.ศ. เสมอ
+            </p>
           </div>
         );
       }
@@ -343,7 +381,7 @@ export function FieldInput({
             data-field-name={field.name}
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value)}
-            className={`field max-w-52 ${markInput}`}
+            className={`field w-full ${markInput}`}
           >
             {/* มี explicitNone: ช่องว่าง = "ยังไม่เลือก" · "ไม่ระบุ" เป็นตัวเลือกที่นับว่าตอบแล้ว */}
             <option value="">{field.explicitNone ? "— เลือก —" : "— ไม่ระบุ —"}</option>
@@ -389,32 +427,71 @@ export function FieldInput({
       case "checkbox-group": {
         const options = optionsOf(field, master);
         const selected = Array.isArray(value) ? (value as string[]) : [];
+        // ตัวเลือก "ไม่มี/ไม่สะดวก" แบบ exclusive (ถ้ามี) — อยู่หัวกลุ่ม ติ๊กแล้วปิดตัวอื่น
+        const none = field.exclusiveNone;
+        const noneOn = none ? extraValues?.[none.key] === true : false;
+        const checkBox = (on: boolean, accent: "brand" | "slate") => (
+          <span
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+              on
+                ? accent === "slate"
+                  ? "border-slate-500 bg-slate-500 text-white"
+                  : "border-brand-500 bg-brand-500 text-white"
+                : "border-slate-300"
+            }`}
+          >
+            {on && (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" className="h-3 w-3">
+                <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </span>
+        );
         return (
           <div data-field-name={field.name} tabIndex={-1} className="flex flex-wrap gap-2 outline-none">
+            {none && (
+              <label
+                className={`${OPTION_BASE} ${
+                  noneOn ? "border-slate-400 bg-slate-100 font-bold text-slate-700" : optOff
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  data-field-name={field.name}
+                  checked={noneOn}
+                  onChange={() => {
+                    const next = !noneOn;
+                    onExtraChange?.(none.key, next);
+                    if (next) onChange([]); // ยืนยัน "ไม่มี" → ล้างตัวเลือกอื่นทั้งหมด
+                  }}
+                  className="sr-only"
+                />
+                {checkBox(noneOn, "slate")}
+                {none.label}
+              </label>
+            )}
             {options.map((o) => {
               const on = selected.includes(o.value);
               return (
-                <label key={o.value} className={`${OPTION_BASE} ${on ? OPTION_ON : optOff}`}>
+                <label
+                  key={o.value}
+                  className={`${OPTION_BASE} ${on ? OPTION_ON : optOff} ${
+                    noneOn ? "pointer-events-none opacity-40" : ""
+                  }`}
+                >
                   <input
                     type="checkbox"
                     data-field-name={field.name}
                     checked={on}
-                    onChange={() =>
-                      onChange(on ? selected.filter((v) => v !== o.value) : [...selected, o.value])
-                    }
+                    disabled={noneOn}
+                    onChange={() => {
+                      // ติ๊กตัวเลือกจริง → ยกเลิก "ไม่มี" อัตโนมัติ (กันสถานะขัดกัน)
+                      if (none && noneOn) onExtraChange?.(none.key, false);
+                      onChange(on ? selected.filter((v) => v !== o.value) : [...selected, o.value]);
+                    }}
                     className="sr-only"
                   />
-                  <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-md border-2 ${
-                      on ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300"
-                    }`}
-                  >
-                    {on && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" className="h-3 w-3">
-                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </span>
+                  {checkBox(on, "brand")}
                   {o.label}
                 </label>
               );
@@ -483,27 +560,63 @@ export function FieldInput({
 
                   {(needCount || needDetail) && (
                     <div className="flex flex-wrap items-end gap-3 px-3 pb-3 animate-fade-in">
-                      {needCount && (
-                        <label className="space-y-1">
-                          <span className="block text-xs font-bold text-slate-600">
-                            จำนวน (คน) <span className="text-red-500">*</span>
-                          </span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={counts[o.id] ?? ""}
-                            onChange={(e) =>
-                              patch(
-                                "assistanceNeedCounts",
-                                counts,
-                                o.id,
-                                sanitizeIntString(e.target.value, 5000),
-                              )
-                            }
-                            className={`field w-28 ${missCount ? "!border-red-400 !bg-red-50" : ""}`}
-                          />
-                        </label>
-                      )}
+                      {needCount &&
+                        (() => {
+                          const cur = counts[o.id] ?? "";
+                          const n = cur === "" ? null : Number(cur);
+                          const atMin = n == null || !Number.isFinite(n) || n <= 0;
+                          const atMax = n != null && Number.isFinite(n) && n >= 5000;
+                          const bump = (d: number) => {
+                            const base = n != null && Number.isFinite(n) ? n : 0;
+                            let nx = base + d;
+                            if (nx < 0) nx = 0;
+                            if (nx > 5000) nx = 5000;
+                            patch("assistanceNeedCounts", counts, o.id, String(nx));
+                          };
+                          return (
+                            <label className="space-y-1">
+                              <span className="block text-xs font-bold text-slate-600">
+                                จำนวน (คน) <span className="text-red-500">*</span>
+                              </span>
+                              <div className="inline-flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  aria-label="ลดลง 1"
+                                  disabled={atMin}
+                                  onClick={() => bump(-1)}
+                                  className={STEP_BTN}
+                                >
+                                  −
+                                </button>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={cur}
+                                  onChange={(e) =>
+                                    patch(
+                                      "assistanceNeedCounts",
+                                      counts,
+                                      o.id,
+                                      sanitizeIntString(e.target.value, 5000),
+                                    )
+                                  }
+                                  className={`field w-20 text-center ${missCount ? "!border-red-400 !bg-red-50" : ""}`}
+                                />
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  aria-label="เพิ่มขึ้น 1"
+                                  disabled={atMax}
+                                  onClick={() => bump(1)}
+                                  className={STEP_BTN}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </label>
+                          );
+                        })()}
                       {needDetail && (
                         <label className="min-w-[200px] flex-1 space-y-1">
                           <span className="block text-xs font-bold text-slate-600">
@@ -583,20 +696,19 @@ export function FieldInput({
 
   return (
     <div
-      className={`space-y-2 ${
+      className={`space-y-1 ${
         flagged ? "-mx-3 rounded-xl border-2 border-red-300 bg-red-50/40 px-3 py-2" : ""
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-[15px] font-bold text-slate-800">{field.label}</label>
-        {/* ทุกช่องต้องถูกตอบ — ป้ายนี้จึงขึ้นกับ "ทุกช่องที่ยังว่างและยังไม่ถูกมาร์ก"
-            สีเทาระหว่างคีย์ (เป็นเช็คลิสต์) และเปลี่ยนเป็นเหลืองเมื่อกดส่งแล้วยังไม่ครบ */}
-        {!isFieldAnswered &&
-          (missingKeys?.has(field.name) ? (
-            <span className="badge badge-warning">ยังไม่ได้ตอบ</span>
-          ) : (
-            <span className="badge badge-neutral">ยังไม่ได้ตอบ</span>
-          ))}
+      {/* หัวข้อชิดกับช่องกรอก — คำถามป้ายยาวถูกตั้ง fullWidth ให้อยู่แถวเดียวลำพังแล้ว
+          จึงไม่ต้องสำรองความสูง 2 บรรทัดซึ่งทำให้ label ห่างช่องกรอกเกินไป (Owner feedback) */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <label className="text-[15px] font-bold leading-snug text-slate-800">{field.label}</label>
+        {/* ป้าย "ยังไม่ได้ตอบ" ขึ้นเฉพาะหลังกดส่งแล้วยังไม่ครบ — ระหว่างคีย์ไม่ขึ้น
+            เพื่อไม่ให้จอรก และไม่ให้ป้ายดันความสูงของแต่ละช่องจนแถวเลื่อนไม่ตรงกัน */}
+        {!isFieldAnswered && missingKeys?.has(field.name) && (
+          <span className="badge badge-warning">ยังไม่ได้ตอบ</span>
+        )}
         {field.critical && (
           <span
             title="ฟิลด์สำคัญ — ผู้ตรวจจะเทียบกับกระดาษอย่างละเอียด คีย์ให้ตรงตามตัวอักษร"
