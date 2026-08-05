@@ -31,6 +31,9 @@ const ICONS: Record<string, React.ReactNode> = {
   "/verification": (
     <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4" />
   ),
+  "/admin": (
+    <path d="M9 11a3 3 0 100-6 3 3 0 000 6zM3 20v-1c0-2.5 2.7-4 6-4s6 1.5 6 4v1M17 11l1.5 1.5L22 9" />
+  ),
   "/reports": (
     <path d="M5 21V5a1 1 0 011-1h9l4 4v13a1 1 0 01-1 1H6a1 1 0 01-1-1zM8 13v4M12 10v7M16 14v3" />
   ),
@@ -61,7 +64,7 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const nav = (
-    <nav className="flex-1 space-y-0.5 px-3 py-4">
+    <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
       {items.map((item) => {
         const active = pathname.startsWith(item.href);
         if (item.implemented) {
@@ -139,7 +142,7 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col band-ink transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col band-ink transition-transform duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

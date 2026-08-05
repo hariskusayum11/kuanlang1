@@ -9,8 +9,10 @@ import {
 
 // Public Home — เปิดได้โดยไม่ login (CLAUDE.md: Public Portal mobile-first)
 // แสดงเฉพาะ aggregate + ข้อมูลราชการ — ไม่มี PII / พิกัดรายบ้าน / Sheet ID
-// ISR 5 นาที: โหลดเร็วแม้เครือข่ายช้า และไม่ยิง DB ทุก request
-export const revalidate = 300;
+// Render ตอน request (force-dynamic): ไม่ prerender ตอน build จึง build เป็น Docker image
+// ได้โดยไม่ต้องต่อ DB · และตัวเลขสาธารณะสดเสมอ (query เป็น aggregate เล็ก ๆ เร็วพออยู่แล้ว)
+// หมายเหตุ: ถ้าต้องการแคชเพื่อลดภาระ DB ตอน scale ค่อยเปลี่ยนกลับเป็น ISR (revalidate)
+export const dynamic = "force-dynamic";
 
 const CATEGORY_LABEL: Record<string, string> = {
   DISASTER: "ป้องกันและบรรเทาสาธารณภัย",

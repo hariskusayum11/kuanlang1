@@ -22,7 +22,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th" className={ibmThai.variable}>
-      <body className="min-h-screen antialiased">{children}</body>
+      {/* suppressHydrationWarning: ส่วนขยายเบราว์เซอร์ (เช่น Grammarly) เติม data-gr-* ลง body
+          หลัง SSR ทำให้ attribute ฝั่ง client ไม่ตรง server — ไม่ใช่บั๊กแอป ปิด warning เฉพาะจุดนี้ */}
+      <body className="min-h-screen antialiased" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

@@ -24,7 +24,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "ครัวเรือน",
     href: "/households",
     permission: PERMISSIONS.HOUSEHOLD_VIEW,
-    implemented: false,
+    implemented: true,
   },
   {
     label: "แบบสอบถาม",
@@ -39,20 +39,29 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: true,
   },
   {
-    label: "รายงาน",
-    href: "/reports",
-    permission: PERMISSIONS.REPORT_VIEW,
-    implemented: false,
-  },
-  {
-    label: "คำขอลงทะเบียน",
-    href: "/admin/registrations",
-    permission: PERMISSIONS.REGISTRATION_MANAGE,
+    label: "ความเสี่ยง",
+    href: "/risk",
+    permission: PERMISSIONS.HOUSEHOLD_VIEW,
     implemented: true,
   },
   {
-    label: "ผู้ใช้และบทบาท",
-    href: "/admin/users",
+    label: "แผนที่การสำรวจ",
+    href: "/map",
+    permission: PERMISSIONS.HOUSEHOLD_VIEW,
+    implemented: true,
+  },
+  {
+    label: "รายงาน",
+    href: "/reports",
+    permission: PERMISSIONS.REPORT_VIEW,
+    implemented: true,
+  },
+  // เมนูเดียวรวมงานผู้ดูแล — ผู้ใช้/บทบาท + คำขอลงทะเบียน (Owner request 2026-08-04)
+  // เฉพาะ ADMIN เท่านั้นที่มีทั้ง user.manage และ registration.manage
+  // href ชี้กลุ่ม /admin (redirect → /admin/users) แล้วสลับหน้าในกลุ่มด้วยแท็บ
+  {
+    label: "จัดการผู้ใช้งาน",
+    href: "/admin",
     permission: PERMISSIONS.USER_MANAGE,
     implemented: true,
   },

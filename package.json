@@ -18,7 +18,8 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed:dev": "tsx prisma/seed.dev.ts"
+    "db:seed:dev": "tsx prisma/seed.dev.ts",
+    "admin:create": "tsx scripts/create-admin.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -26,6 +27,7 @@
   "dependencies": {
     "@prisma/client": "5.22.0",
     "better-auth": "1.6.23",
+    "leaflet": "^1.9.4",
     "next": "^16.2.11",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "20.17.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

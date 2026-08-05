@@ -217,22 +217,25 @@ describe("visibleNavItems", () => {
     expect(implemented.map((i) => i.href)).toEqual([
       "/dashboard",
       "/communities",
+      "/households",
       "/surveys",
       "/verification",
-      "/admin/registrations",
-      "/admin/users",
+      "/risk",
+      "/map",
+      "/reports",
+      "/admin",
     ]);
   });
 
-  it("หน้าจัดการผู้ใช้ต้องใช้สิทธิ์ user.manage เท่านั้น", () => {
-    const item = NAV_ITEMS.find((i) => i.href === "/admin/users");
+  it("เมนูจัดการผู้ใช้งาน (รวม) ต้องใช้สิทธิ์ user.manage เท่านั้น", () => {
+    const item = NAV_ITEMS.find((i) => i.href === "/admin");
     expect(item?.permission).toBe(PERMISSIONS.USER_MANAGE);
     // VERIFIER/DATA_ENTRY ต้องไม่เห็นเมนูนี้
     expect(
       visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.VERIFIER]).map((i) => i.href),
-    ).not.toContain("/admin/users");
+    ).not.toContain("/admin");
     expect(
       visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.DATA_ENTRY]).map((i) => i.href),
-    ).not.toContain("/admin/users");
+    ).not.toContain("/admin");
   });
 });
