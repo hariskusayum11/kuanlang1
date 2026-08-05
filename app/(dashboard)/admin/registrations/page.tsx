@@ -6,6 +6,7 @@ import {
 } from "@/lib/registration/core";
 import { REQUESTABLE_ROLE_LABELS } from "@/lib/registration/validation";
 import { RegistrationDecideButtons } from "@/components/admin/registration-queue";
+import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "คำขอลงทะเบียน" };
@@ -37,9 +38,9 @@ export default async function RegistrationsPage() {
   const decided = data?.decided ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-7 animate-fade-in">
+    <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
       <PageHero
-        title="คำขอลงทะเบียน"
+        title="จัดการผู้ใช้งาน"
         tone="ink"
         description="ตรวจสอบและอนุมัติผู้ขอใช้งานระบบ — บัญชีจะเข้าสู่ระบบได้เมื่ออนุมัติแล้วเท่านั้น"
         badge={
@@ -49,6 +50,8 @@ export default async function RegistrationsPage() {
           </>
         }
       />
+
+      <AdminTabs />
 
       {/* คิวรอตรวจ */}
       <section className="card overflow-hidden">

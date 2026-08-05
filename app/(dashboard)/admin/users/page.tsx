@@ -15,6 +15,7 @@ import {
 } from "@/domain/admin/account-status";
 import { UserRoleEditor } from "@/components/admin/user-role-editor";
 import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
+import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ผู้ใช้และบทบาท" };
@@ -27,9 +28,9 @@ export default async function AdminUsersPage() {
   const activeCount = users.filter((u) => u.isActive).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-7 animate-fade-in">
+    <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
       <PageHero
-        title="ผู้ใช้และบทบาท"
+        title="จัดการผู้ใช้งาน"
         tone="ink"
         description="กำหนดบทบาทให้ผู้ใช้ในระบบ — ทุกการเปลี่ยนแปลงถูกบันทึก Audit Log พร้อมค่าก่อน/หลัง"
         badge={
@@ -39,6 +40,8 @@ export default async function AdminUsersPage() {
           </>
         }
       />
+
+      <AdminTabs />
 
       <section className="card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
@@ -62,13 +65,12 @@ export default async function AdminUsersPage() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
                   <th className="py-3 pl-6 pr-4">ผู้ใช้</th>
                   <th className="py-3 pr-4">สถานะบัญชี</th>
                   <th className="py-3 pr-4">บทบาท</th>
-                  <th className="py-3 pr-4">ชุมชนในสิทธิ์</th>
                   <th className="py-3 pr-4">เข้าใช้ล่าสุด</th>
                   <th className="py-3 pr-6 text-right">จัดการ</th>
                 </tr>
@@ -106,15 +108,6 @@ export default async function AdminUsersPage() {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 pr-4 text-xs text-slate-600">
-                        {u.hasGlobalCommunityScope ? (
-                          <span className="badge badge-accent">ทุกชุมชน</span>
-                        ) : u.communityNames.length === 0 ? (
-                          <span className="badge badge-warning">ยังไม่ได้ผูกชุมชน</span>
-                        ) : (
-                          u.communityNames.join(", ")
-                        )}
-                      </td>
                       <td className="py-3 pr-4 text-xs tabular-nums text-slate-500">
                         {u.lastLoginAt
                           ? u.lastLoginAt.toLocaleString("th-TH", {
@@ -129,7 +122,6 @@ export default async function AdminUsersPage() {
                           userId={u.id}
                           userName={u.name}
                           currentRoles={u.roles}
-                          currentGlobalScope={u.hasGlobalCommunityScope}
                           activeRoles={[...ACTIVE_ROLES]}
                           reservedRoles={[...RESERVED_ROLES]}
                           legacyRoles={[...LEGACY_ROLES]}

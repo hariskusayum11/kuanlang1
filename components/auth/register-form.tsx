@@ -11,26 +11,24 @@ import {
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 import { Mascot } from "@/components/brand/mascot";
 
-interface CommunityOption {
-  id: string;
-  nameTh: string;
-}
-
 const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
   EMAIL_TAKEN: "อีเมลนี้ถูกใช้งานแล้ว — หากเป็นอีเมลของคุณ กรุณาติดต่อผู้ดูแลระบบ",
   INVALID_COMMUNITY: "ชุมชนที่เลือกไม่ถูกต้อง กรุณาเลือกใหม่",
   RATE_LIMITED: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่",
 };
 
-export function RegisterForm({ communities }: { communities: CommunityOption[] }) {
+// ไม่ถามชุมชนตอนสมัครแล้ว (Owner Decision 2026-08-03 #R7-B: Community Scope ถูกยกเลิก
+// ทั้งระบบ — ทุกบัญชีเห็นทุกชุมชน) การถามชุมชนที่นี่จะสื่อผิดว่ายังจำกัดสิทธิ์ตามชุมชน
+// ช่อง "หน่วยงาน/สังกัด" (อิสระ) ครอบคลุมข้อมูลสังกัดที่แอดมินอยากรู้อยู่แล้ว
+export function RegisterForm() {
   const [form, setForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     confirmPassword: "",
     phone: "",
     requestedRole: "",
-    communityId: "",
     organization: "",
     note: "",
   });
@@ -95,36 +93,52 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <label htmlFor="reg-name" className="label">
-            ชื่อ-นามสกุล <span className="text-red-500">*</span>
+          <label htmlFor="reg-firstname" className="label">
+            ชื่อ <span className="text-red-500">*</span>
           </label>
           <input
-            id="reg-name"
+            id="reg-firstname"
             type="text"
-            autoComplete="name"
+            autoComplete="given-name"
             required
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
+            value={form.firstName}
+            onChange={(e) => set("firstName", e.target.value)}
             disabled={submitting}
             className="field disabled:bg-slate-50"
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="reg-email" className="label">
-            อีเมล <span className="text-red-500">*</span>
+          <label htmlFor="reg-lastname" className="label">
+            นามสกุล <span className="text-red-500">*</span>
           </label>
           <input
-            id="reg-email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
+            id="reg-lastname"
+            type="text"
+            autoComplete="family-name"
             required
-            value={form.email}
-            onChange={(e) => set("email", e.target.value)}
+            value={form.lastName}
+            onChange={(e) => set("lastName", e.target.value)}
             disabled={submitting}
             className="field disabled:bg-slate-50"
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="reg-email" className="label">
+          อีเมล <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="reg-email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          required
+          value={form.email}
+          onChange={(e) => set("email", e.target.value)}
+          disabled={submitting}
+          className="field disabled:bg-slate-50"
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -184,56 +198,38 @@ export function RegisterForm({ communities }: { communities: CommunityOption[] }
           </select>
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="reg-community" className="label">
-            ชุมชนที่ทำงานด้วย
-          </label>
-          <select
-            id="reg-community"
-            value={form.communityId}
-            onChange={(e) => set("communityId", e.target.value)}
-            disabled={submitting}
-            className="field disabled:bg-slate-50"
-          >
-            <option value="">— ไม่ระบุ —</option>
-            {communities.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nameTh}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
           <label htmlFor="reg-phone" className="label">
             เบอร์โทรศัพท์
           </label>
           <input
             id="reg-phone"
             type="tel"
+            inputMode="numeric"
             autoComplete="tel"
-            placeholder="08x-xxx-xxxx"
+            placeholder="0812345678"
+            maxLength={10}
             value={form.phone}
-            onChange={(e) => set("phone", e.target.value)}
+            // รับเฉพาะตัวเลข ตัดอักขระอื่นทิ้ง จำกัด 10 หลัก
+            onChange={(e) => set("phone", e.target.value.replace(/\D/g, "").slice(0, 10))}
             disabled={submitting}
             className="field disabled:bg-slate-50"
           />
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor="reg-org" className="label">
-            หน่วยงาน/สังกัด
-          </label>
-          <input
-            id="reg-org"
-            type="text"
-            placeholder="เช่น เทศบาล, ม.ทักษิณ, ชุมชน"
-            value={form.organization}
-            onChange={(e) => set("organization", e.target.value)}
-            disabled={submitting}
-            className="field disabled:bg-slate-50"
-          />
-        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="reg-org" className="label">
+          หน่วยงาน/สังกัด
+        </label>
+        <input
+          id="reg-org"
+          type="text"
+          placeholder="เช่น เทศบาล, ม.ทักษิณ, ชุมชนท่าเคียน"
+          value={form.organization}
+          onChange={(e) => set("organization", e.target.value)}
+          disabled={submitting}
+          className="field disabled:bg-slate-50"
+        />
       </div>
 
       <div className="space-y-1.5">

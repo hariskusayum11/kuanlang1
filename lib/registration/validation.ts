@@ -43,18 +43,23 @@ export const registrationSchema = z.object({
     .string()
     .min(8, "รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร")
     .max(128, "รหัสผ่านยาวเกินไป"),
-  name: z
+  firstName: z
     .string()
     .trim()
-    .min(2, "กรุณากรอกชื่อ-นามสกุล")
-    .max(200),
+    .min(1, "กรุณากรอกชื่อ")
+    .max(100, "ชื่อยาวเกินไป"),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, "กรุณากรอกนามสกุล")
+    .max(100, "นามสกุลยาวเกินไป"),
+  // เบอร์โทร: เลข 10 หลักพอ (มือถือไทย) — ตัดขีด/เว้นวรรคออก เก็บเฉพาะตัวเลข
   phone: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z
       .string()
       .trim()
-      .max(20)
-      .regex(/^[0-9+\- ]+$/, "เบอร์โทรไม่ถูกต้อง")
+      .regex(/^[0-9]{10}$/, "เบอร์โทรต้องเป็นตัวเลข 10 หลัก")
       .optional(),
   ),
   requestedRole: z

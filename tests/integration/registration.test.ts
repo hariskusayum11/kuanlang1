@@ -41,7 +41,8 @@ function makeInput(
   return {
     email,
     password: PASSWORD,
-    name: `Reg Fixture ${email}`,
+    firstName: "Reg",
+    lastName: `Fixture ${email}`,
     phone: undefined,
     requestedRole: UserRoleEnum.DATA_ENTRY,
     communityId: undefined,

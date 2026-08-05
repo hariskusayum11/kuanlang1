@@ -43,10 +43,12 @@ export async function submitRegistration(
   if (existing) return { ok: false, reason: "EMAIL_TAKEN" };
 
   // ให้ Better Auth hash password เอง — ระบบไม่เคยเก็บ/เห็น plaintext
+  // เก็บชื่อเต็มใน User.name (ชื่อ + สกุล) — บัญชีเจ้าหน้าที่ไม่ใช้คำนำหน้า
+  const fullName = `${input.firstName} ${input.lastName}`.trim();
   let userId: string;
   try {
     const result = await auth.api.signUpEmail({
-      body: { email: input.email, password: input.password, name: input.name },
+      body: { email: input.email, password: input.password, name: fullName },
     });
     userId = result.user.id;
   } catch {

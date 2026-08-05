@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActiveSessionUser } from "@/lib/auth-session";
 import { APP_NAME } from "@/lib/app-config";
-import { prisma } from "@/lib/prisma";
 import { RegisterForm } from "@/components/auth/register-form";
 import { Mascot } from "@/components/brand/mascot";
 
@@ -13,13 +12,6 @@ export default async function RegisterPage() {
   // Login แล้ว → ไม่ต้องสมัครอีก
   const user = await getActiveSessionUser();
   if (user) redirect("/dashboard");
-
-  // รายชื่อชุมชน (ข้อมูลสาธารณะ — แสดงบน public home อยู่แล้ว)
-  const communities = await prisma.community.findMany({
-    where: { deletedAt: null, isActive: true },
-    orderBy: { nameTh: "asc" },
-    select: { id: true, nameTh: true },
-  });
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden band-ink px-4 py-6">
@@ -41,7 +33,7 @@ export default async function RegisterPage() {
         }}
       />
 
-      {/* ฟอร์มนี้มี 9 ช่อง จึงยาวกว่าหน้า Login — จอกว้างแยกเป็นสองคอลัมน์
+      {/* ฟอร์มนี้ยาวกว่าหน้า Login — จอกว้างแยกเป็นสองคอลัมน์
           และตรึงบล็อกแบรนด์ไว้ (sticky) เพื่อให้ฟอร์มเริ่มที่ด้านบนจอเสมอ */}
       <div className="relative w-full max-w-5xl animate-rise">
         <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-14">
@@ -91,10 +83,10 @@ export default async function RegisterPage() {
             <div className="mb-6">
               <h2 className="text-xl font-bold text-slate-900">ลงทะเบียนใช้งาน</h2>
               <p className="mt-1 text-sm text-slate-500">
-                สำหรับอาสาสมัคร ผู้สำรวจ และเจ้าหน้าที่คีย์ข้อมูลในโครงการ
+                สำหรับอาสาสมัครและเจ้าหน้าที่คีย์ข้อมูลในโครงการ
               </p>
             </div>
-            <RegisterForm communities={communities} />
+            <RegisterForm />
           </div>
         </div>
 

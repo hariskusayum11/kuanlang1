@@ -14,8 +14,9 @@ import {
 const VALID_INPUT = {
   email: "somchai@example.com",
   password: "correct-horse-8",
-  name: "สมชาย ใจดี",
-  phone: "081-234-5678",
+  firstName: "สมชาย",
+  lastName: "ใจดี",
+  phone: "0812345678",
   requestedRole: UserRoleEnum.DATA_ENTRY,
   communityId: "",
   organization: "เทศบาลเมืองควนลัง",
@@ -75,15 +76,19 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     expect(
       registrationSchema.safeParse({ ...VALID_INPUT, email: "not-an-email" }).success,
     ).toBe(false);
-    expect(registrationSchema.safeParse({ ...VALID_INPUT, name: "ก" }).success).toBe(
-      false,
-    );
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, firstName: "" }).success,
+    ).toBe(false);
+    expect(
+      registrationSchema.safeParse({ ...VALID_INPUT, lastName: "" }).success,
+    ).toBe(false);
   });
 
-  it("เบอร์โทรรับเฉพาะตัวเลข/+/-/เว้นวรรค — ตัวอักษรถูกปฏิเสธ, ค่าว่างถือว่าไม่กรอก", () => {
-    expect(
-      registrationSchema.safeParse({ ...VALID_INPUT, phone: "โทรหาผม" }).success,
-    ).toBe(false);
+  it("เบอร์โทรต้องเป็นตัวเลข 10 หลัก — ตัวอักษร/รูปแบบมีขีด/สั้นเกินถูกปฏิเสธ, ค่าว่าง = ไม่กรอก", () => {
+    expect(registrationSchema.safeParse({ ...VALID_INPUT, phone: "โทรหาผม" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...VALID_INPUT, phone: "081-234-5678" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...VALID_INPUT, phone: "12345" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...VALID_INPUT, phone: "0812345678" }).success).toBe(true);
     const parsed = registrationSchema.parse({ ...VALID_INPUT, phone: "  " });
     expect(parsed.phone).toBeUndefined();
   });
