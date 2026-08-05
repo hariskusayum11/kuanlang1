@@ -43,17 +43,17 @@ const BAR: Record<Tone, string> = {
 
 const CARD_TONE: Record<keyof DashboardCounts, Tone> = {
   communities: "brand",
-  tambons: "ink",
-  moos: "brand",
-  households: "mint",
-  evacuationSites: "alert",
+  keyed: "brand",
+  verified: "mint",
+  pending: "sun",
+  keyers: "ink",
 };
 const CARD_ICON: Record<keyof DashboardCounts, string> = {
   communities: "M3 21h18M6 21V8l6-4 6 4v13M10 21v-5h4v5",
-  tambons: "M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
-  moos: "M4 21V9l8-5 8 5v12M9 21v-6h6v6",
-  households: "M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4",
-  evacuationSites: "M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11zM12 11h.01",
+  keyed: "M4 7h16M4 12h16M4 17h10", // รายการที่คีย์
+  verified: "M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4", // โล่ + ติ๊ก
+  pending: "M12 8v4l3 2M12 3a9 9 0 100 18 9 9 0 000-18z", // นาฬิกา = รอ
+  keyers: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 7a3 3 0 100 6 3 3 0 000-6zM22 21v-2a4 4 0 00-3-3.87", // ผู้คน
 };
 
 export default async function DashboardPage() {
@@ -93,10 +93,10 @@ export default async function DashboardPage() {
 
       {/* สถิติหลัก */}
       <section>
-        <SectionTitle tone="brand" title="ตัวเลขพื้นฐานพื้นที่" />
+        <SectionTitle tone="brand" title="สรุปการดำเนินงาน" />
         <div className="stagger mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
           {cards.map((card) => {
-            const muted = card.pending && card.value === 0;
+            const muted = card.value === 0;
             const tone = CARD_TONE[card.key];
             return (
               <div key={card.key} className="card card-interactive p-5">
@@ -113,16 +113,13 @@ export default async function DashboardPage() {
                 >
                   {card.value.toLocaleString("th-TH")}
                 </p>
-                {card.pending && (
-                  <span className="badge badge-neutral mt-2">อยู่ระหว่างพัฒนา</span>
-                )}
               </div>
             );
           })}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          ครัวเรือนนับจากใบที่คีย์เข้าระบบแล้ว (ดูความครอบคลุมด้านล่าง) —
-          โมดูลจุดอพยพยังอยู่ระหว่างพัฒนา
+          &quot;คีย์แล้ว&quot; นับทุกใบที่คีย์เข้าระบบ · &quot;ตรวจแล้ว&quot; นับเฉพาะ VERIFIED ·
+          &quot;รอตรวจ&quot; คือใบที่คีย์เสร็จแต่ยังไม่ผ่านการตรวจ (ดูความครอบคลุมด้านล่าง)
         </p>
       </section>
 
@@ -222,7 +219,7 @@ export default async function DashboardPage() {
           <StatusRow label="ฐานข้อมูล" value="พร้อมใช้งาน" tone="success" />
           <StatusRow label="Migration" value={`${APPLIED_MIGRATION_COUNT} ชุด`} tone="neutral" />
           <StatusRow label="Database constraints" value="ผ่าน" tone="success" />
-          <StatusRow label="โมดูลสำรวจครัวเรือน" value="กำลังพัฒนา" tone="muted" />
+          <StatusRow label="โมดูลคีย์ + ตรวจข้อมูล" value="พร้อมใช้งาน" tone="success" />
         </dl>
       </section>
     </div>

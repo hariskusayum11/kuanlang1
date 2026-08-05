@@ -29,29 +29,22 @@ describe("Login validation (loginSchema)", () => {
 describe("Dashboard stats mapping (toStatCards)", () => {
   const counts: DashboardCounts = {
     communities: 5,
-    tambons: 2,
-    moos: 5,
-    households: 0,
-    evacuationSites: 0,
+    keyed: 40,
+    verified: 18,
+    pending: 22,
+    keyers: 3,
   };
 
-  it("map ครบ 5 การ์ด ตามลำดับ และค่าตรง", () => {
+  it("map ครบ 5 การ์ด ตามลำดับ flow งาน และค่าตรง", () => {
     const cards = toStatCards(counts);
     expect(cards.map((c) => c.key)).toEqual([
       "communities",
-      "tambons",
-      "moos",
-      "households",
-      "evacuationSites",
+      "keyed",
+      "verified",
+      "pending",
+      "keyers",
     ]);
-    expect(cards.map((c) => c.value)).toEqual([5, 2, 5, 0, 0]);
-  });
-
-  it("ครัวเรือนเปิดใช้แล้ว (ไม่ pending) · จุดอพยพยังไม่เปิด (pending)", () => {
-    const cards = toStatCards(counts);
-    expect(cards.find((c) => c.key === "households")?.pending).toBe(false);
-    expect(cards.find((c) => c.key === "evacuationSites")?.pending).toBe(true);
-    expect(cards.find((c) => c.key === "communities")?.pending).toBe(false);
+    expect(cards.map((c) => c.value)).toEqual([5, 40, 18, 22, 3]);
   });
 });
 
