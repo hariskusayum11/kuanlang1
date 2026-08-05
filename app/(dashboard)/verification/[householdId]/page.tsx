@@ -38,7 +38,10 @@ function FieldRow({ field }: { field: ReviewField }) {
           </svg>
         )}
       </dt>
-      <dd className="text-right text-sm font-semibold text-slate-900">
+      <dd className="flex items-center gap-2 text-right text-sm font-semibold text-slate-900">
+        {/* ป้าย F2/F3 ของช่อง (ถ้ามี) — ให้ผู้ตรวจเห็นทันทีว่าช่องไหนกระดาษอ่านไม่ออก/ว่าง
+            จะได้เพ่งเทียบกับกระดาษตรงจุดนั้นก่อน */}
+        {field.status && <StatusBadge status={field.status} />}
         {field.value != null && field.value !== "" ? (
           field.value
         ) : (

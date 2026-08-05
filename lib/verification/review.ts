@@ -167,7 +167,7 @@ export async function loadHouseholdForReview(
         },
         { label: "เบอร์โทรผู้ให้ข้อมูล", value: safeDecrypt(h.respondentPhone), sensitive: true },
         { label: "บ้านเลขที่", value: h.houseNo },
-        { label: "หมู่", value: h.moo ? `หมู่ ${h.moo.number}` : null },
+        { label: "หมู่", value: h.mooNo != null ? `หมู่ ${h.mooNo}` : h.moo ? `หมู่ ${h.moo.number}` : null },
         { label: "ซอย", value: h.soi },
         { label: "ถนน", value: h.road },
         { label: "ตำบล", value: h.tambon?.nameTh ?? null },

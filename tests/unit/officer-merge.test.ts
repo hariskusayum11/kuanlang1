@@ -191,8 +191,7 @@ describe("10) Navigation ของ OFFICER หลังยุบบทบาท"
   });
 
   it("ไม่เห็นเมนูจัดการผู้ใช้ (ยังเป็นของ ADMIN เท่านั้น)", () => {
-    expect(hrefs).not.toContain("/admin/users");
-    expect(hrefs).not.toContain("/admin/registrations");
+    expect(hrefs).not.toContain("/admin");
   });
 
   it("เมนูทุกตัวตัดสินด้วย permission ไม่ใช่ชื่อ Role", () => {

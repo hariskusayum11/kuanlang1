@@ -38,7 +38,7 @@ export default async function VerificationPage({
       <PageHero
         title="การตรวจสอบข้อมูล"
         tone="brand"
-        description={`ตรวจความถูกต้องของใบที่คีย์แล้วเทียบกับกระดาษ แล้วยืนยันเป็นข้อมูลที่ตรวจสอบแล้ว — จัดกลุ่มเป็นชุมชน → ปึก → คนกรอก (${scopeLabel})`}
+        description={`ตรวจความถูกต้องของใบที่คีย์แล้วเทียบกับกระดาษ แล้วยืนยันเป็นข้อมูลที่ตรวจสอบแล้ว — จัดกลุ่มเป็นชุมชน → คนกรอก (${scopeLabel})`}
         badge={
           <>
             <span className="live-dot" />

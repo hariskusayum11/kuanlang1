@@ -2,7 +2,7 @@
 // ใช้ร่วมทั้ง core (edit.ts) และ UI (edit-panel.tsx) เพื่อไม่ให้ descriptor หลุดจากกัน
 
 export type EditableKind = "text" | "number" | "phone" | "select";
-export type EditableMasterKey = "namePrefixes" | "moos" | "tambons";
+export type EditableMasterKey = "namePrefixes" | "tambons";
 
 export interface EditableField {
   /** ชื่อคอลัมน์บน Household */
@@ -26,7 +26,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   { key: "respondentLastName", label: "นามสกุลผู้ให้ข้อมูล", kind: "text", sensitive: true },
   { key: "respondentPhone", label: "เบอร์โทรผู้ให้ข้อมูล", kind: "phone", sensitive: true, isPhone: true },
   { key: "houseNo", label: "บ้านเลขที่", kind: "text" },
-  { key: "mooId", label: "หมู่", kind: "select", masterKey: "moos" },
+  { key: "mooNo", label: "หมู่", kind: "number", max: 999 },
   { key: "soi", label: "ซอย", kind: "text" },
   { key: "road", label: "ถนน", kind: "text" },
   { key: "tambonId", label: "ตำบล", kind: "select", masterKey: "tambons" },
