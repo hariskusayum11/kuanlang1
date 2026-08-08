@@ -128,6 +128,28 @@ export function answerIdList(payload: EntryPayload, name: string): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
+/** ค่า enum เดี่ยว (radio) — คืน null ถ้าไม่อยู่ในชุดที่อนุญาต (กันค่าปลอมชน Prisma enum) */
+export function answerEnum<T extends string>(
+  payload: EntryPayload,
+  name: string,
+  allowed: readonly T[],
+): T | null {
+  const v = payload.answers[name];
+  return typeof v === "string" && (allowed as readonly string[]).includes(v)
+    ? (v as T)
+    : null;
+}
+
+/** ค่า enum หลายค่า (checkbox-group แบบ enum) — กรองเฉพาะค่าที่อยู่ในชุดที่อนุญาต + ตัดซ้ำ */
+export function answerEnumList<T extends string>(
+  payload: EntryPayload,
+  name: string,
+  allowed: readonly T[],
+): T[] {
+  const set = new Set(allowed as readonly string[]);
+  return [...new Set(answerIdList(payload, name))].filter((x): x is T => set.has(x));
+}
+
 /** answer key ที่เก็บเป็น { [id]: "ค่า" } เช่น จำนวน/รายละเอียดรายข้อ */
 export function answerRecord(
   payload: EntryPayload,

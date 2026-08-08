@@ -7,7 +7,17 @@
 // - ทุกฟังก์ชันตรวจว่าเป็น "เจ้าของ lock ที่ยังไม่หมดอายุ" เท่านั้น (getSheetForEntry)
 // - Single-Entry (R4-1): attemptNo = 1 เสมอ — โครง Double-Entry คงอยู่แต่ปิดใช้
 
-import { AuditAction, FieldStatusEnum, Prisma, SheetStatus } from "@prisma/client";
+import {
+  AuditAction,
+  FieldStatusEnum,
+  FloorLevel,
+  LastEvacuationPlace,
+  NearestEvacSiteType,
+  Prisma,
+  SheetStatus,
+  SurveyorRiskLevel,
+  VehicleType,
+} from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import type { AuthorizationContext } from "../authz/types";
@@ -27,6 +37,9 @@ import { getSheetForEntry } from "./claim";
 import {
   answerBoolean,
   answerCount,
+  answerEnum,
+  answerEnumList,
+  answerIdList,
   answerString,
   assistanceNeedsFromPayload,
   entryPayloadSchema,
@@ -255,6 +268,54 @@ export async function submitEntry(
   }));
   const enc = encryptJson(clean, keyring, CURRENT_KEY_VERSION);
 
+  // --- ส่วนที่ 3: FloodRiskProfile (1:1) — materialize จาก payload ลงคอลัมน์จริง
+  //     (ก่อนหน้านี้ค้างเฉพาะใน payload เข้ารหัส ทำให้หน้าตรวจไม่เห็นส่วนที่ 3)
+  const nearestEvacSiteTypes = answerEnumList(
+    clean,
+    "nearestEvacSiteTypes",
+    Object.values(NearestEvacSiteType),
+  );
+  const floodMeters = answerCount(clean, "floodDepthMetersRaw");
+  const floodCm = answerCount(clean, "floodDepthCmRaw");
+  const frpData = {
+    floorLevelVsRoad: answerEnum(clean, "floorLevelVsRoad", Object.values(FloorLevel)),
+    hasFloodedBefore: answerBoolean(clean, "hasFloodedBefore"),
+    floodDepthMetersRaw: floodMeters,
+    floodDepthCmRaw: floodCm,
+    maxFloodDepthCm:
+      floodMeters != null || floodCm != null ? (floodMeters ?? 0) * 100 + (floodCm ?? 0) : null,
+    lastFloodDurationDays: answerCount(clean, "lastFloodDurationDays"),
+    hasSafeParking: answerBoolean(clean, "hasSafeParking"),
+    hasAlternateParking: answerBoolean(clean, "hasAlternateParking"),
+    alternateParkingLocation: answerString(clean, "alternateParkingLocation"),
+    lastEvacuationPlace: answerEnum(clean, "lastEvacuationPlace", Object.values(LastEvacuationPlace)),
+    lastEvacuationOther: answerString(clean, "lastEvacuationOther"),
+    nearestEvacSiteTypes,
+    // scalar เดิม = ค่าตัวแรก (เข้ากันได้ย้อนหลังกับ risk list)
+    nearestEvacSiteType: nearestEvacSiteTypes[0] ?? null,
+    nearestEvacSiteOther: answerString(clean, "nearestEvacSiteOther"),
+    hasSurvivalKit: answerBoolean(clean, "hasSurvivalKit"),
+    canBeHostHouse: answerBoolean(clean, "canBeHostHouse"),
+    riskLevelSurveyor: answerEnum(clean, "riskLevelSurveyor", Object.values(SurveyorRiskLevel)),
+  };
+  const hasFrpData = Object.values(frpData).some(
+    (v) => v != null && !(Array.isArray(v) && v.length === 0),
+  );
+
+  // ส่วนที่ 3 ข้อ 9: ยานพาหนะอพยพ (M:N enum) + ระบุ OTHER
+  const evacVehicleTypes = answerEnumList(clean, "evacuationVehicles", Object.values(VehicleType));
+  const evacVehicleOther = answerString(clean, "evacuationVehiclesOther");
+  // ส่วนที่ 3 ข้อ 11: ทรัพยากร (M:N master) — ตัดซ้ำกัน unique(householdId, resourceTypeId)
+  const resourceTypeIds = [...new Set(answerIdList(clean, "householdResources"))];
+  // ส่วนที่ 4 ข้อ 1: ช่องทางรับข่าว (M:N master)
+  const alertChannelIds = [...new Set(answerIdList(clean, "alertChannels"))];
+  // ส่วนที่ 4 ข้อ 4: อาสาสมัคร (M:N master)
+  const volunteerTypeIds = [...new Set(answerIdList(clean, "volunteerInterests"))];
+  // ส่วนที่ 4 ข้อ 2-3: ความพร้อมดิจิทัล (1:1)
+  const usesSmartphone = answerBoolean(clean, "usesSmartphone");
+  const canScanQR = answerBoolean(clean, "canScanQR");
+  const hasDigitalData = usesSmartphone != null || canScanQR != null;
+
   const householdData = {
     sheetId,
     communityId,
@@ -392,6 +453,13 @@ export async function submitEntry(
           where: { person: { householdId: existing.id } },
         });
         await tx.vulnerablePerson.deleteMany({ where: { householdId: existing.id } });
+        // ส่วนที่ 3-4 (materialize) — ล้างชุดเดิมก่อนสร้างใหม่จาก payload ล่าสุด
+        await tx.floodRiskProfile.deleteMany({ where: { householdId: existing.id } });
+        await tx.evacuationVehicle.deleteMany({ where: { householdId: existing.id } });
+        await tx.householdResource.deleteMany({ where: { householdId: existing.id } });
+        await tx.alertChannelPref.deleteMany({ where: { householdId: existing.id } });
+        await tx.volunteerInterest.deleteMany({ where: { householdId: existing.id } });
+        await tx.digitalReadiness.deleteMany({ where: { householdId: existing.id } });
       } else {
         household = await tx.household.create({
           data: { ...householdData, hasDuplicateFlag: duplicateSuspected },
@@ -447,6 +515,52 @@ export async function submitEntry(
             })),
           });
         }
+      }
+
+      // 5.1) ส่วนที่ 3-4 — materialize ลงตารางจริงเพื่อให้หน้าตรวจ/แก้/รายงานเห็นครบ
+      if (hasFrpData) {
+        await tx.floodRiskProfile.create({
+          data: { householdId: household.id, ...frpData },
+        });
+      }
+      if (evacVehicleTypes.length > 0) {
+        await tx.evacuationVehicle.createMany({
+          data: evacVehicleTypes.map((vehicleType) => ({
+            householdId: household.id,
+            vehicleType,
+            // ระบุรายละเอียดผูกกับตัวเลือก OTHER เท่านั้น
+            detail: vehicleType === VehicleType.OTHER ? evacVehicleOther : null,
+          })),
+        });
+      }
+      if (resourceTypeIds.length > 0) {
+        await tx.householdResource.createMany({
+          data: resourceTypeIds.map((resourceTypeId) => ({
+            householdId: household.id,
+            resourceTypeId,
+          })),
+        });
+      }
+      if (alertChannelIds.length > 0) {
+        await tx.alertChannelPref.createMany({
+          data: alertChannelIds.map((alertChannelId) => ({
+            householdId: household.id,
+            alertChannelId,
+          })),
+        });
+      }
+      if (volunteerTypeIds.length > 0) {
+        await tx.volunteerInterest.createMany({
+          data: volunteerTypeIds.map((volunteerTypeId) => ({
+            householdId: household.id,
+            volunteerTypeId,
+          })),
+        });
+      }
+      if (hasDigitalData) {
+        await tx.digitalReadiness.create({
+          data: { householdId: household.id, usesSmartphone, canScanQR },
+        });
       }
 
       // 6) สถานะรายฟิลด์ (F2/F3) — ผูกกับ attempt เพื่อร่องรอยตรวจสอบ

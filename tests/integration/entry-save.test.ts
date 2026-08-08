@@ -43,6 +43,14 @@ async function cleanupFixtures() {
       await prisma.vulnerablePerson.deleteMany({
         where: { householdId: { in: hids } },
       });
+      // ส่วนที่ 3-4 ที่ submitEntry materialize แล้ว (FK Restrict → ต้องลบก่อน Household)
+      await prisma.assistanceNeed.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.floodRiskProfile.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.evacuationVehicle.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.householdResource.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.alertChannelPref.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.volunteerInterest.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.digitalReadiness.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.household.deleteMany({ where: { id: { in: hids } } });
     }
     await prisma.fieldStatus.deleteMany({ where: { sheet: { sheetNo: { in: SHEETS } } } });
