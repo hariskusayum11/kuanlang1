@@ -10,6 +10,8 @@ services:
     container_name: skl_db
     restart: unless-stopped
     environment:
+      # เขตเวลาประเทศไทย — กันเวลาที่บันทึกใน DB คลาดเคลื่อนจากเวลาเครื่อง
+      TZ: Asia/Bangkok
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}

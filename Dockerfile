@@ -5,10 +5,13 @@
 
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
+ENV TZ=Asia/Bangkok
 # openssl จำเป็นต่อ Prisma engine · ca-certificates สำหรับ TLS ตอน build
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends openssl ca-certificates tzdata \
+  && rm -rf /var/lib/apt/lists/* \
+  && ln -snf /usr/share/zoneinfo/Asia/Bangkok /etc/localtime \
+  && echo "Asia/Bangkok" > /etc/timezone
 
 # ติดตั้ง dependency ก่อน (cache layer) — ต้องได้ devDependencies ครบเพื่อ build
 # จึงไม่ตั้ง NODE_ENV=production ในสเตจนี้ (มิฉะนั้น npm ci จะข้าม devDeps เช่น prisma/tailwind/tsx)
@@ -26,9 +29,13 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# เขตเวลาประเทศไทย — server components แสดงเวลา/วันที่ให้ตรงกับผู้ใช้
+ENV TZ=Asia/Bangkok
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends openssl ca-certificates tzdata \
+  && rm -rf /var/lib/apt/lists/* \
+  && ln -snf /usr/share/zoneinfo/Asia/Bangkok /etc/localtime \
+  && echo "Asia/Bangkok" > /etc/timezone
 
 # คัดลอกทั้งแอปจากสเตจ build (มี node_modules ครบ รวม prisma CLI + tsx ที่ entrypoint/seed ต้องใช้)
 # ทำให้ image ใหญ่กว่าแบบ standalone แต่ตรงไปตรงมาและกู้ปัญหาง่ายสำหรับ deploy รอบทดสอบ
