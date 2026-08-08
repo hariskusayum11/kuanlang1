@@ -28,6 +28,13 @@ function scopeFilter(
   return { communityId: { in: ctx.communityIds } };
 }
 
+/** ใบหนึ่งใบที่คนคนนี้กรอก — ใช้กดดูรายละเอียดว่ากรอกใบไหนไปบ้าง */
+export interface KeyerSheet {
+  householdId: string;
+  sheetNo: string;
+  verified: boolean;
+}
+
 export interface KeyerRow {
   enteredById: string;
   name: string;
@@ -37,6 +44,8 @@ export interface KeyerRow {
   verified: number;
   /** ยังไม่ผ่านตรวจ = total − verified */
   pending: number;
+  /** รายการใบที่กรอก (รหัส SK) — กดดูได้ว่ากรอกใบไหนไปบ้าง */
+  sheets: KeyerSheet[];
 }
 
 export interface KeyerReport {
@@ -53,6 +62,7 @@ export function mergeKeyerCounts(
   totals: { enteredById: string; count: number }[],
   verified: { enteredById: string; count: number }[],
   names: Map<string, string>,
+  sheetsByKeyer?: Map<string, KeyerSheet[]>,
 ): KeyerRow[] {
   const verifiedById = new Map(verified.map((v) => [v.enteredById, v.count]));
   return totals
@@ -64,6 +74,7 @@ export function mergeKeyerCounts(
         total: t.count,
         verified: v,
         pending: t.count - v,
+        sheets: sheetsByKeyer?.get(t.enteredById) ?? [],
       };
     })
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "th"));
@@ -109,16 +120,40 @@ export async function getKeyerProductivity(
   ]);
 
   const ids = totalGroups.map((g) => g.enteredById);
-  const users = await prisma.user.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, name: true },
-  });
+  const [users, households] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    }),
+    // รายการใบต่อคน (กดดูได้ว่ากรอกใบไหนบ้าง) — เรียงตามรหัสใบ
+    prisma.household.findMany({
+      where: { deletedAt: null, ...scope },
+      select: {
+        id: true,
+        enteredById: true,
+        sheet: { select: { sheetNo: true, status: true } },
+      },
+      orderBy: { sheet: { sheetNo: "asc" } },
+    }),
+  ]);
   const names = new Map(users.map((u) => [u.id, u.name]));
+
+  const sheetsByKeyer = new Map<string, KeyerSheet[]>();
+  for (const h of households) {
+    const list = sheetsByKeyer.get(h.enteredById) ?? [];
+    list.push({
+      householdId: h.id,
+      sheetNo: h.sheet.sheetNo,
+      verified: h.sheet.status === SheetStatus.VERIFIED,
+    });
+    sheetsByKeyer.set(h.enteredById, list);
+  }
 
   const rows = mergeKeyerCounts(
     totalGroups.map((g) => ({ enteredById: g.enteredById, count: g._count._all })),
     verifiedGroups.map((g) => ({ enteredById: g.enteredById, count: g._count._all })),
     names,
+    sheetsByKeyer,
   );
 
   await writeAuditLog({

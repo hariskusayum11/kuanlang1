@@ -73,8 +73,8 @@ describe("mergeKeyerCounts", () => {
 describe("sumKeyerRows", () => {
   it("รวมทุกคอลัมน์", () => {
     const rows: KeyerRow[] = [
-      { enteredById: "k1", name: "A", total: 10, verified: 6, pending: 4 },
-      { enteredById: "k2", name: "B", total: 4, verified: 0, pending: 4 },
+      { enteredById: "k1", name: "A", total: 10, verified: 6, pending: 4, sheets: [] },
+      { enteredById: "k2", name: "B", total: 4, verified: 0, pending: 4, sheets: [] },
     ];
     expect(sumKeyerRows(rows)).toEqual({ total: 14, verified: 6, pending: 8 });
   });
@@ -86,8 +86,8 @@ describe("sumKeyerRows", () => {
 
 describe("buildKeyerCsv", () => {
   const rows: KeyerRow[] = [
-    { enteredById: "k1", name: "สมชาย", total: 10, verified: 6, pending: 4 },
-    { enteredById: "k2", name: "สมหญิง", total: 4, verified: 0, pending: 4 },
+    { enteredById: "k1", name: "สมชาย", total: 10, verified: 6, pending: 4, sheets: [] },
+    { enteredById: "k2", name: "สมหญิง", total: 4, verified: 0, pending: 4, sheets: [] },
   ];
 
   it("หัวตาราง 4 คอลัมน์ (คนกรอก/กรอกทั้งหมด/ตรวจผ่าน/ยังไม่ผ่าน)", () => {
@@ -102,7 +102,7 @@ describe("buildKeyerCsv", () => {
 
   it("escape ชื่อที่มี comma ตาม RFC 4180", () => {
     const tricky: KeyerRow[] = [
-      { enteredById: "k3", name: "สมชาย, จูเนียร์", total: 1, verified: 1, pending: 0 },
+      { enteredById: "k3", name: "สมชาย, จูเนียร์", total: 1, verified: 1, pending: 0, sheets: [] },
     ];
     expect(buildKeyerCsv(tricky).split("\r\n")[1]).toContain('"สมชาย, จูเนียร์"');
   });

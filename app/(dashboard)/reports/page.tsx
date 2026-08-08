@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { getKeyerProductivity } from "@/lib/report/keyer-productivity";
+import { getKeyerProductivity, type KeyerRow } from "@/lib/report/keyer-productivity";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "รายงาน" };
@@ -67,47 +68,32 @@ export default async function ReportsPage() {
             description="เมื่อเจ้าหน้าที่เริ่มคีย์แบบสอบถามเข้าระบบ ยอดของแต่ละคนจะปรากฏที่นี่"
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="py-2.5 pl-6 pr-4">คนกรอก</th>
-                  <th className="py-2.5 pr-4 text-right">กรอกทั้งหมด</th>
-                  <th className="py-2.5 pr-4 text-right">ตรวจผ่านแล้ว</th>
-                  <th className="py-2.5 pr-6 text-right">ยังไม่ผ่านตรวจ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {report.rows.map((r) => (
-                  <tr key={r.enteredById} className="transition-colors hover:bg-brand-50/50">
-                    <td className="py-2.5 pl-6 pr-4 font-semibold text-slate-800">{r.name}</td>
-                    <td className="py-2.5 pr-4 text-right font-bold tabular-nums text-brand-700">
-                      {r.total.toLocaleString("th-TH")}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums text-emerald-700">
-                      {r.verified.toLocaleString("th-TH")}
-                    </td>
-                    <td className="py-2.5 pr-6 text-right tabular-nums text-slate-500">
-                      {r.pending.toLocaleString("th-TH")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-100 bg-slate-50/70 font-bold">
-                  <td className="py-3 pl-6 pr-4 text-slate-700">รวม</td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-brand-700">
-                    {report.totals.total.toLocaleString("th-TH")}
-                  </td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-emerald-700">
-                    {report.totals.verified.toLocaleString("th-TH")}
-                  </td>
-                  <td className="py-3 pr-6 text-right tabular-nums text-slate-500">
-                    {report.totals.pending.toLocaleString("th-TH")}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+          <div>
+            {/* หัวคอลัมน์ */}
+            <div className="hidden items-center gap-4 border-b-2 border-slate-100 px-6 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-400 sm:flex">
+              <span className="flex-1">คนกรอก (กดเพื่อดูรหัสใบ)</span>
+              <span className="w-24 text-right">กรอกทั้งหมด</span>
+              <span className="w-24 text-right">ตรวจผ่านแล้ว</span>
+              <span className="w-24 text-right">ยังไม่ผ่าน</span>
+            </div>
+            <div className="divide-y-2 divide-slate-50">
+              {report.rows.map((r) => (
+                <KeyerRowDetails key={r.enteredById} row={r} />
+              ))}
+            </div>
+            {/* แถวรวม */}
+            <div className="flex items-center gap-4 border-t-2 border-slate-100 bg-slate-50/70 px-6 py-3 text-sm font-bold">
+              <span className="flex-1 text-slate-700">รวม</span>
+              <span className="w-24 text-right tabular-nums text-brand-700">
+                {report.totals.total.toLocaleString("th-TH")}
+              </span>
+              <span className="w-24 text-right tabular-nums text-emerald-700">
+                {report.totals.verified.toLocaleString("th-TH")}
+              </span>
+              <span className="w-24 text-right tabular-nums text-slate-500">
+                {report.totals.pending.toLocaleString("th-TH")}
+              </span>
+            </div>
           </div>
         )}
       </section>
@@ -118,6 +104,58 @@ export default async function ReportsPage() {
         เลือกใช้ฐานใดคิดค่ากรอกได้ตามข้อตกลง
       </p>
     </div>
+  );
+}
+
+/** แถวคนกรอก — กดขยายเพื่อดูรหัสใบ (SK) ที่กรอกไปทั้งหมด (details/summary, ไม่ใช้ JS) */
+function KeyerRowDetails({ row }: { row: KeyerRow }) {
+  return (
+    <details className="group/keyer">
+      <summary className="flex cursor-pointer list-none items-center gap-4 px-6 py-2.5 text-sm transition-colors hover:bg-brand-50/50">
+        <span className="flex flex-1 items-center gap-2 font-semibold text-slate-800">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-open/keyer:rotate-90">
+            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {row.name}
+        </span>
+        <span className="w-24 text-right font-bold tabular-nums text-brand-700">
+          {row.total.toLocaleString("th-TH")}
+        </span>
+        <span className="w-24 text-right tabular-nums text-emerald-700">
+          {row.verified.toLocaleString("th-TH")}
+        </span>
+        <span className="w-24 text-right tabular-nums text-slate-500">
+          {row.pending.toLocaleString("th-TH")}
+        </span>
+      </summary>
+      <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-3">
+        {row.sheets.length === 0 ? (
+          <p className="text-xs text-slate-400">ไม่มีใบ</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {row.sheets.map((s) => (
+              <Link
+                key={s.householdId}
+                href={`/verification/${s.householdId}`}
+                title={s.verified ? "ตรวจผ่านแล้ว" : "ยังไม่ผ่านตรวจ"}
+                className={`inline-flex items-center gap-1 rounded-lg border-2 px-2 py-1 font-mono text-xs font-bold transition-colors ${
+                  s.verified
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-400"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-brand-400"
+                }`}
+              >
+                {s.verified && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3 w-3">
+                    <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+                {s.sheetNo}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
