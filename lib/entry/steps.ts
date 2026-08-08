@@ -417,9 +417,9 @@ export const ENTRY_STEPS: EntryStep[] = [
         showWhen: { field: "lastEvacuationPlace", equals: "OTHER" },
       },
       {
-        name: "nearestEvacSiteType",
-        label: "8. จุดอพยพใกล้ที่สุด",
-        type: "radio",
+        name: "nearestEvacSiteTypes",
+        label: "8. จุดอพยพใกล้ที่สุด (เลือกได้หลายข้อ)",
+        type: "checkbox-group",
         options: [
           { value: "RELATIVE_HOUSE", label: "บ้านญาติ" },
           { value: "SCHOOL", label: "โรงเรียน" },
@@ -434,7 +434,7 @@ export const ENTRY_STEPS: EntryStep[] = [
         name: "nearestEvacSiteOther",
         label: "อื่นๆ (ระบุ)",
         type: "text",
-        showWhen: { field: "nearestEvacSiteType", equals: "OTHER" },
+        showWhen: { field: "nearestEvacSiteTypes", equals: "OTHER" },
       },
       {
         name: "evacuationVehicles",

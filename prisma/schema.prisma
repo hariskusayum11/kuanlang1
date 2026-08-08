@@ -1192,7 +1192,11 @@ model FloodRiskProfile {
   lastEvacuationOther String? /// ระบุ ถ้าเลือก OTHER
 
   // --- ส่วนที่ 3 ข้อ 8: จุดอพยพใกล้สุด ---
+  // Owner 2026-08-08: เลือกได้หลายจุด → เก็บเป็น enum array (nearestEvacSiteTypes)
+  // คง scalar เดิม (nearestEvacSiteType) ไว้เพื่อความเข้ากันได้ย้อนหลัง (risk list) —
+  // เขียนคู่กันไว้เสมอ = ค่าตัวแรกของ array (ไม่ลบคอลัมน์ กันข้อมูลเดิมหาย)
   nearestEvacSiteType  NearestEvacSiteType?
+  nearestEvacSiteTypes NearestEvacSiteType[]
   nearestEvacSiteOther String? /// ระบุ ถ้าเลือก OTHER
 
   // --- ส่วนที่ 3 ข้อ 10: ถุงยังชีพ ---
