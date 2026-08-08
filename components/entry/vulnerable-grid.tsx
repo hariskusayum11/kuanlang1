@@ -41,6 +41,8 @@ type Props = {
   onClearMark?: (key: string) => void;
   /** ลบแถว i — wizard เป็นผู้ remap คีย์มาร์กหลังลบ ถ้าไม่ส่งมาจะลบเฉพาะ rows */
   onDeleteRow?: (index: number) => void;
+  /** สลับมาร์ก "ไม่ได้กรอกในกระดาษ" ของลักษณะความเปราะบาง (คีย์ vg-{i}-vulnerabilities) */
+  onToggleVulnBlank?: (index: number) => void;
 };
 
 /** border สีเหลือง/เทา ตามสถานะ F2/F3 ของเซลล์ (ตรงกับ field-input) */
@@ -59,6 +61,7 @@ export function VulnerableGrid({
   marks,
   onClearMark,
   onDeleteRow,
+  onToggleVulnBlank,
 }: Props) {
   // id ของคำนำหน้า "อื่นๆ" — ใช้เปิดช่องระบุเมื่อเลือก (ไม่ hardcode ค่า แต่เทียบด้วย code)
   const otherPrefixId = master.namePrefixes.find((p) => p.code === "OTHER")?.id ?? null;
@@ -78,6 +81,10 @@ export function VulnerableGrid({
   function toggleVulnerability(index: number, typeId: string) {
     const row = rows[index];
     const has = row.vulnerabilities.includes(typeId);
+    // ติ๊กลักษณะจริง = ยกเลิกมาร์ก "ไม่ได้กรอกในกระดาษ" อัตโนมัติ (ขัดกันเอง)
+    if (!has && markOf(index, "vulnerabilities")) {
+      onClearMark?.(`vg-${index}-vulnerabilities`);
+    }
     update(index, {
       vulnerabilities: has
         ? row.vulnerabilities.filter((id) => id !== typeId)
@@ -207,10 +214,30 @@ export function VulnerableGrid({
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-medium text-slate-600">
-                ลักษณะความเปราะบาง <span className="text-slate-500">(ติ๊กได้มากกว่า 1 ข้อ)</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-600">
+                  ลักษณะความเปราะบาง <span className="text-slate-500">(ติ๊กได้มากกว่า 1 ข้อ)</span>
+                </p>
+                {/* กระดาษไม่ได้ติ๊กมา = เลือก "ไม่ได้กรอกในกระดาษ" แทนการเดา (ไม่ต้องใช้ F3) */}
+                <button
+                  type="button"
+                  onClick={() => onToggleVulnBlank?.(i)}
+                  className={`flex items-center gap-1.5 rounded-lg border-2 px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    markOf(i, "vulnerabilities") === "BLANK_IN_PAPER"
+                      ? "border-slate-400 bg-slate-100 text-slate-700"
+                      : "border-slate-200 text-slate-500 hover:border-slate-300"
+                  }`}
+                >
+                  {markOf(i, "vulnerabilities") === "BLANK_IN_PAPER" ? "✓ " : ""}
+                  ไม่ได้กรอกในกระดาษ
+                </button>
+              </div>
+              {markOf(i, "vulnerabilities") === "BLANK_IN_PAPER" && (
+                <p className="mb-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-500">
+                  ทำเครื่องหมายว่าช่องนี้ว่างในกระดาษ — ติ๊กลักษณะด้านล่างเพื่อยกเลิก
+                </p>
+              )}
+              <div className={`flex flex-wrap gap-2 ${markOf(i, "vulnerabilities") === "BLANK_IN_PAPER" ? "opacity-50" : ""}`}>
                 {master.vulnerabilityTypes.map((vt) => {
                   const on = row.vulnerabilities.includes(vt.id);
                   return (

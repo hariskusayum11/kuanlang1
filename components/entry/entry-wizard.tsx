@@ -775,6 +775,15 @@ export function EntryWizard({
               onClearMark={(key) =>
                 setMarks((prev) => (prev[key] ? { ...prev, [key]: null } : prev))
               }
+              onToggleVulnBlank={(index) => {
+                touched.current = true;
+                dirty.current = true;
+                const key = `vg-${index}-vulnerabilities`;
+                setMarks((prev) => ({
+                  ...prev,
+                  [key]: prev[key] === "BLANK_IN_PAPER" ? null : "BLANK_IN_PAPER",
+                }));
+              }}
               onDeleteRow={(index) => {
                 touched.current = true;
                 dirty.current = true;
