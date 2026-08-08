@@ -6,6 +6,7 @@ import {
 } from "@/lib/registration/core";
 import { REQUESTABLE_ROLE_LABELS } from "@/lib/registration/validation";
 import { RegistrationDecideButtons } from "@/components/admin/registration-queue";
+import { RegistrationDecidedActions } from "@/components/admin/registration-decided-actions";
 import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
@@ -101,7 +102,8 @@ export default async function RegistrationsPage() {
                   <th className="py-3 pr-4">ชุมชน</th>
                   <th className="py-3 pr-4">สถานะ</th>
                   <th className="py-3 pr-4">โดย</th>
-                  <th className="py-3 pr-6">เมื่อ</th>
+                  <th className="py-3 pr-4">เมื่อ</th>
+                  <th className="py-3 pr-6 text-right">การทำงาน</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-50">
@@ -133,8 +135,14 @@ export default async function RegistrationsPage() {
                       <td className="py-3 pr-4 text-slate-600">
                         {r.decidedBy?.name ?? "—"}
                       </td>
-                      <td className="py-3 pr-6 text-xs tabular-nums text-slate-500">
+                      <td className="py-3 pr-4 text-xs tabular-nums text-slate-500">
                         {r.decidedAt ? DATE_FMT.format(r.decidedAt) : "—"}
+                      </td>
+                      <td className="py-3 pr-6 text-right">
+                        <RegistrationDecidedActions
+                          requestId={r.id}
+                          status={r.status}
+                        />
                       </td>
                     </tr>
                   );

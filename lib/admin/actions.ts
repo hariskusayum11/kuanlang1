@@ -7,9 +7,11 @@ import { UserRoleEnum } from "@prisma/client";
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
+  deleteUser,
   setUserActive,
   setUserGlobalScope,
   setUserRoles,
+  type DeleteUserResult,
   type SetActiveResult,
   type SetGlobalScopeResult,
   type SetRolesResult,
@@ -80,4 +82,23 @@ export async function setUserActiveAction(
   if (!parsed.success) return { ok: false, reason: "INVALID" };
 
   return setUserActive(ctx, parsed.data.userId, parsed.data.isActive);
+}
+
+const userIdSchema = z.object({ userId: z.string().min(1).max(64) });
+
+export type DeleteUserActionResult =
+  | DeleteUserResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** ลบบัญชีผู้ใช้ (soft delete) — ตรวจ RBAC + guard ฝั่ง server ใน core */
+export async function deleteUserAction(
+  input: unknown,
+): Promise<DeleteUserActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = userIdSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return deleteUser(ctx, parsed.data.userId);
 }

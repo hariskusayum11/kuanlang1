@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// แท็บสลับหน้าในกลุ่ม "จัดการผู้ใช้งาน" — เมนูข้างรวมเป็นรายการเดียวแล้ว
-// จึงย้ายการแยก "ผู้ใช้และบทบาท" / "คำขอลงทะเบียน" มาไว้ระดับหน้า
+// แท็บสลับหน้าในกลุ่มจัดการระบบ — เมนูข้างรวมเป็นรายการเดียวแล้ว
+// จึงย้ายการแยกหน้าย่อยมาไว้ระดับนี้
 const TABS = [
   { label: "ผู้ใช้และบทบาท", href: "/admin/users" },
   { label: "คำขอลงทะเบียน", href: "/admin/registrations" },
+  { label: "แบบสอบถาม", href: "/admin/sheets" },
 ] as const;
 
 export function AdminTabs() {

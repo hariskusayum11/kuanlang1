@@ -15,6 +15,7 @@ import {
 } from "@/domain/admin/account-status";
 import { UserRoleEditor } from "@/components/admin/user-role-editor";
 import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
+import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
@@ -137,6 +138,12 @@ export default async function AdminUsersPage() {
                             isSelf={isSelf}
                           />
                         )}
+                        <UserDeleteButton
+                          userId={u.id}
+                          userName={u.name}
+                          hasManageableStatus={canToggleActivation(u.accountStatus)}
+                          isSelf={isSelf}
+                        />
                         </div>
                       </td>
                     </tr>

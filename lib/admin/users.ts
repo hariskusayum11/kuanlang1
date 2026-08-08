@@ -386,3 +386,76 @@ export async function setUserActive(
 
   return { ok: true, isActive, changed: true };
 }
+
+export type DeleteUserResult =
+  | { ok: true; deleted: boolean }
+  | {
+      ok: false;
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "SELF_DELETION"
+        | "LAST_ACTIVE_ADMIN"
+        | "ERROR";
+    };
+
+/**
+ * ลบบัญชีผู้ใช้ (Soft Delete — Owner Decision 2026-08-07)
+ *
+ * "ลบ" ในที่นี้คือ **ระงับบัญชีโดยสิ้นเชิง** แต่ไม่ทำลายประวัติการทำงาน:
+ *  - ปิดบัญชี (isActive=false) → login/session ถูกตัดทันทีในรอบ request ถัดไป
+ *  - ถอดบทบาททุกบทบาท + ลบ Community Scope + ลบคำขอลงทะเบียน + ลบ session
+ *  - **ไม่ Hard Delete user** — ประวัติการคีย์ (enteredBy/verifiedBy) ยังชี้ถึงชื่อนี้ได้
+ *    ลดการทำลาย Audit trail/จำนวนสถิติ (BR-29: ห้าม Hard Delete เว้นแต่ PDPA)
+ *
+ * กัน self-destruction: ห้ามลบตัวเอง (ล็อกตัวเองออก) + ห้ามลบ Active ADMIN คนสุดท้าย
+ * Invariant "ต้องมี ADMIN ≥ 1" serialize ด้วยล็อกเดียวกับ setUserActive/setUserRoles
+ */
+export async function deleteUser(
+  ctx: AuthorizationContext,
+  userId: string,
+): Promise<DeleteUserResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (userId === ctx.userId) return { ok: false, reason: "SELF_DELETION" };
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isActive: true },
+  });
+  if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+
+  try {
+    const outcome = await prisma.$transaction(async (tx) => {
+      // serialize กับเส้นทางลด Active ADMIN (ถอด role / ปิดบัญชี / ลบ)
+      await lockAdminInvariant(tx);
+      const isTargetAdmin = await tx.userRole.count({
+        where: { userId, role: UserRoleEnum.ADMIN, isActive: true },
+      });
+      if (isTargetAdmin > 0 && (await countOtherActiveAdmins(tx, userId)) === 0) {
+        return "LAST_ACTIVE_ADMIN" as const;
+      }
+
+      await tx.user.update({ where: { id: userId }, data: { isActive: false } });
+      await tx.userRole.updateMany({ where: { userId }, data: { isActive: false } });
+      await tx.userCommunityScope.deleteMany({ where: { userId } });
+      await tx.registrationRequest.deleteMany({ where: { userId } });
+      await tx.session.deleteMany({ where: { userId } });
+      return "OK" as const;
+    });
+    if (outcome === "LAST_ACTIVE_ADMIN") {
+      return { ok: false, reason: "LAST_ACTIVE_ADMIN" };
+    }
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.DELETE,
+    entityType: "User",
+    entityId: userId,
+    changes: { deleted: true, reason: "user-soft-delete" },
+  });
+
+  return { ok: true, deleted: true };
+}
