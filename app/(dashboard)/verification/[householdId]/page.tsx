@@ -10,7 +10,8 @@ import {
 } from "@/lib/verification/review";
 import { loadHouseholdEditable } from "@/lib/verification/edit";
 import { VerifyPanel } from "@/components/verification/verify-panel";
-import { EditPanel } from "@/components/verification/edit-panel";
+import { EditPanelFull } from "@/components/verification/edit-panel-full";
+import { DeleteHouseholdButton } from "@/components/admin/delete-household-button";
 import { SectionTitle } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ตรวจสอบใบ" };
@@ -99,8 +100,9 @@ export default async function ReviewPage({
   if (!review) notFound();
 
   const isVerified = review.status === "VERIFIED";
-  // โหลดค่าที่แก้ได้เฉพาะเมื่อยืนยัน/แก้ได้ (ENTERED_1 และไม่ใช่ผู้คีย์เอง)
-  const editable = review.canConfirm ? await loadHouseholdEditable(ctx, householdId) : null;
+  // โหลดค่าที่แก้ได้เสมอ — loadHouseholdEditable ตัดสิน canEdit เอง
+  // (ADMIN แก้ได้ทุกใบ/ทุกสถานะ · ผู้ตรวจทั่วไปเฉพาะ ENTERED_1 ที่ไม่ใช่ใบตัวเอง)
+  const editable = await loadHouseholdEditable(ctx, householdId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
@@ -175,7 +177,7 @@ export default async function ReviewPage({
 
       {/* แก้ไขข้อมูล (เฉพาะใบ ENTERED_1 ที่ผู้ตรวจไม่ใช่ผู้คีย์) */}
       {editable?.canEdit && (
-        <EditPanel
+        <EditPanelFull
           householdId={review.householdId}
           initialValues={editable.values}
           options={editable.options}
@@ -184,23 +186,34 @@ export default async function ReviewPage({
 
       {/* แถบยืนยัน */}
       <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-white/95 px-6 py-4 shadow-lg backdrop-blur">
-        {isVerified ? (
-          <p className="text-sm font-bold text-emerald-700">
-            ✓ ยืนยันแล้วโดย {review.verifiedByName ?? "—"}
-            {review.verifiedAt && ` · ${review.verifiedAt.toLocaleString("th-TH")}`}
-          </p>
-        ) : review.enteredByMe ? (
-          <p className="text-sm font-semibold text-sun-800">
-            คุณเป็นผู้คีย์ใบนี้ — ต้องให้ผู้ตรวจคนอื่นยืนยัน (แยกหน้าที่ผู้คีย์/ผู้ตรวจ)
-          </p>
-        ) : (
-          <p className="text-sm font-medium text-slate-600">
-            ตรวจข้อมูลข้างต้นเทียบกับกระดาษ เมื่อถูกต้องแล้วจึงยืนยัน
-          </p>
-        )}
-        {review.canConfirm && (
-          <VerifyPanel householdId={review.householdId} sheetNo={review.sheetNo} />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {isVerified ? (
+            <p className="text-sm font-bold text-emerald-700">
+              ✓ ยืนยันแล้วโดย {review.verifiedByName ?? "—"}
+              {review.verifiedAt && ` · ${review.verifiedAt.toLocaleString("th-TH")}`}
+            </p>
+          ) : review.enteredByMe ? (
+            <p className="text-sm font-semibold text-sun-800">
+              คุณเป็นผู้คีย์ใบนี้ — ต้องให้ผู้ตรวจคนอื่นยืนยัน (แยกหน้าที่ผู้คีย์/ผู้ตรวจ)
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-slate-600">
+              ตรวจข้อมูลข้างต้นเทียบกับกระดาษ เมื่อถูกต้องแล้วจึงยืนยัน
+            </p>
+          )}
+          {/* ลบใบ (soft delete) — เฉพาะ ADMIN (RBAC ตรวจซ้ำฝั่ง server) */}
+          {ctx.roles.includes("ADMIN") && (
+            <DeleteHouseholdButton
+              householdId={review.householdId}
+              sheetNo={review.sheetNo}
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {review.canConfirm && (
+            <VerifyPanel householdId={review.householdId} sheetNo={review.sheetNo} />
+          )}
+        </div>
       </div>
     </div>
   );

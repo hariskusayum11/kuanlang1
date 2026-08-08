@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import { verifyHousehold, type VerifyResult } from "./review";
 import { applyHouseholdEdits, type EditResult } from "./edit";
+import type { EditableFormValue } from "./editable-fields";
 
 const householdIdSchema = z.string().cuid();
 
@@ -28,10 +29,10 @@ export type EditActionResult =
   | EditResult
   | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
 
-/** แก้ไขฟิลด์ Household โดย Verifier (RBAC/scope/สถานะ/แยกหน้าที่ ตรวจใน core) */
+/** แก้ไขฟิลด์ Household/FloodRiskProfile/รายการ M:N โดย Verifier (RBAC/scope/สถานะ/แยกหน้าที่ ตรวจใน core) */
 export async function editHouseholdAction(
   householdId: string,
-  edits: Record<string, string | number | null>,
+  edits: Record<string, EditableFormValue>,
 ): Promise<EditActionResult> {
   const ctx = await getAuthorizationContext();
   if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };

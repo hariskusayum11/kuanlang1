@@ -81,6 +81,55 @@ function joinName(
   return full === "" ? null : full;
 }
 
+/** กระจาย enum เป็นตัวเลือก label — ตาม data dictionary (docs/03) */
+const FLOOR_LEVEL_LABEL: Record<string, string> = {
+  BELOW_ROAD: "ต่ำกว่าถนน",
+  EQUAL_ROAD: "เท่าถนน",
+  ABOVE_ROAD: "สูงกว่าถนน",
+};
+const LAST_EVAC_LABEL: Record<string, string> = {
+  UPPER_FLOOR: "อาศัยชั้น 2/ชั้น 3",
+  ROOF: "อาศัยบนหลังคา",
+  NEAREST_SITE: "ไปยังจุดอพยพใกล้ที่สุด",
+  OTHER: "อื่น ๆ",
+};
+const NEAREST_EVAC_LABEL: Record<string, string> = {
+  RELATIVE_HOUSE: "บ้านญาติ",
+  SCHOOL: "โรงเรียน",
+  TEMPLE_MOSQUE: "วัด/มัสยิด",
+  COMMUNITY_CENTER: "ศูนย์ชุมชน",
+  MUNICIPALITY: "พื้นที่เทศบาล",
+  UNKNOWN: "ไม่ทราบ",
+  OTHER: "อื่น ๆ",
+};
+const VEHICLE_LABEL: Record<string, string> = {
+  CAR: "รถยนต์",
+  MOTORCYCLE: "มอเตอร์ไซค์",
+  BOAT: "เรือ",
+  OTHER: "อื่น ๆ",
+};
+const RISK_SURVEYOR_LABEL: Record<string, string> = {
+  LOW: "ต่ำ",
+  MEDIUM: "ปานกลาง",
+  HIGH: "สูง",
+};
+
+/** ฟิลด์ type ที่เลือกค่าจาก enum เป็น label — กัน label ผิดรูปไม่โผล่ */
+function enumLabel(
+  map: Record<string, string>,
+  value: string | null | undefined,
+): string | null {
+  return value != null ? (map[value] ?? value) : null;
+}
+
+/** ระดับน้ำจาก 2 ช่อง (ม.+ซม.) — แสดงตามที่กรอก ไม่ต้องคำนวณ */
+function floodDepthText(m: number | null, cm: number | null): string | null {
+  const parts: string[] = [];
+  if (m != null) parts.push(`${m} เมตร`);
+  if (cm != null) parts.push(`${cm} ซม.`);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 /**
  * โหลดครัวเรือนเพื่อตรวจ (ถอดรหัสข้อมูลอ่อนไหว) + เขียน Audit READ
  * นอก scope / ไม่พบ → null (ตอบเหมือนกันเพื่อกัน IDOR probing)
@@ -104,6 +153,26 @@ export async function loadHouseholdForReview(
       ownershipType: { select: { nameTh: true } },
       enteredBy: { select: { name: true } },
       verifiedBy: { select: { name: true } },
+      // ขยายเพื่อแสดงทุกส่วน (Owner: ตรวจต้องเห็นฟิลด์ทั้งหมดที่คีย์มา)
+      assistanceNeeds: {
+        orderBy: { needType: { sortOrder: "asc" } },
+        include: { needType: { select: { nameTh: true } } },
+      },
+      floodRiskProfile: true,
+      householdResources: {
+        orderBy: { resourceType: { sortOrder: "asc" } },
+        include: { resourceType: { select: { nameTh: true } } },
+      },
+      evacuationVehicles: true,
+      alertChannelPrefs: {
+        orderBy: { alertChannel: { sortOrder: "asc" } },
+        include: { alertChannel: { select: { nameTh: true } } },
+      },
+      digitalReadiness: true,
+      volunteerInterests: {
+        orderBy: { volunteerType: { sortOrder: "asc" } },
+        include: { volunteerType: { select: { nameTh: true } } },
+      },
       vulnerablePersons: {
         orderBy: { seq: "asc" },
         include: {
@@ -128,6 +197,24 @@ export async function loadHouseholdForReview(
   });
 
   const enteredByMe = h.enteredById === ctx.userId;
+  const frp = h.floodRiskProfile;
+
+  // --- ส่วนที่ 3 และฟิลด์ 4-5: ฟิลด์รวมที่แสดงเป็นรายการ (M:N) — รวมเป็นข้อความ
+  const resourceList = h.householdResources.map(
+    (r) => r.resourceType.nameTh + (r.quantity != null ? ` (${r.quantity})` : ""),
+  );
+  const vehicleList = h.evacuationVehicles.map(
+    (v) => enumLabel(VEHICLE_LABEL, v.vehicleType) ?? v.detail ?? "",
+  );
+  const channelList = h.alertChannelPrefs.map((c) => c.alertChannel.nameTh);
+  const volunteerList = h.volunteerInterests.map((v) => v.volunteerType.nameTh);
+  const assistanceList = h.assistanceNeeds.map((a) => {
+    const parts = [a.needType.nameTh];
+    if (a.personCount != null) parts.push(`(${a.personCount} คน)`);
+    if (a.detail) parts.push(`— ${safeDecrypt(a.detail)}`);
+    return parts.join(" ");
+  });
+
   const sections: HouseholdReview["sections"] = [
     {
       title: "ส่วนที่ 0 — ข้อมูลการสำรวจ",
@@ -187,22 +274,134 @@ export async function loadHouseholdForReview(
           label: "จำนวนที่ต้องการช่วยเหลือ (คน)",
           value: h.assistanceTotalPersonCount != null ? String(h.assistanceTotalPersonCount) : null,
         },
+        {
+          label: "ความต้องการช่วยเหลือ",
+          value: assistanceList.length > 0 ? assistanceList.join(" · ") : null,
+        },
       ],
     },
     {
-      title: "ส่วนที่ 4-5 — การมีส่วนร่วมและอื่นๆ",
+      title: "ส่วนที่ 3 — สภาพแวดล้อมและความเสี่ยงอุทกภัย",
       fields: [
         {
-          label: "ต้องการเยียวยาจิตใจ",
+          label: "1. ระดับพื้นบ้านเทียบถนน",
+          value: enumLabel(FLOOR_LEVEL_LABEL, frp?.floorLevelVsRoad),
+        },
+        {
+          label: "2. เคยน้ำท่วม",
+          value: frp?.hasFloodedBefore == null
+            ? null
+            : frp.hasFloodedBefore ? "เคย" : "ไม่เคย",
+        },
+        {
+          label: "3. ระดับน้ำท่วมสูงสุด (ม. + ซม.)",
+          value: floodDepthText(frp?.floodDepthMetersRaw ?? null, frp?.floodDepthCmRaw ?? null),
+        },
+        {
+          label: "4. น้ำท่วมครั้งล่าสุดนานกี่วัน",
+          value: frp?.lastFloodDurationDays != null ? `${frp.lastFloodDurationDays} วัน` : null,
+        },
+        {
+          label: "5. มีพื้นที่จอดรถปลอดภัย",
+          value: frp?.hasSafeParking == null ? null : frp.hasSafeParking ? "มี" : "ไม่มี",
+        },
+        {
+          label: "6. มีจุดจอดรถปลอดภัยที่อื่น",
+          value: frp?.hasAlternateParking == null
+            ? null
+            : frp.hasAlternateParking ? "มี" : "ไม่มี",
+        },
+        { label: "ระบุสถานที่จอดรถ", value: frp?.alternateParkingLocation ?? null },
+        {
+          label: "7. ที่อพยพครั้งล่าสุด",
+          value: enumLabel(LAST_EVAC_LABEL, frp?.lastEvacuationPlace),
+        },
+        { label: "ที่อพยพ (อื่น ๆ ระบุ)", value: frp?.lastEvacuationOther ?? null },
+        {
+          label: "8. จุดอพยพใกล้ที่สุด",
+          value:
+            frp && frp.nearestEvacSiteTypes.length > 0
+              ? frp.nearestEvacSiteTypes
+                  .map((t) => NEAREST_EVAC_LABEL[t] ?? t)
+                  .join(", ")
+              : enumLabel(NEAREST_EVAC_LABEL, frp?.nearestEvacSiteType),
+        },
+        { label: "จุดอพยพ (อื่น ๆ ระบุ)", value: frp?.nearestEvacSiteOther ?? null },
+        {
+          label: "9. ยานพาหนะอพยพ",
+          value: vehicleList.length > 0 ? vehicleList.join(", ") : null,
+        },
+        {
+          label: "10. มีถุงยังชีพ",
+          value: frp?.hasSurvivalKit == null
+            ? null
+            : frp.hasSurvivalKit ? "เตรียม" : "ไม่ได้เตรียม",
+        },
+        {
+          label: "11. ทรัพยากรรับมืออุทกภัย",
+          value: resourceList.length > 0
+            ? h.hasNoResources === true
+              ? "ไม่มี (ติ๊กยืนยัน)"
+              : resourceList.join(", ")
+            : h.hasNoResources === true
+              ? "ไม่มี (ติ๊กยืนยัน)"
+              : null,
+        },
+        {
+          label: "12. ใช้เป็นบ้านพี่เลี้ยงได้",
+          value: frp?.canBeHostHouse == null ? null : frp.canBeHostHouse ? "ได้" : "ไม่ได้",
+        },
+      ],
+    },
+    {
+      title: "ส่วนที่ 4 — การเตือนภัยและการมีส่วนร่วม",
+      fields: [
+        {
+          label: "1. ช่องทางรับข่าวเตือนภัย",
+          value: channelList.length > 0 ? channelList.join(", ") : null,
+        },
+        {
+          label: "2. ใช้สมาร์ทโฟน",
+          value: h.digitalReadiness?.usesSmartphone == null
+            ? null
+            : h.digitalReadiness.usesSmartphone ? "ใช้" : "ไม่ใช้",
+        },
+        {
+          label: "3. สแกน QR ได้",
+          value: h.digitalReadiness?.canScanQR == null
+            ? null
+            : h.digitalReadiness.canScanQR ? "ได้" : "ไม่ได้",
+        },
+        {
+          label: "4. สนใจเป็นอาสาสมัคร",
+          value: volunteerList.length > 0
+            ? volunteerList.join(", ")
+            : h.volunteerNotAvailable === true
+              ? "ไม่สะดวกเข้าร่วม (ติ๊กยืนยัน)"
+              : null,
+        },
+        {
+          label: "5. ต้องการเยียวยาจิตใจ",
           value: h.mentalHealthSupport == null ? null : h.mentalHealthSupport ? "ต้องการ" : "ไม่ต้องการ",
           sensitive: true,
         },
+        { label: "6. ข้อเสนอแนะ", value: h.suggestion },
+      ],
+    },
+    {
+      title: "ส่วนที่ 5-6 — ผู้สำรวจและโครงการแก้จน",
+      fields: [
+        {
+          label: "ระดับความเสี่ยง (ผู้สำรวจติ๊ก)",
+          value: enumLabel(RISK_SURVEYOR_LABEL, frp?.riskLevelSurveyor),
+        },
+        { label: "หมายเหตุผู้สำรวจ", value: h.surveyorNote },
         {
           label: "สนใจโครงการแก้จน",
-          value: h.povertyProgramInterest == null ? null : h.povertyProgramInterest ? "สนใจ" : "ไม่สนใจ",
+          value: h.povertyProgramInterest == null
+            ? null
+            : h.povertyProgramInterest ? "สนใจ" : "ไม่สนใจ",
         },
-        { label: "ข้อเสนอแนะ", value: h.suggestion },
-        { label: "หมายเหตุผู้สำรวจ", value: h.surveyorNote },
       ],
     },
   ];

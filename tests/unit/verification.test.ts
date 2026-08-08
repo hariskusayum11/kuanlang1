@@ -74,6 +74,9 @@ describe("normalizeValue — ตรวจค่าตามชนิดฟิล
   const phone = EDITABLE_BY_KEY.get("respondentPhone")!;
   const member = EDITABLE_BY_KEY.get("memberCount")!;
   const houseNo = EDITABLE_BY_KEY.get("houseNo")!;
+  const hasVulnerable = EDITABLE_BY_KEY.get("hasVulnerable")!;
+  const assistanceNeedIds = EDITABLE_BY_KEY.get("assistanceNeedIds")!;
+  const suggestion = EDITABLE_BY_KEY.get("suggestion")!;
 
   it("phone: normalize +66/ขีด/เว้นวรรค → เลขล้วนขึ้นต้น 0", () => {
     expect(normalizeValue(phone, "+66 81-234 5678")).toEqual({ ok: true, value: "0812345678" });
@@ -87,8 +90,28 @@ describe("normalizeValue — ตรวจค่าตามชนิดฟิล
     expect(normalizeValue(member, "2.5")).toEqual({ ok: false });
   });
 
-  it("text: trim + null → ค่าว่าง", () => {
+  it("boolean: รับ true/false/อันว่างได้, ค่าแปลก → ไม่ผ่าน", () => {
+    expect(hasVulnerable.kind).toBe("boolean");
+    expect(normalizeValue(hasVulnerable, false)).toEqual({ ok: true, value: false });
+    expect(normalizeValue(hasVulnerable, "true")).toEqual({ ok: true, value: true });
+    expect(normalizeValue(hasVulnerable, "")).toEqual({ ok: true, value: "" }); // ล้างค่า
+    expect(normalizeValue(hasVulnerable, "ใช่")).toEqual({ ok: false });
+  });
+
+  it("checkbox-group: array ผ่าน, null → [] (ล้าง), ค่าไม่ใช่ array → ไม่ผ่าน", () => {
+    expect(assistanceNeedIds.kind).toBe("checkbox-group");
+    expect(normalizeValue(assistanceNeedIds, ["n1", "n2"])).toEqual({
+      ok: true,
+      value: ["n1", "n2"],
+    });
+    expect(normalizeValue(assistanceNeedIds, null)).toEqual({ ok: true, value: [] });
+    expect(normalizeValue(assistanceNeedIds, "n1")).toEqual({ ok: false });
+  });
+
+  it("text/textarea: trim, ค่าอื่นถูกแปลงเป็นข้อความ, null → ว่าง", () => {
     expect(normalizeValue(houseNo, "  12/3  ")).toEqual({ ok: true, value: "12/3" });
     expect(normalizeValue(houseNo, null)).toEqual({ ok: true, value: "" });
+    expect(suggestion.kind).toBe("textarea");
+    expect(normalizeValue(suggestion, "  ฝากตรวจ  ")).toEqual({ ok: true, value: "ฝากตรวจ" });
   });
 });
