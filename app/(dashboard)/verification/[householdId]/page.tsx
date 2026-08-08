@@ -29,7 +29,7 @@ function StatusBadge({ status }: { status: FieldStatusEnum }) {
 
 function FieldRow({ field }: { field: ReviewField }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b-2 border-slate-50 py-2.5">
       <dt className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
         {field.label}
         {field.sensitive && (
@@ -105,7 +105,7 @@ export default async function ReviewPage({
   const editable = await loadHouseholdEditable(ctx, householdId);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
+    <div className="w-full space-y-6 animate-fade-in">
       {/* หัวเรื่อง + สถานะ */}
       <div>
         <Link
@@ -147,11 +147,26 @@ export default async function ReviewPage({
         </div>
       </div>
 
-      {/* ส่วนข้อมูล */}
+      {/* แถบเครื่องมือ — แก้ไข/ลบ ให้เห็นชัดด้านบน (ไม่ต้องเลื่อนหา) */}
+      {(editable?.canEdit || ctx.roles.includes("ADMIN")) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-slate-200 bg-white px-5 py-3">
+          <span className="text-sm font-semibold text-slate-500">เครื่องมือ:</span>
+          {ctx.roles.includes("ADMIN") && (
+            <DeleteHouseholdButton householdId={review.householdId} sheetNo={review.sheetNo} />
+          )}
+          {editable?.canEdit && (
+            <span className="text-xs text-slate-400">
+              เลื่อนลงด้านล่างเพื่อแก้ไขข้อมูลแต่ละส่วน
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ส่วนข้อมูล — แสดงหลายคอลัมน์เต็มจอ อ่านง่ายขึ้น */}
       {review.sections.map((section) => (
         <section key={section.title} className="card p-6">
           <SectionTitle title={section.title} tone="brand" />
-          <dl className="mt-2 divide-y-2 divide-slate-50">
+          <dl className="mt-2 grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
             {section.fields.map((f) => (
               <FieldRow key={f.label} field={f} />
             ))}
@@ -200,13 +215,6 @@ export default async function ReviewPage({
             <p className="text-sm font-medium text-slate-600">
               ตรวจข้อมูลข้างต้นเทียบกับกระดาษ เมื่อถูกต้องแล้วจึงยืนยัน
             </p>
-          )}
-          {/* ลบใบ (soft delete) — เฉพาะ ADMIN (RBAC ตรวจซ้ำฝั่ง server) */}
-          {ctx.roles.includes("ADMIN") && (
-            <DeleteHouseholdButton
-              householdId={review.householdId}
-              sheetNo={review.sheetNo}
-            />
           )}
         </div>
         <div className="flex items-center gap-3">
