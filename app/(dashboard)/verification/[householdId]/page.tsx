@@ -147,32 +147,33 @@ export default async function ReviewPage({
         </div>
       </div>
 
-      {/* แถบเครื่องมือ — แก้ไข/ลบ ให้เห็นชัดด้านบน (ไม่ต้องเลื่อนหา) */}
-      {(editable?.canEdit || ctx.roles.includes("ADMIN")) && (
+      {/* แถบเครื่องมือ — ปุ่มลบให้เห็นชัดด้านบน (เฉพาะ ADMIN) */}
+      {ctx.roles.includes("ADMIN") && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-slate-200 bg-white px-5 py-3">
           <span className="text-sm font-semibold text-slate-500">เครื่องมือ:</span>
-          {ctx.roles.includes("ADMIN") && (
-            <DeleteHouseholdButton householdId={review.householdId} sheetNo={review.sheetNo} />
-          )}
-          {editable?.canEdit && (
-            <span className="text-xs text-slate-400">
-              เลื่อนลงด้านล่างเพื่อแก้ไขข้อมูลแต่ละส่วน
-            </span>
-          )}
+          <DeleteHouseholdButton householdId={review.householdId} sheetNo={review.sheetNo} />
         </div>
       )}
 
-      {/* ส่วนข้อมูล — แสดงหลายคอลัมน์เต็มจอ อ่านง่ายขึ้น */}
-      {review.sections.map((section) => (
-        <section key={section.title} className="card p-6">
-          <SectionTitle title={section.title} tone="brand" />
-          <dl className="mt-2 grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
-            {section.fields.map((f) => (
-              <FieldRow key={f.label} field={f} />
-            ))}
-          </dl>
-        </section>
-      ))}
+      {/* อ่าน + แก้ไขในหน้าเดียว — ถ้าแก้ได้ แสดงฟอร์มแก้ไข (มีค่าเดิม) แทนตารางอ่านอย่างเดียว */}
+      {editable?.canEdit ? (
+        <EditPanelFull
+          householdId={review.householdId}
+          initialValues={editable.values}
+          options={editable.options}
+        />
+      ) : (
+        review.sections.map((section) => (
+          <section key={section.title} className="card p-6">
+            <SectionTitle title={section.title} tone="brand" />
+            <dl className="mt-2 grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
+              {section.fields.map((f) => (
+                <FieldRow key={f.label} field={f} />
+              ))}
+            </dl>
+          </section>
+        ))
+      )}
 
       {/* กลุ่มเปราะบาง */}
       {review.vulnerablePersons.length > 0 && (
@@ -188,15 +189,6 @@ export default async function ReviewPage({
             ))}
           </div>
         </section>
-      )}
-
-      {/* แก้ไขข้อมูล (เฉพาะใบ ENTERED_1 ที่ผู้ตรวจไม่ใช่ผู้คีย์) */}
-      {editable?.canEdit && (
-        <EditPanelFull
-          householdId={review.householdId}
-          initialValues={editable.values}
-          options={editable.options}
-        />
       )}
 
       {/* แถบยืนยัน */}

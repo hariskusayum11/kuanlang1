@@ -113,7 +113,6 @@ function toStr(v: EditableFormValue): string {
 
 export function EditPanelFull({ householdId, initialValues, options }: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, EditableFormValue>>(initialValues);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +143,6 @@ export function EditPanelFull({ householdId, initialValues, options }: Props) {
         return;
       }
       // โหลดหน้าใหม่ให้แสดงค่าใหม่ + version log ที่อัปเดต
-      setOpen(false);
       router.refresh();
       return;
     }
@@ -156,22 +154,6 @@ export function EditPanelFull({ householdId, initialValues, options }: Props) {
     setValues(initialValues);
     setError(null);
     setNotice(null);
-    setOpen(false);
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="btn btn-secondary btn-md"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-          <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        แก้ไขข้อมูล
-      </button>
-    );
   }
 
   return (
@@ -179,7 +161,7 @@ export function EditPanelFull({ householdId, initialValues, options }: Props) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
           <span className="h-5 w-1.5 rounded-full bg-alert-400" />
-          แก้ไขข้อมูลที่คีย์ผิด
+          ข้อมูลใบ — แก้ไขได้ในหน้านี้เลย
         </h3>
         <span className="text-xs font-medium text-slate-400">ระบบเก็บสำเนาก่อนแก้ (version) ทุกครั้ง</span>
       </div>
@@ -233,8 +215,8 @@ export function EditPanelFull({ householdId, initialValues, options }: Props) {
       )}
 
       <div className="mt-5 flex items-center justify-end gap-3">
-        <button type="button" onClick={cancel} disabled={busy} className="btn btn-ghost btn-md">
-          ยกเลิก
+        <button type="button" onClick={cancel} disabled={busy || !dirty} className="btn btn-ghost btn-md">
+          คืนค่าเดิม
         </button>
         <button
           type="button"
