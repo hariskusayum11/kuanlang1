@@ -10,6 +10,7 @@ import {
 } from "@/lib/registration/validation";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 import { Mascot } from "@/components/brand/mascot";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 
 const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
   EMAIL_TAKEN: "อีเมลนี้ถูกใช้งานแล้ว — หากเป็นอีเมลของคุณ กรุณาติดต่อผู้ดูแลระบบ",
@@ -32,6 +33,7 @@ export function RegisterForm() {
     organization: "",
     note: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -146,32 +148,38 @@ export function RegisterForm() {
           <label htmlFor="reg-password" className="label">
             รหัสผ่าน <span className="text-red-500">*</span>
           </label>
-          <input
-            id="reg-password"
-            type="password"
-            autoComplete="new-password"
-            placeholder="อย่างน้อย 8 ตัวอักษร"
-            required
-            value={form.password}
-            onChange={(e) => set("password", e.target.value)}
-            disabled={submitting}
-            className="field disabled:bg-slate-50"
-          />
+          <div className="relative">
+            <input
+              id="reg-password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="อย่างน้อย 8 ตัวอักษร"
+              required
+              value={form.password}
+              onChange={(e) => set("password", e.target.value)}
+              disabled={submitting}
+              className="field pr-11 disabled:bg-slate-50"
+            />
+            <PasswordToggle shown={showPassword} onToggle={() => setShowPassword((s) => !s)} />
+          </div>
         </div>
         <div className="space-y-1.5">
           <label htmlFor="reg-confirm" className="label">
             ยืนยันรหัสผ่าน <span className="text-red-500">*</span>
           </label>
-          <input
-            id="reg-confirm"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={form.confirmPassword}
-            onChange={(e) => set("confirmPassword", e.target.value)}
-            disabled={submitting}
-            className="field disabled:bg-slate-50"
-          />
+          <div className="relative">
+            <input
+              id="reg-confirm"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              required
+              value={form.confirmPassword}
+              onChange={(e) => set("confirmPassword", e.target.value)}
+              disabled={submitting}
+              className="field pr-11 disabled:bg-slate-50"
+            />
+            <PasswordToggle shown={showPassword} onToggle={() => setShowPassword((s) => !s)} />
+          </div>
         </div>
       </div>
 

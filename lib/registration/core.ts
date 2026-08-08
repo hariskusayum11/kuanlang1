@@ -146,6 +146,133 @@ export type DecideRegistrationResult =
   | { ok: false; reason: "FORBIDDEN" | "NOT_FOUND_OR_DECIDED" | "INVALID_ROLE" };
 
 /**
+ * กลับคำขอที่ถูกปฏิเสธ/ยกเลิกมาเป็น "รอตรวจ" (PENDING) อีกครั้ง
+ * เพื่อให้แอดมินพิจารณาใหม่ (เช่น ผู้สมัครติดต่อมาให้ข้อมูลเพิ่ม)
+ *
+ * - ปรับคืนสถานะ + ล้างผู้ตัดสิน/เวลา/เหตุผลเดิม
+ * - บัญชียังคง inactive จนกว่าจะอนุมัติ — ไม่มีช่องโหว่
+ * - race-safe ด้วย updateMany + เงื่อนไขสถานะ (สำเร็จได้ครั้งเดียว)
+ */
+export async function reopenRegistration(
+  ctx: AuthorizationContext,
+  requestId: string,
+): Promise<DecideRegistrationResult> {
+  if (!hasPermission(ctx, PERMISSIONS.REGISTRATION_MANAGE)) {
+    return { ok: false, reason: "FORBIDDEN" };
+  }
+
+  const updated = await prisma.registrationRequest.updateMany({
+    where: {
+      id: requestId,
+      status: {
+        in: [
+          RegistrationRequestStatus.REJECTED,
+          RegistrationRequestStatus.CANCELLED,
+        ],
+      },
+    },
+    data: {
+      status: RegistrationRequestStatus.PENDING,
+      decidedById: null,
+      decidedAt: null,
+      rejectReason: null,
+    },
+  });
+  if (updated.count !== 1) return { ok: false, reason: "NOT_FOUND_OR_DECIDED" };
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "RegistrationRequest",
+    entityId: requestId,
+    changes: { status: { old: "REJECTED/CANCELLED", new: "PENDING" } },
+    reason: "reopen-registration-request",
+  });
+  return { ok: true };
+}
+
+export type DeleteRegistrationRequestResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "FORBIDDEN"
+        | "NOT_FOUND_OR_DECIDED"
+        | "NOT_DELETABLE"
+        | "ERROR";
+    };
+
+/**
+ * ลบคำขอลงทะเบียนที่ตัดสินแล้ว (REJECTED / CANCELLED) ออกจากระบบ
+ *
+ * ใช้สำหรับกวาดคำขอที่ปิดจบแล้วออกจากคิว/ประวัติ — จำกัดเฉพาะสถานะที่
+ * "ยังไม่เคยใช้งานได้" เพราะคำขอ APPROVED คือบัญชีที่ใช้งานจริง ต้องใช้
+ * เส้นทาง "ลบบัญชีผู้ใช้" (soft delete) แทน ไม่ใช่ลบคำขอทิ้ง
+ *
+ * ใน transaction เดียว:
+ *  - ลบคำขอ (RegistrationRequest)
+ *  - ลบ session/account ของบัญชี (ถ้ามี) — กัน credential ค้าง
+ *  - ถ้าบัญชียัง inactive (ยังไม่เคยถูกอนุมัติ) → ลบ user ด้วย
+ *    (บัญชีผีที่ login ไม่ได้และไม่มีข้อมูลผูกใด เหลือไว้ไม่มีความหมาย)
+ *  - Audit DELETE เก็บ id คำขอ/ผู้ใช้ที่ลบ (ไม่ใช่ PII)
+ *
+ * ⚠️ บัญชีที่เคย APPROVED → status ที่ตัดสินแล้ว = APPROVED มาถึง path นี้ไม่ได้
+ *    (NOT_DELETABLE) — ต้องไปลบผ่าน lib/admin/users.deleteUser (soft)
+ */
+export async function deleteRegistrationRequest(
+  ctx: AuthorizationContext,
+  requestId: string,
+): Promise<DeleteRegistrationRequestResult> {
+  if (!hasPermission(ctx, PERMISSIONS.REGISTRATION_MANAGE)) {
+    return { ok: false, reason: "FORBIDDEN" };
+  }
+
+  const request = await prisma.registrationRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      user: { select: { isActive: true } },
+    },
+  });
+  if (!request) return { ok: false, reason: "NOT_FOUND_OR_DECIDED" };
+  if (
+    request.status !== RegistrationRequestStatus.REJECTED &&
+    request.status !== RegistrationRequestStatus.CANCELLED
+  ) {
+    return { ok: false, reason: "NOT_DELETABLE" };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.registrationRequest.delete({ where: { id: requestId } });
+      if (!request.user.isActive) {
+        // ยังไม่เคยถูกอนุมัติ — ลบได้ทั้งหมด (ไม่เคยมีข้อมูลการทำงานผูก)
+        await tx.session.deleteMany({ where: { userId: request.userId } });
+        await tx.user.delete({ where: { id: request.userId } });
+      }
+    });
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.DELETE,
+    entityType: "RegistrationRequest",
+    entityId: requestId,
+    changes: {
+      userId: request.userId,
+      status: request.status,
+      softDeletedAccount: !request.user.isActive,
+    },
+    reason: "delete-registration-request",
+  });
+  return { ok: true };
+}
+
+/**
  * อนุมัติคำขอ — atomic + race-safe: เปลี่ยนสถานะด้วยเงื่อนไข PENDING (updateMany)
  * สองแอดมินกดพร้อมกัน → สำเร็จคนเดียว อีกคนได้ NOT_FOUND_OR_DECIDED
  * ใน transaction เดียว: activate user + มอบ role + มอบ community scope

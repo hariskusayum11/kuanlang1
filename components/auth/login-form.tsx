@@ -4,10 +4,12 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { loginSchema } from "@/lib/validations/auth";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -72,18 +74,21 @@ export function LoginForm() {
         <label htmlFor="password" className="label">
           รหัสผ่าน
         </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={submitting}
-          className="field disabled:bg-slate-50"
-        />
+        <div className="relative">
+          <input
+            id="password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            placeholder="••••••••"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={submitting}
+            className="field pr-11 disabled:bg-slate-50"
+          />
+          <PasswordToggle shown={showPassword} onToggle={() => setShowPassword((s) => !s)} />
+        </div>
       </div>
 
       {error && (

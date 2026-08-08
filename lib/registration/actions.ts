@@ -8,9 +8,12 @@ import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
   approveRegistration,
+  deleteRegistrationRequest,
   rejectRegistration,
+  reopenRegistration,
   submitRegistration,
   type DecideRegistrationResult,
+  type DeleteRegistrationRequestResult,
   type SubmitRegistrationResult,
 } from "./core";
 import { consumeRegistrationQuota } from "./rate-limit";
@@ -75,4 +78,30 @@ export async function rejectRegistrationAction(
     return { ok: false, reason: "INVALID" };
   }
   return rejectRegistration(ctx, parsedId.data, parsedReason.data);
+}
+
+/** กลับคำขอที่ถูกปฏิเสธ/ยกเลิกมาเป็นรอตรวจใหม่ (REJECTED/CANCELLED → PENDING) */
+export async function reopenRegistrationAction(
+  requestId: string,
+): Promise<DecideRegistrationActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsed = requestIdSchema.safeParse(requestId);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+  return reopenRegistration(ctx, parsed.data);
+}
+
+export type DeleteRegistrationRequestActionResult =
+  | DeleteRegistrationRequestResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** ลบคำขอลงทะเบียนที่ตัดสินแล้ว (REJECTED/CANCELLED) — RBAC ตรวจใน core */
+export async function deleteRegistrationRequestAction(
+  requestId: string,
+): Promise<DeleteRegistrationRequestActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const parsed = requestIdSchema.safeParse(requestId);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+  return deleteRegistrationRequest(ctx, parsed.data);
 }
