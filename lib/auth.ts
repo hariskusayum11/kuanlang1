@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
+import { nextCookies } from "better-auth/next-js";
 import { AuditAction } from "@prisma/client";
 import { prisma } from "./prisma";
 import { writeAuditLog } from "./audit/log";
@@ -49,10 +50,14 @@ export const auth = betterAuth({
     window: 60,
     max: 100,
     customRules: {
-      "/sign-in/email": { window: 60, max: 5 }, // ผิดได้ 5 ครั้ง/นาที ต่อ IP
-      "/sign-up/email": { window: 3600, max: 5 }, // สมัครได้ 5 ครั้ง/ชม. ต่อ IP — กัน bot สแปมคำขอ
+      "/sign-in/email": { window: 60, max: 10 }, // ได้ 10 ครั้ง/นาที ต่อ IP
+      "/sign-up/email": { window: 3600, max: 10 }, // สมัครได้ 10 ครั้ง/ชม. ต่อ IP — กัน bot สแปมคำขอ
     },
   },
+  // Server Actions (เช่น autosave/ต่ออายุ lock ระหว่างกรอก) ต้องส่ง Set-Cookie
+  // กลับไปยังเบราว์เซอร์ มิฉะนั้น session ฝั่ง DB ต่ออายุแต่ cookie ยังหมดใน 30 นาที
+  // Better Auth กำหนดให้ nextCookies เป็น plugin ตัวสุดท้ายเสมอ
+  plugins: [nextCookies()],
   user: {
     additionalFields: {
       phone: { type: "string", required: false },

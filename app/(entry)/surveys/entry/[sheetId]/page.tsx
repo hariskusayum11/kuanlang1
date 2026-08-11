@@ -7,6 +7,7 @@ import { getSheetForEntry } from "@/lib/entry/claim";
 import { listSelectableCommunities } from "@/lib/sheet/create";
 import { loadDraftPayload } from "@/lib/entry/save";
 import { getEntryMasterData } from "@/lib/entry/master-data";
+import { getEntrySuggestions } from "@/lib/entry/suggestions";
 import { EntryWizard } from "@/components/entry/entry-wizard";
 import { SheetGate } from "@/components/entry/sheet-gate";
 
@@ -79,10 +80,11 @@ export default async function EntrySheetPage({
 
   // โหลดร่างที่ค้างไว้ (ถอดรหัสฝั่ง server หลังยืนยันเจ้าของ lock แล้ว)
   // + รายชื่อชุมชนให้เลือก เผื่อผู้คีย์เลือกผิดตอนเริ่มแล้วอยากเปลี่ยน (รหัสเดิมไม่เสีย)
-  const [master, initialDraft, communities] = await Promise.all([
+  const [master, initialDraft, communities, suggestions] = await Promise.all([
     getEntryMasterData(access.sheet.communityId),
     loadDraftPayload(ctx, sheetId),
     listSelectableCommunities(ctx),
+    getEntrySuggestions(ctx),
   ]);
   const lockExpiry = access.sheet.lockExpiresAt ?? new Date();
 
@@ -99,6 +101,7 @@ export default async function EntrySheetPage({
       lockExpiresAt={lockExpiry.toISOString()}
       initialRemainingMs={Math.max(0, lockExpiry.getTime() - Date.now())}
       initialDraft={initialDraft}
+      suggestions={suggestions}
     />
   );
 }

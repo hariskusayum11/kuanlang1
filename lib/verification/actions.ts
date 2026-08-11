@@ -6,7 +6,12 @@ import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import { verifyHousehold, type VerifyResult } from "./review";
 import { applyHouseholdEdits, type EditResult } from "./edit";
-import type { EditableFormValue } from "./editable-fields";
+import type { EditableFieldMark, EditableFormValue } from "./editable-fields";
+import {
+  resolveDuplicateFlag,
+  type DuplicateDecision,
+  type ResolveDuplicateResult,
+} from "./duplicate-resolution";
 
 const householdIdSchema = z.string().cuid();
 
@@ -25,6 +30,22 @@ export async function verifyHouseholdAction(
   return verifyHousehold(ctx, parsed.data);
 }
 
+export type ResolveDuplicateActionResult =
+  | ResolveDuplicateResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+export async function resolveDuplicateFlagAction(
+  householdId: string,
+  decision: DuplicateDecision,
+): Promise<ResolveDuplicateActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+  const id = householdIdSchema.safeParse(householdId);
+  const parsedDecision = z.enum(["CONFIRMED_DUPLICATE", "NOT_DUPLICATE"]).safeParse(decision);
+  if (!id.success || !parsedDecision.success) return { ok: false, reason: "INVALID" };
+  return resolveDuplicateFlag(ctx, id.data, parsedDecision.data);
+}
+
 export type EditActionResult =
   | EditResult
   | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
@@ -33,10 +54,11 @@ export type EditActionResult =
 export async function editHouseholdAction(
   householdId: string,
   edits: Record<string, EditableFormValue>,
+  fieldMarks: Record<string, EditableFieldMark> = {},
 ): Promise<EditActionResult> {
   const ctx = await getAuthorizationContext();
   if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
   const parsed = householdIdSchema.safeParse(householdId);
   if (!parsed.success) return { ok: false, reason: "INVALID" };
-  return applyHouseholdEdits(ctx, parsed.data, edits);
+  return applyHouseholdEdits(ctx, parsed.data, edits, fieldMarks);
 }

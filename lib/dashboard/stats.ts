@@ -1,4 +1,4 @@
-import { SheetStatus } from "@prisma/client";
+import { Prisma, SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 
 // ตัวเลขภาพรวม — เลือกเฉพาะที่ "เชื่อถือได้และสำคัญ" ต่อการติดตามงานจริง
@@ -9,7 +9,7 @@ export type DashboardCounts = {
   keyed: number;
   /** ตรวจสอบแล้ว (VERIFIED) — ไม่นับใบสงสัยซ้ำ */
   verified: number;
-  /** รอตรวจ (คีย์เสร็จ ENTERED_1 แต่ยังไม่ผ่านตรวจ) */
+  /** ยังไม่ผ่านตรวจ = คีย์แล้วทั้งหมด − ตรวจแล้ว (รวมใบที่กำลังเปิดแก้/LOCKED) */
   pending: number;
   /** จำนวนผู้คีย์ (บัญชีที่มีการคีย์อย่างน้อย 1 ใบ) */
   keyers: number;
@@ -32,19 +32,31 @@ function householdWhere(communityIds?: string[]) {
       sheet: { status: SheetStatus.VERIFIED },
       ...scope,
     },
-    pending: { deletedAt: null, sheet: { status: SheetStatus.ENTERED_1 }, ...scope },
-  } as const;
+  };
+}
+
+export function derivePendingCount(keyed: number, verified: number): number {
+  return Math.max(0, keyed - verified);
 }
 
 async function computeCounts(communityIds?: string[]): Promise<Omit<DashboardCounts, "communities">> {
   const w = householdWhere(communityIds);
-  const [keyed, verified, pending, keyerGroups] = await Promise.all([
+  // อ่านจาก snapshot เดียว ป้องกันยอดเหลื่อมเมื่อมีคนส่ง/ยืนยันใบระหว่าง query
+  const [keyed, verified, keyerGroups] = await prisma.$transaction([
     prisma.household.count({ where: w.keyed }),
     prisma.household.count({ where: w.verified }),
-    prisma.household.count({ where: w.pending }),
-    prisma.household.groupBy({ by: ["enteredById"], where: w.keyed }),
-  ]);
-  return { keyed, verified, pending, keyers: keyerGroups.length };
+    prisma.household.groupBy({
+      by: ["enteredById"],
+      where: w.keyed,
+      orderBy: { enteredById: "asc" },
+    }),
+  ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  return {
+    keyed,
+    verified,
+    pending: derivePendingCount(keyed, verified),
+    keyers: keyerGroups.length,
+  };
 }
 
 /** อ่านตัวเลขภาพรวมทั้งระบบ (read-only, ไม่มี PII) */
@@ -71,7 +83,7 @@ export function toStatCards(counts: DashboardCounts): StatCard[] {
     { key: "communities", label: "ชุมชน", value: counts.communities },
     { key: "keyed", label: "คีย์แล้ว", value: counts.keyed },
     { key: "verified", label: "ตรวจแล้ว", value: counts.verified },
-    { key: "pending", label: "รอตรวจ", value: counts.pending },
+    { key: "pending", label: "ยังไม่ผ่านตรวจ", value: counts.pending },
     { key: "keyers", label: "ผู้คีย์", value: counts.keyers },
   ];
 }

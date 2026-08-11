@@ -66,10 +66,19 @@ describe.skipIf(!isLocalDevDb)("Integration (local Dev DB — PostgreSQL/PostGIS
     expect(notFromEntry).toBe(0);
   });
 
-  // Phase 2 guard: EvacuationSite ยังไม่เปิดใช้งานใน Phase 1 (ไม่มี Seed)
-  it("Phase 2: ไม่มี EvacuationSite Seed ใน Phase 1", async () => {
-    const sites = await prisma.evacuationSite.count();
-    expect(sites).toBe(0);
+  // จุดสำคัญเปิดใช้งานแล้ว: ข้อมูลที่มีอยู่ต้องพร้อมแสดงบนแผนที่อย่างปลอดภัย
+  it("EvacuationSite: จุดสำคัญที่เปิดใช้งานมีชื่อและพิกัดถูกต้อง", async () => {
+    const sites = await prisma.evacuationSite.findMany({
+      where: { isActive: true },
+      select: { name: true, latitude: true, longitude: true },
+    });
+    for (const site of sites) {
+      expect(site.name.trim().length).toBeGreaterThan(0);
+      expect(Number(site.latitude)).toBeGreaterThanOrEqual(-90);
+      expect(Number(site.latitude)).toBeLessThanOrEqual(90);
+      expect(Number(site.longitude)).toBeGreaterThanOrEqual(-180);
+      expect(Number(site.longitude)).toBeLessThanOrEqual(180);
+    }
   });
 
   // ข้อ8 (BR-44/FR-VER-03/SCH-03): คนเดียวกันคีย์ Entry 1+2 ต้องถูกปฏิเสธ

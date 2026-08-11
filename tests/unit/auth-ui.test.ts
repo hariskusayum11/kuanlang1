@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { loginSchema } from "../../lib/validations/auth";
-import { toStatCards, type DashboardCounts } from "../../lib/dashboard/stats";
+import {
+  derivePendingCount,
+  toStatCards,
+  type DashboardCounts,
+} from "../../lib/dashboard/stats";
 import { safeErrorMessage, SAFE_ERROR_MESSAGES } from "../../lib/errors";
 
 describe("Login validation (loginSchema)", () => {
@@ -45,6 +49,11 @@ describe("Dashboard stats mapping (toStatCards)", () => {
       "keyers",
     ]);
     expect(cards.map((c) => c.value)).toEqual([5, 40, 18, 22, 3]);
+  });
+
+  it("ยังไม่ผ่านตรวจใช้สูตรคีย์แล้ว − ตรวจแล้ว รวมใบที่กำลังเปิดแก้", () => {
+    expect(derivePendingCount(262, 1)).toBe(261);
+    expect(derivePendingCount(1, 2)).toBe(0);
   });
 });
 

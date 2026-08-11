@@ -3,15 +3,17 @@ import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import {
   getVerificationOverview,
+  verificationRowActions,
   type VerificationQueueItem,
 } from "@/lib/verification/queue";
-import { groupVerificationQueue } from "@/domain/verification/group-queue";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
+import { DeleteHouseholdButton } from "@/components/admin/delete-household-button";
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 
 export const metadata = { title: "การตรวจสอบข้อมูล" };
 export const dynamic = "force-dynamic";
 
-type SearchParams = { community?: string; enteredBy?: string };
+type SearchParams = { community?: string; enteredBy?: string; q?: string; page?: string; size?: string };
 
 export default async function VerificationPage({
   searchParams,
@@ -24,25 +26,42 @@ export default async function VerificationPage({
   const filters = {
     communityId: sp.community || undefined,
     enteredById: sp.enteredBy || undefined,
+    search: sp.q || undefined,
+    page: Number.parseInt(sp.page ?? "1", 10),
+    pageSize: Number.parseInt(sp.size ?? "20", 10),
   };
   const overview = await getVerificationOverview(ctx, filters);
-  const filterActive = Boolean(filters.communityId || filters.enteredById);
-  const groups = groupVerificationQueue(overview.queue);
+  const filterActive = Boolean(filters.communityId || filters.enteredById || filters.search);
+  const totalPages = Math.max(1, Math.ceil(overview.filteredTotal / overview.pageSize));
+  const current = Math.min(overview.page, totalPages);
+  const baseParams = new URLSearchParams();
+  if (filters.communityId) baseParams.set("community", filters.communityId);
+  if (filters.enteredById) baseParams.set("enteredBy", filters.enteredById);
+  if (filters.search) baseParams.set("q", filters.search);
+  baseParams.set("size", String(overview.pageSize));
+  const pageHref = (page: number) => {
+    const q = new URLSearchParams(baseParams);
+    q.set("page", String(page));
+    return `/verification?${q}`;
+  };
+  const isAdmin = ctx.roles.includes("ADMIN");
 
-  const total = overview.waiting + overview.verified;
-  const percent = total > 0 ? Math.round((overview.verified / total) * 100) : 0;
+  const displayedWaiting = overview.filteredTotal;
+  const displayedVerified = overview.filteredVerified;
+  const total = displayedWaiting + displayedVerified;
+  const percent = total > 0 ? Math.round((displayedVerified / total) * 100) : 0;
   const scopeLabel = ctx.isGlobalScope ? "ทั้งระบบ" : "ในขอบเขตของคุณ";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-7 animate-fade-in">
+    <div className="w-full space-y-7 animate-fade-in">
       <PageHero
         title="การตรวจสอบข้อมูล"
         tone="brand"
-        description={`ตรวจความถูกต้องของใบที่คีย์แล้วเทียบกับกระดาษ แล้วยืนยันเป็นข้อมูลที่ตรวจสอบแล้ว — จัดกลุ่มเป็นชุมชน → คนกรอก (${scopeLabel})`}
+        description={`ตรวจความถูกต้องของใบที่คีย์แล้วเทียบกับกระดาษ แล้วดู ตรวจ แก้ไข หรือลบได้จากตารางตามสิทธิ์ (${scopeLabel})`}
         badge={
           <>
             <span className="live-dot" />
-            รอตรวจสอบ {overview.waiting.toLocaleString("th-TH")} ใบ
+            รอตรวจสอบ {displayedWaiting.toLocaleString("th-TH")} ใบ
           </>
         }
       />
@@ -51,13 +70,13 @@ export default async function VerificationPage({
       <div className="stagger grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatCard
           label="รอตรวจสอบ"
-          value={overview.waiting}
+          value={displayedWaiting}
           tone="warning"
           icon="M12 8v4l3 2M12 3a9 9 0 100 18 9 9 0 000-18z"
         />
         <StatCard
           label="ยืนยันแล้ว"
-          value={overview.verified}
+          value={displayedVerified}
           tone="success"
           icon="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4"
         />
@@ -79,8 +98,8 @@ export default async function VerificationPage({
             />
           </div>
           <p className="mt-1.5 text-[11px] font-medium tabular-nums text-slate-500">
-            {overview.verified.toLocaleString("th-TH")} / {total.toLocaleString("th-TH")} ใบ{" "}
-            {scopeLabel}
+            {displayedVerified.toLocaleString("th-TH")} / {total.toLocaleString("th-TH")} ใบ{" "}
+            {filterActive ? "ตามตัวกรอง" : scopeLabel}
           </p>
         </div>
       </div>
@@ -88,6 +107,11 @@ export default async function VerificationPage({
       {/* ตัวกรอง — ฟอร์ม GET ล้วน ไม่ใช้ JS (Server Component) */}
       {overview.allowed && overview.filterOptions.communities.length > 0 && (
         <form className="card flex flex-wrap items-end gap-3 p-4">
+          <input type="hidden" name="size" value={overview.pageSize} />
+          <label className="min-w-[200px] flex-[2] space-y-1">
+            <span className="text-xs font-bold text-slate-600">ค้นหา (รหัสใบ / บ้านเลขที่)</span>
+            <input type="search" name="q" defaultValue={filters.search ?? ""} placeholder="เช่น SK-000123 หรือ 45/2" className="field" />
+          </label>
           <FilterSelect
             name="community"
             label="ชุมชน"
@@ -125,10 +149,7 @@ export default async function VerificationPage({
             aside={
               overview.queue.length > 0 ? (
                 <span className="badge badge-neutral tabular-nums">
-                  {overview.queue.length.toLocaleString("th-TH")} รายการ
-                  {!filterActive &&
-                    overview.waiting > overview.queue.length &&
-                    ` (แสดง ${overview.queue.length} แรก)`}
+                  {overview.filteredTotal.toLocaleString("th-TH")} รายการ
                 </span>
               ) : undefined
             }
@@ -155,39 +176,16 @@ export default async function VerificationPage({
             }
           />
         ) : (
-          <div className="divide-y-2 divide-slate-100">
-            {groups.map((community) => (
-              <details key={community.communityId} className="group/community" open>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-white px-6 py-3.5 transition-colors hover:bg-brand-50/40">
-                  <span className="flex items-center gap-2.5">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform group-open/community:rotate-90">
-                      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span className="font-bold text-slate-900">{community.communityName}</span>
-                  </span>
-                  <span className="badge badge-brand tabular-nums">{community.count} ใบ</span>
-                </summary>
-
-                <div className="space-y-3 border-t border-slate-100 bg-slate-50/40 px-4 py-3">
-                  {community.enterers.map((enterer) => (
-                    <div key={enterer.enteredById} className="rounded-xl border-2 border-slate-100 bg-white">
-                      <p className="flex items-center justify-between gap-2 border-b-2 border-slate-100 bg-slate-50/70 px-3.5 py-2 text-xs">
-                        <span className="flex items-center gap-1.5 font-bold text-slate-600">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
-                            <circle cx="12" cy="8" r="3.6" />
-                            <path d="M5 20v-1c0-3 3.1-5 7-5s7 2 7 5v1" strokeLinecap="round" />
-                          </svg>
-                          คีย์โดย {enterer.enteredByName}
-                        </span>
-                        <span className="tabular-nums text-slate-400">{enterer.count} ใบ</span>
-                      </p>
-                      <QueueTable items={enterer.items} />
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ))}
-          </div>
+          <>
+            <QueueTable items={overview.queue} isAdmin={isAdmin} startIndex={(current - 1) * overview.pageSize} />
+            <PaginationFooter
+              current={current}
+              totalPages={totalPages}
+              pageSize={overview.pageSize}
+              pageHref={pageHref}
+              baseParams={baseParams}
+            />
+          </>
         )}
       </section>
     </div>
@@ -220,58 +218,95 @@ function FilterSelect({
   );
 }
 
-function QueueTable({ items }: { items: VerificationQueueItem[] }) {
+function QueueTable({ items, isAdmin, startIndex }: { items: VerificationQueueItem[]; isAdmin: boolean; startIndex: number }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="w-full min-w-[1120px] text-sm">
         <thead>
           <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
-            <th className="py-2.5 pl-3.5 pr-4">ใบ</th>
-            <th className="py-2.5 pr-4 text-center">กลุ่มเปราะบาง</th>
-            <th className="py-2.5 pr-4 text-center">อ่านไม่ออก/ว่าง</th>
+            <th className="py-2.5 pl-6 pr-3 text-right">#</th>
+            <th className="py-2.5 pr-4">รหัสใบ</th>
+            <th className="py-2.5 pr-4">วันที่กรอก</th>
+            <th className="py-2.5 pr-4">ชุมชน</th>
+            <th className="py-2.5 pr-4">บ้านเลขที่</th>
+            <th className="py-2.5 pr-4">คนกรอก</th>
             <th className="py-2.5 pr-4">สถานะ</th>
-            <th className="py-2.5 pr-3.5 text-right">การทำงาน</th>
+            <th className="sticky right-0 bg-slate-50 py-2.5 pr-6 text-right">การดำเนินการ</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
-          {items.map((q) => (
-            <tr key={q.householdId} className="transition-colors hover:bg-brand-50/50">
-              <td className="py-2.5 pl-3.5 pr-4 font-mono text-xs font-bold text-slate-700">
+          {items.map((q, index) => {
+            const actions = verificationRowActions({ isAdmin, enteredByMe: q.enteredByMe });
+            return (
+            <tr key={q.householdId} className="group transition-colors hover:bg-brand-50/50">
+              <td className="py-2.5 pl-6 pr-3 text-right text-xs tabular-nums text-slate-400">{startIndex + index + 1}</td>
+              <td className="py-2.5 pr-4 font-mono text-xs font-bold text-slate-700">
                 {q.sheetNo}
               </td>
-              <td className="py-2.5 pr-4 text-center font-semibold tabular-nums text-slate-600">
-                {q.vulnerableCount > 0 ? `${q.vulnerableCount} คน` : "—"}
-              </td>
-              <td className="py-2.5 pr-4 text-center font-semibold tabular-nums">
-                {q.illegibleCount + q.blankCount > 0 ? (
-                  <span className="text-slate-600">
-                    {q.illegibleCount > 0 && <span className="text-sun-700">{q.illegibleCount}</span>}
-                    {q.illegibleCount > 0 && q.blankCount > 0 && " / "}
-                    {q.blankCount > 0 && <span className="text-slate-400">{q.blankCount}</span>}
-                  </span>
-                ) : (
-                  <span className="text-slate-300">—</span>
-                )}
-              </td>
+              <td className="py-2.5 pr-4 text-xs tabular-nums text-slate-500">{q.enteredAt.toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</td>
+              <td className="py-2.5 pr-4 font-semibold text-slate-800">{q.communityName}</td>
+              <td className="py-2.5 pr-4 text-slate-600">{q.houseNo ? `${q.houseNo}${q.mooNo != null ? ` หมู่ ${q.mooNo}` : ""}` : "—"}</td>
+              <td className="py-2.5 pr-4 text-slate-600">{q.enteredByName}</td>
               <td className="py-2.5 pr-4">
-                {q.hasDuplicateFlag ? (
-                  <span className="badge badge-warning">⚠ สงสัยซ้ำ</span>
+                {q.duplicateResolution === "CONFIRMED_DUPLICATE" ? (
+                  <span className="badge badge-danger">ซ้ำจริง</span>
+                ) : q.hasDuplicateFlag ? (
+                  <span className="badge badge-warning">⚠ สงสัยซ้ำ · รอตัดสิน</span>
                 ) : (
                   <span className="badge badge-brand">รอตรวจ</span>
                 )}
               </td>
-              <td className="py-2.5 pr-3.5 text-right">
-                <Link
-                  href={`/verification/${q.householdId}`}
-                  className={`btn btn-sm ${q.enteredByMe ? "btn-secondary" : "btn-primary"}`}
-                >
-                  {q.enteredByMe ? "ดู" : "ตรวจสอบ"}
-                </Link>
+              <td className="sticky right-0 bg-white py-2.5 pr-6 text-right group-hover:bg-brand-50/50">
+                <div className="flex items-center justify-end gap-1.5">
+                  <Link href={`/verification/${q.householdId}?mode=view`} className="btn btn-secondary btn-sm">ดู</Link>
+                  {actions.canConfirm && (
+                    <Link href={`/verification/${q.householdId}?mode=view`} className="btn btn-primary btn-sm">ตรวจสอบ</Link>
+                  )}
+                  {actions.canEdit && (
+                    <Link href={`/verification/${q.householdId}?mode=edit`} className="btn btn-accent btn-sm">แก้ไข</Link>
+                  )}
+                  {actions.canDelete && <DeleteHouseholdButton householdId={q.householdId} sheetNo={q.sheetNo} />}
+                </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PaginationFooter({
+  current,
+  totalPages,
+  pageSize,
+  pageHref,
+  baseParams,
+}: {
+  current: number;
+  totalPages: number;
+  pageSize: number;
+  pageHref: (page: number) => string;
+  baseParams: URLSearchParams;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-slate-100 bg-slate-50/40 px-6 py-3.5">
+      <span className="text-xs font-medium tabular-nums text-slate-500">หน้า {current.toLocaleString("th-TH")} / {totalPages.toLocaleString("th-TH")}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <form>
+          {[...baseParams.entries()].filter(([key]) => key !== "size" && key !== "page").map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            แสดง
+            <select name="size" defaultValue={pageSize} className="field !h-9 !w-20 !py-1" aria-label="จำนวนรายการต่อหน้า">
+              {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+            <button type="submit" className="btn btn-secondary btn-sm">ใช้</button>
+          </label>
+        </form>
+        {current > 1 && <Link href={pageHref(current - 1)} className="btn btn-secondary btn-sm">ก่อนหน้า</Link>}
+        {current < totalPages && <Link href={pageHref(current + 1)} className="btn btn-secondary btn-sm">ถัดไป</Link>}
+      </div>
     </div>
   );
 }

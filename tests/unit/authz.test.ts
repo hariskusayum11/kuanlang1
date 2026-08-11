@@ -199,6 +199,37 @@ describe("visibleNavItems", () => {
     expect(visibleNavItems(permissions).length).toBe(NAV_ITEMS.length);
   });
 
+  it("แยกฟังก์ชันสำคัญออกมาใน sidebar ภายใต้หมวดที่ชัดเจน", () => {
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual([
+      "แดชบอร์ดผู้บริหาร",
+      "คีย์แบบสอบถาม",
+      "รอตรวจสอบ",
+      "ข้อมูลครัวเรือน",
+      "ถังขยะแบบสอบถาม",
+      "ข้อมูลชุมชน",
+      "แผนที่ข้อมูลสำรวจ",
+      "ความเสี่ยงและการช่วยเหลือ",
+      "รายงานและส่งออก",
+      "ผู้ใช้และสิทธิ์",
+      "คำขอลงทะเบียน",
+      "ตั้งค่าระบบ",
+    ]);
+    expect(NAV_ITEMS.map((item) => item.group)).toEqual([
+      "overview",
+      "data",
+      "data",
+      "data",
+      "data",
+      "analysis",
+      "analysis",
+      "analysis",
+      "analysis",
+      "system",
+      "system",
+      "system",
+    ]);
+  });
+
   it("DATA_ENTRY เห็นเฉพาะเมนูแบบสอบถาม", () => {
     const { permissions } = buildAuthorization([UserRoleEnum.DATA_ENTRY]);
     const items = visibleNavItems(permissions);
@@ -216,26 +247,38 @@ describe("visibleNavItems", () => {
     const implemented = NAV_ITEMS.filter((i) => i.implemented);
     expect(implemented.map((i) => i.href)).toEqual([
       "/dashboard",
-      "/communities",
-      "/households",
       "/surveys",
       "/verification",
-      "/risk",
+      "/households",
+      "/admin/sheets",
+      "/communities",
       "/map",
+      "/risk",
       "/reports",
-      "/admin",
+      "/admin/users",
+      "/admin/registrations",
+      "/settings",
     ]);
   });
 
-  it("เมนูจัดการผู้ใช้งาน (รวม) ต้องใช้สิทธิ์ user.manage เท่านั้น", () => {
-    const item = NAV_ITEMS.find((i) => i.href === "/admin");
+  it("VERIFIER เห็นเมนูรอตรวจสอบโดยตรง", () => {
+    const items = visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.VERIFIER]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ label: "รอตรวจสอบ", href: "/verification" });
+  });
+
+  it("เมนูผู้ใช้และสิทธิ์ต้องใช้ user.manage และคำขอต้องใช้ registration.manage", () => {
+    const item = NAV_ITEMS.find((i) => i.href === "/admin/users");
     expect(item?.permission).toBe(PERMISSIONS.USER_MANAGE);
+    expect(NAV_ITEMS.find((i) => i.href === "/admin/registrations")?.permission).toBe(
+      PERMISSIONS.REGISTRATION_MANAGE,
+    );
     // VERIFIER/DATA_ENTRY ต้องไม่เห็นเมนูนี้
     expect(
       visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.VERIFIER]).map((i) => i.href),
-    ).not.toContain("/admin");
+    ).not.toContain("/admin/users");
     expect(
       visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.DATA_ENTRY]).map((i) => i.href),
-    ).not.toContain("/admin");
+    ).not.toContain("/admin/users");
   });
 });

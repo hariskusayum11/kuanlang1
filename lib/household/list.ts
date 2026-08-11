@@ -15,8 +15,9 @@ import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
+import { DEFAULT_PAGE_SIZE, normalizePage, normalizePageSize } from "../pagination";
 
-export const HOUSEHOLD_PAGE_SIZE = 50;
+export const HOUSEHOLD_PAGE_SIZE = DEFAULT_PAGE_SIZE;
 /** เพดานจำนวนแถวที่ Export ได้ในครั้งเดียว — กัน dump ทั้งฐานในคำขอเดียว */
 export const HOUSEHOLD_EXPORT_LIMIT = 5000;
 
@@ -162,18 +163,20 @@ export async function getVerifiedHouseholds(
   ctx: AuthorizationContext,
   filters: HouseholdListFilters = {},
   page = 1,
+  requestedPageSize: number = HOUSEHOLD_PAGE_SIZE,
 ): Promise<HouseholdListResult> {
+  const pageSize = normalizePageSize(requestedPageSize);
   if (!canViewHouseholds(ctx)) {
-    return { allowed: false, rows: [], total: 0, page: 1, pageSize: HOUSEHOLD_PAGE_SIZE, filterOptions: EMPTY_OPTIONS };
+    return { allowed: false, rows: [], total: 0, page: 1, pageSize, filterOptions: EMPTY_OPTIONS };
   }
   const where = buildVerifiedWhere(ctx, filters);
   if (where === null) {
-    return { allowed: true, rows: [], total: 0, page: 1, pageSize: HOUSEHOLD_PAGE_SIZE, filterOptions: EMPTY_OPTIONS };
+    return { allowed: true, rows: [], total: 0, page: 1, pageSize, filterOptions: EMPTY_OPTIONS };
   }
 
   // ตัวเลือกตัวกรอง: distinct ภายใน scope (ไม่ผูกกับตัวกรองปัจจุบัน เพื่อสลับไปมาได้)
   const scopeWhere = buildVerifiedWhere(ctx, {}) ?? {};
-  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safePage = normalizePage(page);
 
   const [total, rows, communities, tambons] = await Promise.all([
     prisma.household.count({ where }),
@@ -181,8 +184,8 @@ export async function getVerifiedHouseholds(
       where,
       select: ROW_SELECT,
       orderBy: [{ verifiedAt: "desc" }, { enteredAt: "desc" }],
-      skip: (safePage - 1) * HOUSEHOLD_PAGE_SIZE,
-      take: HOUSEHOLD_PAGE_SIZE,
+      skip: (safePage - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.household.findMany({
       where: scopeWhere,
@@ -211,7 +214,7 @@ export async function getVerifiedHouseholds(
     rows: rows.map(toRow),
     total,
     page: safePage,
-    pageSize: HOUSEHOLD_PAGE_SIZE,
+    pageSize,
     filterOptions: {
       communities: communities.map((c) => ({ id: c.communityId, nameTh: c.community.nameTh })),
       tambons: tambons

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { UserRoleEnum } from "@prisma/client";
-import { canVerify, householdCommunityFilter } from "../../lib/verification/queue";
+import {
+  buildWaitingVerificationWhere,
+  canVerify,
+  householdCommunityFilter,
+  verificationRowActions,
+} from "../../lib/verification/queue";
 import { normalizeValue } from "../../lib/verification/edit";
 import { EDITABLE_BY_KEY, EDITABLE_FIELDS } from "../../lib/verification/editable-fields";
 import { buildAuthorization } from "../../lib/authz/access";
@@ -35,6 +40,35 @@ describe("canVerify — ต้องมี verification.view", () => {
   });
 });
 
+describe("verificationRowActions", () => {
+  it("ADMIN แก้/ลบใบตัวเองได้ แต่ยืนยันใบตัวเองไม่ได้", () => {
+    expect(verificationRowActions({ isAdmin: true, enteredByMe: true })).toEqual({
+      canView: true,
+      canConfirm: false,
+      canEdit: true,
+      canDelete: true,
+    });
+  });
+
+  it("ผู้ตรวจทั่วไปทำงานใบคนอื่นได้ แต่ลบไม่ได้", () => {
+    expect(verificationRowActions({ isAdmin: false, enteredByMe: false })).toEqual({
+      canView: true,
+      canConfirm: true,
+      canEdit: true,
+      canDelete: false,
+    });
+  });
+
+  it("ผู้ตรวจทั่วไปดูใบตัวเองได้อย่างเดียว", () => {
+    expect(verificationRowActions({ isAdmin: false, enteredByMe: true })).toEqual({
+      canView: true,
+      canConfirm: false,
+      canEdit: false,
+      canDelete: false,
+    });
+  });
+});
+
 describe("householdCommunityFilter — บังคับ scope (ห้าม fallback ทั้งระบบ)", () => {
   it("global scope → ไม่กรอง ({})", () => {
     expect(
@@ -57,6 +91,24 @@ describe("householdCommunityFilter — บังคับ scope (ห้าม fa
   });
 });
 
+describe("buildWaitingVerificationWhere — badge ใช้เงื่อนไขเดียวกับคิว", () => {
+  it("ผู้ไม่มีสิทธิ์ตรวจไม่สร้าง query สำหรับ badge", () => {
+    expect(buildWaitingVerificationWhere(ctxWith([UserRoleEnum.DATA_ENTRY]))).toBeNull();
+  });
+
+  it("นับเฉพาะ ENTERED_1 ที่ไม่ถูกลบและไม่ตัดสินว่าซ้ำจริง", () => {
+    expect(
+      buildWaitingVerificationWhere(
+        ctxWith([UserRoleEnum.ADMIN], { isGlobalScope: true }),
+      ),
+    ).toMatchObject({
+      deletedAt: null,
+      sheet: { status: "ENTERED_1" },
+      AND: [{ OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }] }],
+    });
+  });
+});
+
 describe("EDITABLE_FIELDS — descriptor คงเส้นคงวา", () => {
   it("key ไม่ซ้ำ และ select ต้องมี masterKey", () => {
     const keys = EDITABLE_FIELDS.map((f) => f.key);
@@ -67,6 +119,16 @@ describe("EDITABLE_FIELDS — descriptor คงเส้นคงวา", () => 
     }
     expect(EDITABLE_BY_KEY.get("respondentPhone")?.isPhone).toBe(true);
     expect(EDITABLE_BY_KEY.get("respondentFirstName")?.sensitive).toBe(true);
+    expect(EDITABLE_BY_KEY.get("householdResourceIds")?.exclusiveNone).toEqual({
+      key: "hasNoResources",
+      label: "ไม่มี",
+    });
+    expect(EDITABLE_BY_KEY.get("volunteerInterestIds")?.exclusiveNone).toEqual({
+      key: "volunteerNotAvailable",
+      label: "ไม่สะดวกเข้าร่วม",
+    });
+    expect(EDITABLE_BY_KEY.get("hasNoResources")?.kind).toBe("boolean");
+    expect(EDITABLE_BY_KEY.get("volunteerNotAvailable")?.kind).toBe("boolean");
   });
 });
 

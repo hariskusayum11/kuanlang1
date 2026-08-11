@@ -9,9 +9,20 @@ import { LogoMark } from "@/components/brand/logo-mark";
 // รายการเมนูถูกกรองตาม permission จากฝั่ง Server (lib/navigation.ts) แล้ว
 // Component นี้เป็นแค่ตัวแสดงผล — ไม่ใช่ Authorization
 export type SidebarItem = {
+  group: "overview" | "data" | "analysis" | "system";
   label: string;
   href: string;
   implemented: boolean;
+  activeHrefs?: readonly string[];
+  iconHref?: string;
+  notificationCount?: number;
+};
+
+const GROUP_LABELS: Record<SidebarItem["group"], string> = {
+  overview: "ภาพรวม",
+  data: "จัดการข้อมูล",
+  analysis: "วิเคราะห์และวางแผน",
+  system: "ผู้ดูแลระบบ",
 };
 
 // ไอคอนเส้น (stroke) เรียบ — สื่อความหมายชัดโดยไม่ใช้สีจัด
@@ -31,8 +42,20 @@ const ICONS: Record<string, React.ReactNode> = {
   "/verification": (
     <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4" />
   ),
+  "/admin/sheets": (
+    <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+  ),
+  "/map": (
+    <path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14" />
+  ),
+  "/risk": (
+    <path d="M12 3l9 16H3L12 3zM12 9v4M12 17h.01" />
+  ),
   "/admin": (
     <path d="M9 11a3 3 0 100-6 3 3 0 000 6zM3 20v-1c0-2.5 2.7-4 6-4s6 1.5 6 4v1M17 11l1.5 1.5L22 9" />
+  ),
+  "/admin/registrations": (
+    <path d="M9 11a3 3 0 100-6 3 3 0 000 6zM3 20v-1c0-2.5 2.7-4 6-4 1.2 0 2.3.2 3.2.6M16 14v6M13 17h6" />
   ),
   "/reports": (
     <path d="M5 21V5a1 1 0 011-1h9l4 4v13a1 1 0 01-1 1H6a1 1 0 01-1-1zM8 13v4M12 10v7M16 14v3" />
@@ -65,12 +88,20 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
 
   const nav = (
     <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-      {items.map((item) => {
-        const active = pathname.startsWith(item.href);
+      {items.map((item, index) => {
+        const showGroup = index === 0 || items[index - 1]?.group !== item.group;
+        const active = (item.activeHrefs ?? [item.href]).some(
+          (href) => pathname === href || pathname.startsWith(`${href}/`),
+        );
         if (item.implemented) {
           return (
-            <Link
-              key={item.href}
+            <div key={item.href}>
+              {showGroup ? (
+                <p className={`mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-200/55 ${index === 0 ? "mt-0" : "mt-4"}`}>
+                  {GROUP_LABELS[item.group]}
+                </p>
+              ) : null}
+              <Link
               href={item.href}
               onClick={() => setMobileOpen(false)}
               aria-current={active ? "page" : undefined}
@@ -79,7 +110,7 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
                   ? "bg-brand-500 text-white shadow-[0_3px_0_0_var(--color-brand-700)]"
                   : "text-white/70 hover:translate-x-0.5 hover:bg-white/[0.08] hover:text-white"
               }`}
-            >
+              >
               <span
                 className={
                   active
@@ -87,31 +118,46 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
                     : "text-brand-300/70 group-hover:text-brand-200"
                 }
               >
-                <NavIcon href={item.href} />
+                <NavIcon href={item.iconHref ?? item.href} />
               </span>
-              {item.label}
-              {active && (
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.notificationCount != null && item.notificationCount > 0 ? (
+                <span
+                  className="min-w-[1.5rem] shrink-0 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-extrabold leading-4 text-white shadow-sm"
+                  title={`มี ${item.notificationCount.toLocaleString("th-TH")} ใบรอดำเนินการ`}
+                  aria-label={`${item.notificationCount.toLocaleString("th-TH")} รายการรอดำเนินการ`}
+                >
+                  {item.notificationCount.toLocaleString("th-TH")}
+                </span>
+              ) : active ? (
                 <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sun-400" />
-              )}
-            </Link>
+              ) : null}
+              </Link>
+            </div>
           );
         }
         return (
-          <span
-            key={item.href}
+          <div key={item.href}>
+            {showGroup ? (
+              <p className={`mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-200/55 ${index === 0 ? "mt-0" : "mt-4"}`}>
+                {GROUP_LABELS[item.group]}
+              </p>
+            ) : null}
+            <span
             aria-disabled="true"
             className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/35"
           >
             <span className="flex items-center gap-3">
               <span className="text-white/25">
-                <NavIcon href={item.href} />
+                <NavIcon href={item.iconHref ?? item.href} />
               </span>
               {item.label}
             </span>
             <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
               เร็ว ๆ นี้
             </span>
-          </span>
+            </span>
+          </div>
         );
       })}
     </nav>

@@ -13,6 +13,8 @@ import { encryptText } from "../../lib/crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring } from "../../lib/crypto/keys";
 import { setUserRoles } from "../../lib/admin/users";
 import { applyHouseholdEdits } from "../../lib/verification/edit";
+import { loadHouseholdForReview } from "../../lib/verification/review";
+import { restoreHousehold, softDeleteHousehold } from "../../lib/household/admin-soft-delete";
 import { verifyHousehold } from "../../lib/verification/review";
 import { fetchCommunityCoverage } from "../../lib/dashboard/get-coverage";
 
@@ -185,7 +187,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     expect(ctxAdmin.isGlobalScope).toBe(true);
   });
 
-  // --- 2) Separation of Duties ยังบังคับกับ ADMIN ---------------------------
+  // --- 2) Separation of Duties: ADMIN ห้ามยืนยันงานตัวเอง แต่แก้ไขเพื่อดูแลระบบได้ ---
 
   it("4) ADMIN ที่คีย์ใบเอง ยืนยันใบนั้นไม่ได้ → SELF_VERIFY", async () => {
     const result = await verifyHousehold(ctxAdmin, hhByAdmin);
@@ -200,20 +202,32 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     expect(after.verifiedAt).toBeNull();
   });
 
-  it("5) ADMIN ที่คีย์ใบเอง แก้ใบนั้นในฐานะผู้ตรวจไม่ได้ → SELF_EDIT", async () => {
+  it("5) ADMIN ที่คีย์ใบเองแก้ได้ แต่ยังยืนยันใบตัวเองไม่ได้", async () => {
     const result = await applyHouseholdEdits(ctxAdmin, hhByAdmin, { houseNo: "99/99" });
-    expect(result).toEqual({ ok: false, reason: "SELF_EDIT" });
+    expect(result).toEqual({ ok: true, changedCount: 1 });
 
     const after = await prisma.household.findUniqueOrThrow({
       where: { id: hhByAdmin },
       select: { houseNo: true },
     });
-    expect(after.houseNo).toBe("1/1"); // ไม่ถูกแก้
+    expect(after.houseNo).toBe("99/99");
+  });
+
+  it("6) ADMIN เปิดดูใบที่ถูกลบแบบ read-only และกู้คืนได้", async () => {
+    expect((await softDeleteHousehold(ctxAdmin, hhByAdmin)).ok).toBe(true);
+    expect(await loadHouseholdForReview(ctxAdmin, hhByAdmin)).toBeNull();
+
+    const deleted = await loadHouseholdForReview(ctxAdmin, hhByAdmin, { includeDeleted: true });
+    expect(deleted?.deletedAt).toBeInstanceOf(Date);
+    expect(deleted?.canConfirm).toBe(false);
+
+    expect((await restoreHousehold(ctxAdmin, hhByAdmin)).ok).toBe(true);
+    expect((await loadHouseholdForReview(ctxAdmin, hhByAdmin))?.deletedAt).toBeNull();
   });
 
   // --- 3) Guard ของการจัดการบัญชี ------------------------------------------
 
-  it("6) ADMIN ถอดสิทธิ์ ADMIN ของตัวเองไม่ได้ → SELF_ADMIN_REMOVAL", async () => {
+  it("7) ADMIN ถอดสิทธิ์ ADMIN ของตัวเองไม่ได้ → SELF_ADMIN_REMOVAL", async () => {
     const result = await setUserRoles(ctxAdmin, adminId, [UserRoleEnum.OFFICER]);
     expect(result).toEqual({ ok: false, reason: "SELF_ADMIN_REMOVAL" });
 

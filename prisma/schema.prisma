@@ -78,6 +78,12 @@ enum DiscrepancyResolution {
   UNRESOLVABLE // แก้ไม่ได้
 }
 
+/// ผลการตรวจธงครัวเรือนที่ระบบสงสัยว่าซ้ำ
+enum DuplicateResolutionEnum {
+  CONFIRMED_DUPLICATE // ผู้ตรวจยืนยันว่าเป็นครัวเรือนซ้ำจริง
+  NOT_DUPLICATE // ผู้ตรวจยืนยันว่าเป็นคนละใบ/คนละครัวเรือน
+}
+
 /// สถานะคำถามกลับสนาม
 enum FieldQueryStatus {
   PENDING // ยังไม่ส่ง
@@ -285,9 +291,10 @@ model User {
   answeredQueries          FieldQuery[]              @relation("answeredBy")
 
   // Relations — Household
-  enteredHouseholds  Household[] @relation("enteredBy")
-  verifiedHouseholds Household[] @relation("verifiedBy")
-  surveyedHouseholds Household[] @relation("surveyorUser") // FK ที่ขาด (SCH-20)
+  enteredHouseholds           Household[] @relation("enteredBy")
+  verifiedHouseholds          Household[] @relation("verifiedBy")
+  surveyedHouseholds          Household[] @relation("surveyorUser") // FK ที่ขาด (SCH-20)
+  duplicateResolvedHouseholds Household[] @relation("duplicateResolvedBy")
 
   // Relations — Batch
   receivedBatches PaperBatch[] @relation("receivedBy")
@@ -975,10 +982,13 @@ model Household {
   consentNote   String? /// หมายเหตุ Consent เช่น "ใช้ฐาน ม.24(2)"
 
   // --- Data Quality ---
-  completenessScore Float? /// % ฟิลด์ที่มีค่าจริง (0.0-1.0)
-  illegibleCount    Int     @default(0) /// จำนวนฟิลด์ที่ ILLEGIBLE
-  blankCount        Int     @default(0) /// จำนวนฟิลด์ที่ BLANK_IN_PAPER
-  hasDuplicateFlag  Boolean @default(false) /// Flag ว่าเป็นใบซ้ำ
+  completenessScore     Float? /// % ฟิลด์ที่มีค่าจริง (0.0-1.0)
+  illegibleCount        Int                      @default(0) /// จำนวนฟิลด์ที่ ILLEGIBLE
+  blankCount            Int                      @default(0) /// จำนวนฟิลด์ที่ BLANK_IN_PAPER
+  hasDuplicateFlag      Boolean                  @default(false) /// Flag ว่าเป็นใบซ้ำ
+  duplicateResolution   DuplicateResolutionEnum? /// null = ยังไม่ตัดสิน
+  duplicateResolvedAt   DateTime?
+  duplicateResolvedById String?
 
   // --- Soft Delete ---
   deletedAt DateTime? /// null = ยังอยู่ (BR-29)
@@ -987,17 +997,18 @@ model Household {
   updatedAt DateTime @updatedAt
 
   // Relations
-  sheet            PaperSheet     @relation(fields: [sheetId], references: [id])
-  community        Community      @relation(fields: [communityId], references: [id])
-  respondentPrefix NamePrefix?    @relation("RespondentPrefix", fields: [respondentPrefixId], references: [id])
-  surveyorPrefix   NamePrefix?    @relation("SurveyorPrefix", fields: [surveyorPrefixId], references: [id])
-  buildingType     BuildingType?  @relation(fields: [buildingTypeId], references: [id])
-  moo              Moo?           @relation(fields: [mooId], references: [id])
-  tambon           Tambon?        @relation(fields: [tambonId], references: [id])
-  ownershipType    OwnershipType? @relation(fields: [ownershipTypeId], references: [id])
-  enteredBy        User           @relation("enteredBy", fields: [enteredById], references: [id])
-  verifiedBy       User?          @relation("verifiedBy", fields: [verifiedById], references: [id])
-  surveyorUser     User?          @relation("surveyorUser", fields: [surveyorUserId], references: [id])
+  sheet               PaperSheet     @relation(fields: [sheetId], references: [id])
+  community           Community      @relation(fields: [communityId], references: [id])
+  respondentPrefix    NamePrefix?    @relation("RespondentPrefix", fields: [respondentPrefixId], references: [id])
+  surveyorPrefix      NamePrefix?    @relation("SurveyorPrefix", fields: [surveyorPrefixId], references: [id])
+  buildingType        BuildingType?  @relation(fields: [buildingTypeId], references: [id])
+  moo                 Moo?           @relation(fields: [mooId], references: [id])
+  tambon              Tambon?        @relation(fields: [tambonId], references: [id])
+  ownershipType       OwnershipType? @relation(fields: [ownershipTypeId], references: [id])
+  enteredBy           User           @relation("enteredBy", fields: [enteredById], references: [id])
+  verifiedBy          User?          @relation("verifiedBy", fields: [verifiedById], references: [id])
+  surveyorUser        User?          @relation("surveyorUser", fields: [surveyorUserId], references: [id])
+  duplicateResolvedBy User?          @relation("duplicateResolvedBy", fields: [duplicateResolvedById], references: [id], onDelete: SetNull)
 
   // 1:N Relations
   vulnerablePersons  VulnerablePerson[]
@@ -1017,16 +1028,17 @@ model Household {
   // v3.1: ลบ @@unique([houseNo,mooId,tambonId]) → @@index (QM-03)
   //   เหตุ: (ก) NULL≠NULL กันซ้ำไม่ได้จริง (ข) บล็อกอพาร์ทเมนต์ (ค) ไม่รู้จัก Soft Delete
   //   → ตรวจซ้ำที่ Application (Soft Check) + hasDuplicateFlag + M07 Merge (FR-ENT-16)
-  @@index([houseNo, mooId, tambonId], name: "ix_household_address_dup")
+  @@index([communityId, houseNo, mooNo, soi, road, tambonId], name: "ix_household_address_dup")
   @@index([communityId])
   @@index([communityId, deletedAt])
   @@index([deletedAt])
   @@index([surveyedAt])
   @@index([hasDuplicateFlag])
+  @@index([duplicateResolution])
+  @@index([duplicateResolvedById])
   // ⭐ ตรวจพิกัดซ้ำเป๊ะ (FR-GIS-15)
   @@index([latitude, longitude], name: "ix_household_exact_coord")
-  // ⭐ จับใบซ้ำจากเบอร์โทร (blind index — docs/28 §3)
-  @@index([respondentPhoneIdx], name: "ix_household_phone_idx")
+  // respondentPhoneIdx เก็บไว้สำหรับค้นหาแบบไม่ถอดรหัสเท่านั้น ไม่ใช้ตัดสินใบซ้ำ
   @@map("household")
 }
 

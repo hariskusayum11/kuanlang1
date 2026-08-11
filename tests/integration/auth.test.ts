@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { AuditAction, PrismaClient } from "@prisma/client";
+import { AuditAction, PrismaClient, SheetStatus } from "@prisma/client";
 import { auth } from "../../lib/auth";
 import { fetchDashboardCounts } from "../../lib/dashboard/stats";
 
@@ -147,17 +147,29 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
   // Master data ยืนยันตัวเลขตายตัวได้ (มาจากซีด) — ส่วน household มาจากการคีย์จริง
   // จึงเทียบกับค่าใน DB ณ ขณะนั้น เพื่อตรวจว่า "data layer นับถูก" ไม่ใช่ "DB ต้องว่าง"
   it("Dashboard data layer: fetchDashboardCounts นับตรงกับ DB", async () => {
-    const [counts, households, evacuationSites] = await Promise.all([
+    const [counts, communities, keyed, verified, keyerGroups] = await Promise.all([
       fetchDashboardCounts(),
+      prisma.community.count({ where: { deletedAt: null } }),
       prisma.household.count({ where: { deletedAt: null } }),
-      prisma.evacuationSite.count(),
+      prisma.household.count({
+        where: {
+          deletedAt: null,
+          hasDuplicateFlag: false,
+          sheet: { status: SheetStatus.VERIFIED },
+        },
+      }),
+      prisma.household.groupBy({
+        by: ["enteredById"],
+        where: { deletedAt: null },
+        orderBy: { enteredById: "asc" },
+      }),
     ]);
     expect(counts).toEqual({
-      communities: 5,
-      tambons: 2,
-      moos: 5,
-      households,
-      evacuationSites,
+      communities,
+      keyed,
+      verified,
+      pending: Math.max(0, keyed - verified),
+      keyers: keyerGroups.length,
     });
   });
 

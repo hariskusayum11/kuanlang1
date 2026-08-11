@@ -3,13 +3,14 @@
 import { EXPLICIT_NONE, type EntryField } from "@/lib/entry/steps";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import {
-  isoToThaiDate,
   maskThaiDate,
   sanitizeDecimal,
   sanitizeIntString,
   sanitizePhone,
-  thaiDateToISO,
 } from "@/lib/entry/input-format";
+import { ThaiDatePicker } from "./thai-date-picker";
+import { AutocompleteInput } from "./autocomplete-input";
+import type { EntrySuggestion } from "@/lib/entry/suggestions";
 import { parseThaiDate } from "@/lib/entry/payload";
 import {
   composeCoordinateText,
@@ -34,6 +35,11 @@ type Props = {
   onExtraChange?: (key: string, value: unknown) => void;
   /** คีย์ของช่องที่ยังขาด — ใช้ขึ้นกรอบแดงหลังผู้ใช้กดส่ง */
   missingKeys?: ReadonlySet<string>;
+  /** คำแนะนำจากประวัติของผู้กรอกคนปัจจุบันเท่านั้น */
+  suggestions?: EntrySuggestion[];
+  onSuggestionSelect?: (suggestion: EntrySuggestion) => void;
+  /** ปุ่มสถานะบนจอสำหรับมือถือ (F2/F3 ยังคงเป็นคีย์ลัดบนคอม) */
+  onMarkChange?: (mark: FieldMark) => void;
 };
 
 /** border สีเหลือง/เทา ตามสถานะ F2/F3 ของช่อง */
@@ -94,6 +100,9 @@ export function FieldInput({
   extraValues,
   onExtraChange,
   missingKeys,
+  suggestions,
+  onSuggestionSelect,
+  onMarkChange,
 }: Props) {
   // ช่องบังคับนี้ตอบแล้วหรือยัง — ใช้ขึ้นป้าย "ยังไม่ได้กรอก" ให้จับคู่กับตัวเลขในแถบซ้ายได้
   // "ตอบแล้ว" = มีค่า หรือถูกมาร์ก F2/F3 (ตรงกับกติกาใน lib/entry/validation.ts)
@@ -124,6 +133,18 @@ export function FieldInput({
               </span>
               <span className="badge badge-neutral">ระบบออกให้</span>
             </div>
+          );
+        }
+        if (suggestions && suggestions.length > 0 && onSuggestionSelect) {
+          return (
+            <AutocompleteInput
+              fieldName={field.name}
+              value={typeof value === "string" ? value : ""}
+              suggestions={suggestions}
+              onChange={(next) => onChange(next)}
+              onSelect={onSuggestionSelect}
+              className={`field ${markInput}`}
+            />
           );
         }
         return (
@@ -320,7 +341,6 @@ export function FieldInput({
       case "date": {
         const raw = typeof value === "string" ? value : "";
         const invalid = raw.length === 10 && parseThaiDate(raw) === null;
-        const isoValue = thaiDateToISO(raw); // "" ถ้ายังกรอกไม่ครบ/ไม่ถูกต้อง
         return (
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -334,24 +354,7 @@ export function FieldInput({
                 onChange={(e) => onChange(maskThaiDate(e.target.value))}
                 className={`field w-44 ${markInput} ${invalid ? "!border-red-400 !bg-red-50" : ""}`}
               />
-              <label
-                className="relative inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-2 border-slate-200 text-slate-500 transition-colors hover:border-brand-300 hover:bg-brand-50"
-                title="เลือกจากปฏิทิน"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
-                  <rect x="4" y="5" width="16" height="16" rx="2" />
-                  <path d="M4 9h16M8 3v4M16 3v4" strokeLinecap="round" />
-                </svg>
-                {/* input[type=date] แสดงปฏิทิน ค.ศ. — แปลงเป็น พ.ศ. ตอนเลือก ให้เก็บรูปแบบเดียวกับที่พิมพ์ */}
-                <input
-                  type="date"
-                  value={isoValue}
-                  onChange={(e) => onChange(isoToThaiDate(e.target.value))}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  tabIndex={-1}
-                  aria-label="เลือกวันที่สำรวจจากปฏิทิน"
-                />
-              </label>
+              <ThaiDatePicker value={raw} onChange={(next) => onChange(next)} />
             </div>
             {invalid && (
               <p className="text-xs text-red-600">
@@ -693,6 +696,19 @@ export function FieldInput({
   })();
 
   const flagged = !isFieldAnswered && (missingKeys?.has(field.name) ?? false);
+  function toggleMark(nextMark: Exclude<FieldMark, null>) {
+    if (!onMarkChange) return;
+    if (mark === nextMark) {
+      onMarkChange(null);
+      return;
+    }
+    // เลือกว่าว่าง/อ่านไม่ออกแล้วต้องไม่เหลือคำตอบเดิมค้างคู่กับสถานะ
+    onChange(
+      field.type === "checkbox-group" || field.type === "assistance-needs" ? [] : "",
+    );
+    if (field.exclusiveNone) onExtraChange?.(field.exclusiveNone.key, false);
+    onMarkChange(nextMark);
+  }
 
   return (
     <div
@@ -729,6 +745,21 @@ export function FieldInput({
         {mark === "BLANK_IN_PAPER" && <span className="badge badge-neutral">ว่างในกระดาษ · F3</span>}
       </div>
       {control}
+      {onMarkChange && (
+        <div className="flex justify-start pt-0.5">
+          <button
+            type="button"
+            onClick={() => toggleMark("BLANK_IN_PAPER")}
+            className={`rounded-lg border-2 px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+              mark === "BLANK_IN_PAPER"
+                ? "border-slate-400 bg-slate-100 text-slate-800"
+                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+            }`}
+          >
+            {mark === "BLANK_IN_PAPER" ? "✓ " : ""}ไม่ได้กรอกในกระดาษ
+          </button>
+        </div>
+      )}
       {field.hint && <p className="text-xs leading-relaxed text-slate-500">{field.hint}</p>}
     </div>
   );

@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { softDeleteHouseholdAction } from "@/lib/household/admin-actions";
+import { Modal } from "@/components/ui/modal";
 
 type Props = {
   householdId: string;
   sheetNo: string;
+  redirectTo?: string;
 };
 
 const ERRORS: Record<string, string> = {
@@ -18,23 +20,20 @@ const ERRORS: Record<string, string> = {
   ERROR: "เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่",
 };
 
-export function DeleteHouseholdButton({ householdId, sheetNo }: Props) {
+export function DeleteHouseholdButton({ householdId, sheetNo, redirectTo }: Props) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function remove() {
     if (busy) return;
-    const ok = window.confirm(
-      `ลบแบบสอบถาม ${sheetNo} หรือไม่?\n\nใบจะถูกซ่อนจากทุกมุมมอง (coverage/ความเสี่ยง/รายงาน/คิวตรวจ)\nยังกู้คืนได้ภายหลังที่หน้า "แบบสอบถามที่ถูกลบ"`,
-    );
-    if (!ok) return;
-
     setBusy(true);
     setError(null);
     const result = await softDeleteHouseholdAction(householdId);
     if (result.ok) {
-      router.push("/verification");
+      setOpen(false);
+      if (redirectTo) router.push(redirectTo);
       router.refresh();
       return;
     }
@@ -43,10 +42,13 @@ export function DeleteHouseholdButton({ householdId, sheetNo }: Props) {
   }
 
   return (
-    <div>
+    <>
       <button
         type="button"
-        onClick={() => void remove()}
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
         disabled={busy}
         className="btn btn-danger btn-sm"
       >
@@ -56,7 +58,26 @@ export function DeleteHouseholdButton({ householdId, sheetNo }: Props) {
         </svg>
         {busy ? "กำลังลบ…" : "ลบใบ"}
       </button>
-      {error && <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
-    </div>
+      <Modal open={open} onClose={() => !busy && setOpen(false)} labelledBy={`delete-household-${householdId}`}>
+        <div className="animate-rise rounded-3xl border-2 border-red-200 bg-white p-7 shadow-lg">
+          <h3 id={`delete-household-${householdId}`} className="text-lg font-bold text-slate-900">
+            ลบแบบสอบถาม {sheetNo}?
+          </h3>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            ใบจะถูกซ่อนจาก Coverage, ความเสี่ยง, รายงาน และคิวตรวจทันที แต่ยังสามารถกู้คืนได้จากหน้า
+            &ldquo;แบบสอบถามที่ถูกลบ&rdquo;
+          </p>
+          {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">{error}</p>}
+          <div className="mt-5 flex justify-end gap-3">
+            <button type="button" disabled={busy} onClick={() => setOpen(false)} className="btn btn-secondary btn-md">
+              ยกเลิก
+            </button>
+            <button type="button" disabled={busy} onClick={() => void remove()} className="btn btn-danger btn-md">
+              {busy ? "กำลังลบ…" : "ยืนยันลบใบ"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

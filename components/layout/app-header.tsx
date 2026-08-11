@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { APP_NAME } from "@/lib/app-config";
 
-type HeaderItem = { label: string; href: string };
+type HeaderItem = { label: string; href: string; activeHrefs?: readonly string[] };
 
 type Props = {
   items: HeaderItem[];
@@ -24,7 +24,11 @@ function initials(name: string): string {
 export function AppHeader({ items, userName, userEmail }: Props) {
   const pathname = usePathname();
   const title =
-    items.find((item) => pathname.startsWith(item.href))?.label ?? APP_NAME;
+    items.find((item) =>
+      (item.activeHrefs ?? [item.href]).some(
+        (href) => pathname === href || pathname.startsWith(`${href}/`),
+      ),
+    )?.label ?? APP_NAME;
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b-2 border-slate-200/70 bg-white/90 px-5 pl-16 backdrop-blur-md md:px-8 md:pl-8">

@@ -20,6 +20,9 @@ export type EditableKind =
 /** ค่าฟอร์มของฟิลด์ 1 ตัว — ใช้ทั้งโหลดค่าเดิม (prefill) และรับค่ากลับจาก EditPanel */
 export type EditableFormValue = string | boolean | string[];
 
+/** สถานะจากกระดาษที่ผู้ตรวจต้องเห็น/แก้ได้ — null = ช่องมีค่าปกติ */
+export type EditableFieldMark = "ILLEGIBLE" | "BLANK_IN_PAPER" | null;
+
 /** คอลัมน์ที่ฟิลด์นี้ถูกบันทึกไว้ — ใช้แยก update target ใน core */
 export type EditTarget =
   | "household"
@@ -28,6 +31,7 @@ export type EditTarget =
   | "assistanceNeeds"
   | "householdResources"
   | "evacuationVehicles"
+  | "evacuationVehicleOther"
   | "alertChannelPrefs"
   | "volunteerInterests";
 
@@ -45,6 +49,8 @@ export type EditableMasterKey =
 export interface EditableField {
   /** ชื่อคอลัมน์บน target model (key ปกติของฟิลด์นี้) */
   key: string;
+  /** ชื่อ fieldPath ตอนคีย์ หากต่างจากชื่อคอลัมน์/คีย์หน้าแก้ไข */
+  fieldPath?: string;
   label: string;
   kind: EditableKind;
   /** model ที่ลงท้ายด้วย — default: household */
@@ -61,6 +67,8 @@ export interface EditableField {
   booleanLabels?: { true: string; false: string };
   /** radio/checkbox-group: ตัวเลือก enum ตามกระดาษ (M:N ใช้เป็น array) */
   options?: { value: string; label: string }[];
+  /** checkbox-group: ตัวเลือกพิเศษที่ห้ามเลือกพร้อมรายการอื่น (เช่น ไม่มี/ไม่สะดวก) */
+  exclusiveNone?: { key: string; label: string };
   /** text/textarea: จำกัดความยาว */
   maxLength?: number;
 }
@@ -78,7 +86,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   // ---- ส่วนที่ 0: ข้อมูลการสำรวจ ----
   { key: "surveyNo", label: "แบบสอบถามลำดับที่", kind: "text", maxLength: 64 },
   { key: "communityNameOnPaper", label: "ชื่อชุมชน (ตามกระดาษ)", kind: "text", maxLength: 200 },
-  { key: "surveyorPrefixId", label: "คำนำหน้า (ผู้สำรวจ)", kind: "select", masterKey: "namePrefixes" },
+  { key: "surveyorPrefixId", fieldPath: "surveyorPrefix", label: "คำนำหน้า (ผู้สำรวจ)", kind: "select", masterKey: "namePrefixes" },
   { key: "surveyorPrefixOther", label: "ระบุคำนำหน้า (ผู้สำรวจ)", kind: "text", maxLength: 64 },
   { key: "surveyorFirstNameOnPaper", label: "ชื่อ (ผู้สำรวจ)", kind: "text", maxLength: 200 },
   { key: "surveyorLastNameOnPaper", label: "นามสกุล (ผู้สำรวจ)", kind: "text", maxLength: 200 },
@@ -88,7 +96,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   { key: "buildingTypeId", label: "ประเภทสิ่งปลูกสร้าง", kind: "select", masterKey: "buildingTypes" },
   { key: "buildingTypeOther", label: "ประเภท (อื่น ๆ ระบุ)", kind: "text", maxLength: 200 },
   { key: "placeName", label: "ชื่อสถานที่/ร้าน", kind: "text", maxLength: 200 },
-  { key: "respondentPrefixId", label: "คำนำหน้า (ผู้ให้ข้อมูล)", kind: "select", masterKey: "namePrefixes" },
+  { key: "respondentPrefixId", fieldPath: "respondentPrefix", label: "คำนำหน้า (ผู้ให้ข้อมูล)", kind: "select", masterKey: "namePrefixes" },
   { key: "respondentPrefixOther", label: "ระบุคำนำหน้า (ผู้ให้ข้อมูล)", kind: "text", maxLength: 64 },
   { key: "respondentFirstName", label: "ชื่อผู้ให้ข้อมูล", kind: "text", sensitive: true, maxLength: 200 },
   { key: "respondentLastName", label: "นามสกุลผู้ให้ข้อมูล", kind: "text", sensitive: true, maxLength: 200 },
@@ -112,6 +120,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   },
   {
     key: "assistanceNeedIds",
+    fieldPath: "assistanceNeeds",
     label: "ความต้องการช่วยเหลือ",
     kind: "checkbox-group",
     target: "assistanceNeeds",
@@ -168,6 +177,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   { key: "nearestEvacSiteOther", label: "จุดอพยพ (อื่น ๆ ระบุ)", kind: "text", target: "floodRiskProfile", maxLength: 200 },
   {
     key: "evacuationVehicleTypes",
+    fieldPath: "evacuationVehicles",
     label: "ยานพาหนะอพยพ",
     kind: "checkbox-group",
     target: "evacuationVehicles",
@@ -178,19 +188,31 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
       { value: "OTHER", label: "อื่น ๆ" },
     ],
   },
+  {
+    key: "evacuationVehiclesOther",
+    fieldPath: "evacuationVehiclesOther",
+    label: "ยานพาหนะอพยพ (อื่น ๆ ระบุ)",
+    kind: "text",
+    target: "evacuationVehicleOther",
+    maxLength: 200,
+  },
   { key: "hasSurvivalKit", label: "เตรียมถุงยังชีพ", kind: "boolean", target: "floodRiskProfile", booleanLabels: KIT_READY },
   {
     key: "householdResourceIds",
+    fieldPath: "householdResources",
     label: "ทรัพยากรรับมืออุทกภัย",
     kind: "checkbox-group",
     target: "householdResources",
     masterKey: "resourceTypes",
+    exclusiveNone: { key: "hasNoResources", label: "ไม่มี" },
   },
+  { key: "hasNoResources", label: "ไม่มีทรัพยากร", kind: "boolean" },
   { key: "canBeHostHouse", label: "ใช้เป็นบ้านพี่เลี้ยงได้", kind: "boolean", target: "floodRiskProfile", booleanLabels: HOST_OK },
 
   // ---- ส่วนที่ 4: การมีส่วนร่วม ----
   {
     key: "alertChannelIds",
+    fieldPath: "alertChannels",
     label: "ช่องทางรับข่าวเตือนภัย",
     kind: "checkbox-group",
     target: "alertChannelPrefs",
@@ -200,11 +222,14 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   { key: "canScanQR", label: "สแกน QR ได้", kind: "boolean", target: "digitalReadiness", booleanLabels: YES_NO },
   {
     key: "volunteerInterestIds",
+    fieldPath: "volunteerInterests",
     label: "สนใจเป็นอาสาสมัคร",
     kind: "checkbox-group",
     target: "volunteerInterests",
     masterKey: "volunteerSkillTypes",
+    exclusiveNone: { key: "volunteerNotAvailable", label: "ไม่สะดวกเข้าร่วม" },
   },
+  { key: "volunteerNotAvailable", label: "ไม่สะดวกเข้าร่วมเป็นอาสาสมัคร", kind: "boolean" },
   { key: "mentalHealthSupport", label: "ต้องการเยียวยาจิตใจ", kind: "boolean", sensitive: true, booleanLabels: MENTAL_NEED },
   { key: "suggestion", label: "ข้อเสนอแนะ", kind: "textarea", maxLength: 2000 },
 

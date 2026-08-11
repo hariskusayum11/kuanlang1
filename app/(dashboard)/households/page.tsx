@@ -6,6 +6,8 @@ import {
   type HouseholdListRow,
 } from "@/lib/household/list";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
+import { DeleteHouseholdButton } from "@/components/admin/delete-household-button";
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 
 export const metadata = { title: "ครัวเรือนที่ตรวจแล้ว" };
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ type SearchParams = {
   tambon?: string;
   q?: string;
   page?: string;
+  size?: string;
 };
 
 // รายการครัวเรือนที่ผ่านการตรวจ (VERIFIED) — ค้น/กรอง/Export
@@ -33,7 +36,8 @@ export default async function HouseholdsPage({
     search: sp.q || undefined,
   };
   const page = Number.parseInt(sp.page ?? "1", 10) || 1;
-  const result = await getVerifiedHouseholds(ctx, filters, page);
+  const size = Number.parseInt(sp.size ?? "20", 10);
+  const result = await getVerifiedHouseholds(ctx, filters, page, size);
 
   const filterActive = Boolean(filters.communityId || filters.tambonId || filters.search);
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -44,6 +48,7 @@ export default async function HouseholdsPage({
   if (filters.communityId) baseParams.set("community", filters.communityId);
   if (filters.tambonId) baseParams.set("tambon", filters.tambonId);
   if (filters.search) baseParams.set("q", filters.search);
+  baseParams.set("size", String(result.pageSize));
   const exportHref = `/households/export${baseParams.toString() ? `?${baseParams}` : ""}`;
   const pageHref = (p: number) => {
     const q = new URLSearchParams(baseParams);
@@ -77,6 +82,7 @@ export default async function HouseholdsPage({
 
       {/* ตัวกรอง — ฟอร์ม GET ล้วน ไม่ใช้ JS (Server Component) */}
       <form className="card flex flex-wrap items-end gap-3 p-4">
+        <input type="hidden" name="size" value={result.pageSize} />
         <label className="min-w-[200px] flex-[2] space-y-1">
           <span className="text-xs font-bold text-slate-600">ค้นหา (รหัสใบ / บ้านเลขที่)</span>
           <input
@@ -137,13 +143,29 @@ export default async function HouseholdsPage({
           />
         ) : (
           <>
-            <HouseholdTable rows={result.rows} canOpen={ctx.permissions.includes(PERMISSIONS.VERIFICATION_VIEW)} />
-            {totalPages > 1 && (
+            <HouseholdTable
+              rows={result.rows}
+              canOpen={ctx.permissions.includes(PERMISSIONS.VERIFICATION_VIEW)}
+              isAdmin={ctx.roles.includes("ADMIN")}
+            />
+            {(totalPages > 1 || result.total > 0) && (
               <div className="flex items-center justify-between gap-3 border-t-2 border-slate-100 bg-slate-50/40 px-6 py-3.5">
                 <span className="text-xs font-medium tabular-nums text-slate-500">
                   หน้า {current.toLocaleString("th-TH")} / {totalPages.toLocaleString("th-TH")}
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <form>
+                    {[...baseParams.entries()].filter(([key]) => key !== "size" && key !== "page").map(([key, value]) => (
+                      <input key={key} type="hidden" name={key} value={value} />
+                    ))}
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                      แสดง
+                      <select name="size" defaultValue={result.pageSize} className="field !h-9 !w-20 !py-1" aria-label="จำนวนรายการต่อหน้า">
+                        {PAGE_SIZE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                      <button type="submit" className="btn btn-secondary btn-sm">ใช้</button>
+                    </label>
+                  </form>
                   {current > 1 && (
                     <Link href={pageHref(current - 1)} className="btn btn-secondary btn-sm">
                       ก่อนหน้า
@@ -200,10 +222,10 @@ function formatAddress(r: HouseholdListRow): string {
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-function HouseholdTable({ rows, canOpen }: { rows: HouseholdListRow[]; canOpen: boolean }) {
+function HouseholdTable({ rows, canOpen, isAdmin }: { rows: HouseholdListRow[]; canOpen: boolean; isAdmin: boolean }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[940px] text-sm">
+      <table className="w-full min-w-[1120px] text-sm">
         <thead>
           <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
             <th className="py-2.5 pl-6 pr-4">ใบ</th>
@@ -213,12 +235,12 @@ function HouseholdTable({ rows, canOpen }: { rows: HouseholdListRow[]; canOpen: 
             <th className="py-2.5 pr-4 text-center">เปราะบาง</th>
             <th className="py-2.5 pr-4">บันทึกโดย</th>
             <th className="py-2.5 pr-4">ตรวจโดย</th>
-            <th className="py-2.5 pr-6 text-right">การทำงาน</th>
+            <th className="sticky right-0 bg-slate-50 py-2.5 pr-6 text-right">การดำเนินการ</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
           {rows.map((r) => (
-            <tr key={r.householdId} className="transition-colors hover:bg-brand-50/50">
+            <tr key={r.householdId} className="group transition-colors hover:bg-brand-50/50">
               <td className="py-2.5 pl-6 pr-4 font-mono text-xs font-bold text-slate-700">{r.sheetNo}</td>
               <td className="py-2.5 pr-4">
                 <span className="font-semibold text-slate-800">{r.communityName}</span>
@@ -249,14 +271,16 @@ function HouseholdTable({ rows, canOpen }: { rows: HouseholdListRow[]; canOpen: 
                   </span>
                 )}
               </td>
-              <td className="py-2.5 pr-6 text-right">
-                {canOpen ? (
-                  <Link href={`/verification/${r.householdId}`} className="btn btn-secondary btn-sm">
-                    ดู
-                  </Link>
-                ) : (
-                  <span className="text-xs text-slate-300">—</span>
-                )}
+              <td className="sticky right-0 bg-white py-2.5 pr-6 text-right group-hover:bg-brand-50/50">
+                <div className="flex items-center justify-end gap-1.5">
+                  {canOpen ? (
+                    <Link href={`/verification/${r.householdId}?mode=view`} className="btn btn-secondary btn-sm">ดู</Link>
+                  ) : <span className="text-xs text-slate-300">—</span>}
+                  {isAdmin && canOpen && (
+                    <Link href={`/verification/${r.householdId}?mode=edit`} className="btn btn-accent btn-sm">แก้ไข</Link>
+                  )}
+                  {isAdmin && <DeleteHouseholdButton householdId={r.householdId} sheetNo={r.sheetNo} />}
+                </div>
               </td>
             </tr>
           ))}

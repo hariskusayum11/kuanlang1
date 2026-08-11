@@ -420,17 +420,53 @@ export async function submitEntry(
       //    ไม่นับใบของตัวเองตอนแก้ซ้ำ ไม่งั้นการแก้จะติดธง "ซ้ำ" กับตัวเองเสมอ
       const existing = await tx.household.findUnique({
         where: { sheetId },
-        select: { id: true, verifiedAt: true },
+        select: {
+          id: true,
+          verifiedAt: true,
+          communityId: true,
+          houseNo: true,
+          mooNo: true,
+          soi: true,
+          road: true,
+          tambonId: true,
+          duplicateResolution: true,
+          duplicateResolvedAt: true,
+          duplicateResolvedById: true,
+        },
       });
-      const duplicateSuspected = respondentPhoneIdx
+      const addressForDuplicate = {
+        communityId,
+        houseNo: householdData.houseNo,
+        mooNo: householdData.mooNo,
+        soi: householdData.soi,
+        road: householdData.road,
+        tambonId: householdData.tambonId,
+      };
+      // ตรวจซ้ำเฉพาะเมื่อบ้านเลขที่และหมู่มีค่าครบ และที่อยู่ทุกส่วนตรงกัน
+      // ไม่ใช้ชื่อหรือเบอร์โทร เพราะญาติ/ผู้ประสานงานอาจใช้ข้อมูลร่วมกันได้
+      const duplicateSuspected = addressForDuplicate.houseNo != null && addressForDuplicate.mooNo != null
         ? (await tx.household.count({
             where: {
-              respondentPhoneIdx,
+              ...addressForDuplicate,
               deletedAt: null,
               ...(existing ? { id: { not: existing.id } } : {}),
             },
           })) > 0
         : false;
+      // ถ้าแก้ใบเดิมแต่ชุดที่อยู่ไม่เปลี่ยน ให้คงคำตัดสินของผู้ตรวจไว้
+      // หากที่อยู่เปลี่ยน ต้องกลับมาให้ระบบตรวจและให้ผู้ตรวจตัดสินใหม่
+      const preserveDuplicateDecision =
+        existing != null &&
+        existing.communityId === addressForDuplicate.communityId &&
+        existing.houseNo === addressForDuplicate.houseNo &&
+        existing.mooNo === addressForDuplicate.mooNo &&
+        existing.soi === addressForDuplicate.soi &&
+        existing.road === addressForDuplicate.road &&
+        existing.tambonId === addressForDuplicate.tambonId &&
+        existing.duplicateResolution != null;
+      const effectiveDuplicateFlag = preserveDuplicateDecision
+        ? existing.duplicateResolution === "CONFIRMED_DUPLICATE"
+        : duplicateSuspected;
 
       // 4) Household (1:1 กับใบ — unique sheetId กันซ้ำระดับ DB)
       //    ผู้คีย์แก้ใบของตนได้ตลอด (#R7-C) → มีของเดิมให้เขียนทับ ไม่ใช่สร้างซ้ำ
@@ -441,7 +477,10 @@ export async function submitEntry(
           where: { id: existing.id },
           data: {
             ...householdData,
-            hasDuplicateFlag: duplicateSuspected,
+            hasDuplicateFlag: effectiveDuplicateFlag,
+            duplicateResolution: preserveDuplicateDecision ? existing.duplicateResolution : null,
+            duplicateResolvedAt: preserveDuplicateDecision ? existing.duplicateResolvedAt : null,
+            duplicateResolvedById: preserveDuplicateDecision ? existing.duplicateResolvedById : null,
             verifiedById: null,
             verifiedAt: null,
           },
@@ -462,7 +501,7 @@ export async function submitEntry(
         await tx.digitalReadiness.deleteMany({ where: { householdId: existing.id } });
       } else {
         household = await tx.household.create({
-          data: { ...householdData, hasDuplicateFlag: duplicateSuspected },
+          data: { ...householdData, hasDuplicateFlag: effectiveDuplicateFlag },
           select: { id: true },
         });
       }
@@ -563,9 +602,9 @@ export async function submitEntry(
         });
       }
 
-      // 6) สถานะรายฟิลด์ (F2/F3) — ผูกกับ attempt เพื่อร่องรอยตรวจสอบ
+      // 6) สถานะรายฟิลด์ — การส่งซ้ำต้องแทนสถานะทั้งชุด รวมกรณีแก้จนไม่มี mark เหลือ
+      await tx.fieldStatus.deleteMany({ where: { sheetId } });
       if (marks.length > 0) {
-        await tx.fieldStatus.deleteMany({ where: { sheetId } });
         await tx.fieldStatus.createMany({
           data: marks.map(([fieldPath, status]) => ({
             sheetId,
@@ -582,7 +621,7 @@ export async function submitEntry(
       return {
         kind: "OK" as const,
         householdId: household.id,
-        duplicateSuspected,
+        duplicateSuspected: effectiveDuplicateFlag && !preserveDuplicateDecision,
         wasVerified,
       };
     });

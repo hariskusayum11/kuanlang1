@@ -115,6 +115,16 @@ const REQUEST_SELECT = {
   decidedBy: { select: { name: true } },
 } as const;
 
+/** จำนวนคำขอที่รอตัดสินสำหรับ badge — ไม่โหลด PII ของผู้สมัครขึ้นมา */
+export async function countPendingRegistrationRequests(
+  ctx: AuthorizationContext,
+): Promise<number> {
+  if (!hasPermission(ctx, PERMISSIONS.REGISTRATION_MANAGE)) return 0;
+  return prisma.registrationRequest.count({
+    where: { status: RegistrationRequestStatus.PENDING },
+  });
+}
+
 /**
  * รายการคำขอสำหรับหน้าแอดมิน — PENDING ทั้งหมด (เก่าสุดก่อน) + ตัดสินล่าสุด 20 รายการ
  * PII (ชื่อ/อีเมล/เบอร์) เห็นได้เฉพาะผู้มี REGISTRATION_MANAGE เท่านั้น

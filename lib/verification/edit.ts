@@ -5,11 +5,11 @@
 // - ผู้คีย์แก้งานตัวเองไม่ได้ (แยกหน้าที่ผู้คีย์/ผู้ตรวจ)
 // - ทุกการแก้เก็บ HouseholdVersion (สภาพก่อนแก้ = ค่า old ที่เข้ารหัส) แบบ append
 //   + Audit UPDATE บันทึก "ชื่อฟิลด์ที่แก้" เท่านั้น — ห้าม log ค่า PII ดิบ
-// - ฟิลด์อ่อนไหวเข้ารหัสใหม่ · เบอร์โทรคำนวณ blind index ใหม่ (จับซ้ำได้ตรง)
+// - ฟิลด์อ่อนไหวเข้ารหัสใหม่ · เบอร์โทรคำนวณ blind index ใหม่สำหรับการค้นหาแบบไม่ถอดรหัส
 // - ครอบคลุม: คอลัมน์ Household · FloodRiskProfile (1:1) · รายการ M:N
 //   (AssistanceNeed, HouseholdResource, EvacuationVehicle, AlertChannelPref, VolunteerInterest)
 
-import { AuditAction, Prisma, SheetStatus } from "@prisma/client";
+import { AuditAction, FieldStatusEnum, Prisma, SheetStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
@@ -21,8 +21,10 @@ import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../crypto/key
 import { getEntryMasterData } from "../entry/master-data";
 import {
   EDITABLE_BY_KEY,
+  EDITABLE_FIELDS,
   LIST_TARGETS,
   type EditableField,
+  type EditableFieldMark,
   type EditableFormValue,
   type EditableMasterKey,
   type EditTarget,
@@ -44,11 +46,53 @@ const editsSchema = z.record(
   ]),
 );
 
+const fieldMarksSchema = z.record(
+  z.string().max(64),
+  z.enum(["ILLEGIBLE", "BLANK_IN_PAPER"]).nullable(),
+);
+
 export interface EditableValues {
   values: Record<string, EditableFormValue>;
+  /** สถานะ F2/F3 ล่าสุดของแต่ละช่อง */
+  fieldMarks: Record<string, Exclude<EditableFieldMark, null>>;
+  vulnerablePersons: {
+    id: string;
+    seq: number;
+    prefix: string;
+    firstName: string;
+    lastName: string;
+    nameStatus: FieldStatusEnum;
+    age: number | null;
+    ageStatus: FieldStatusEnum;
+    phone: string;
+    phoneStatus: FieldStatusEnum;
+    vulnerabilities: string[];
+  }[];
   /** ตัวเลือก master data (id → label) สำหรับ dropdown/checkbox ในฟอร์มแก้ไข */
   options: Record<EditableMasterKey, { id: string; label: string }[]>;
   canEdit: boolean;
+}
+
+type FieldStatusRow = {
+  fieldPath: string;
+  status: FieldStatusEnum;
+};
+
+/** FieldStatus เป็น append-only จึงใช้แถวล่าสุดของแต่ละ fieldPath เป็นสถานะปัจจุบัน */
+function latestFieldStatusMap(rows: FieldStatusRow[]): Map<string, FieldStatusEnum> {
+  const result = new Map<string, FieldStatusEnum>();
+  for (const row of rows) result.set(row.fieldPath, row.status);
+  return result;
+}
+
+function markFromStatus(status: FieldStatusEnum | undefined): EditableFieldMark {
+  if (status === FieldStatusEnum.ILLEGIBLE) return "ILLEGIBLE";
+  if (status === FieldStatusEnum.BLANK_IN_PAPER) return "BLANK_IN_PAPER";
+  return null;
+}
+
+function statusPathOf(field: EditableField): string {
+  return field.fieldPath ?? field.key;
 }
 
 /** decrypt เพื่อเติมค่าเริ่มต้นในฟอร์มแก้ไข — ล้มเหลว → ค่าว่าง (ผู้ตรวจกรอกใหม่) */
@@ -117,7 +161,15 @@ export async function loadHouseholdEditable(
       id: true,
       communityId: true,
       enteredById: true,
-      sheet: { select: { status: true } },
+      sheet: {
+        select: {
+          status: true,
+          fieldStatuses: {
+            select: { fieldPath: true, status: true },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          },
+        },
+      },
       surveyNo: true,
       communityNameOnPaper: true,
       surveyorPrefixId: true,
@@ -143,6 +195,8 @@ export async function loadHouseholdEditable(
       ownershipOther: true,
       hasVulnerable: true,
       assistanceTotalPersonCount: true,
+      hasNoResources: true,
+      volunteerNotAvailable: true,
       mentalHealthSupport: true,
       suggestion: true,
       surveyorNote: true,
@@ -151,9 +205,18 @@ export async function loadHouseholdEditable(
       floodRiskProfile: true,
       assistanceNeeds: { select: { needTypeId: true } },
       householdResources: { select: { resourceTypeId: true } },
-      evacuationVehicles: { select: { vehicleType: true } },
+      evacuationVehicles: { select: { vehicleType: true, detail: true } },
       alertChannelPrefs: { select: { alertChannelId: true } },
       volunteerInterests: { select: { volunteerTypeId: true } },
+      vulnerablePersons: {
+        orderBy: { seq: "asc" },
+        include: {
+          namePrefix: { select: { nameTh: true } },
+          vulnerabilities: {
+            include: { vulnerabilityType: { select: { nameTh: true } } },
+          },
+        },
+      },
     },
   });
   if (!h) return null;
@@ -198,10 +261,15 @@ export async function loadHouseholdEditable(
     // ส่วน 3
     ...frpValues(h.floodRiskProfile as Record<string, unknown> | null),
     evacuationVehicleTypes: h.evacuationVehicles.map((ev) => String(ev.vehicleType ?? "")),
+    evacuationVehiclesOther: v(
+      h.evacuationVehicles.find((ev) => ev.vehicleType === "OTHER")?.detail,
+    ),
     householdResourceIds: h.householdResources.map((r) => r.resourceTypeId),
+    hasNoResources: h.hasNoResources ?? "",
     // ส่วน 4
     alertChannelIds: h.alertChannelPrefs.map((c) => c.alertChannelId),
     volunteerInterestIds: h.volunteerInterests.map((vi) => vi.volunteerTypeId),
+    volunteerNotAvailable: h.volunteerNotAvailable ?? "",
     usesSmartphone: h.digitalReadiness?.usesSmartphone ?? "",
     canScanQR: h.digitalReadiness?.canScanQR ?? "",
     mentalHealthSupport: h.mentalHealthSupport ?? "",
@@ -210,9 +278,34 @@ export async function loadHouseholdEditable(
     surveyorNote: v(h.surveyorNote),
     povertyProgramInterest: h.povertyProgramInterest ?? "",
   };
+  const currentStatuses = latestFieldStatusMap(h.sheet.fieldStatuses);
+  const fieldMarks: Record<string, Exclude<EditableFieldMark, null>> = {};
+  for (const field of EDITABLE_FIELDS) {
+    const mark = markFromStatus(currentStatuses.get(statusPathOf(field)));
+    if (mark) fieldMarks[field.key] = mark;
+  }
 
   return {
     values,
+    fieldMarks,
+    vulnerablePersons: h.vulnerablePersons.map((person) => ({
+      id: person.id,
+      seq: person.seq,
+      prefix: person.namePrefix?.nameTh ?? person.prefixOther ?? "",
+      firstName: safeDecrypt(person.firstName),
+      lastName: safeDecrypt(person.lastName),
+      nameStatus: person.nameStatus,
+      age: person.age,
+      ageStatus: person.ageStatus,
+      phone: safeDecrypt(person.phone),
+      phoneStatus: person.phoneStatus,
+      vulnerabilities: person.vulnerabilities.map((item) => {
+        const detail = safeDecrypt(item.detail);
+        return detail
+          ? `${item.vulnerabilityType.nameTh} — ${detail}`
+          : item.vulnerabilityType.nameTh;
+      }),
+    })),
     options: {
       namePrefixes: toOpts(master.namePrefixes),
       tambons: toOpts(master.tambons),
@@ -283,7 +376,7 @@ type HouseholdSnapshot = Prisma.HouseholdGetPayload<{
     digitalReadiness: true;
     assistanceNeeds: { select: { needTypeId: true } };
     householdResources: { select: { resourceTypeId: true } };
-    evacuationVehicles: { select: { vehicleType: true } };
+    evacuationVehicles: { select: { vehicleType: true; detail: true } };
     alertChannelPrefs: { select: { alertChannelId: true } };
     volunteerInterests: { select: { volunteerTypeId: true } };
   };
@@ -304,6 +397,9 @@ function currentValue(field: EditableField, hh: HouseholdSnapshot): EditableForm
   }
   if (target === "evacuationVehicles") {
     return hh.evacuationVehicles.map((ev) => String(ev.vehicleType ?? ""));
+  }
+  if (target === "evacuationVehicleOther") {
+    return v(hh.evacuationVehicles.find((ev) => ev.vehicleType === "OTHER")?.detail);
   }
   if (target === "assistanceNeeds") {
     return hh.assistanceNeeds.map((a) => a.needTypeId);
@@ -329,11 +425,14 @@ export async function applyHouseholdEdits(
   ctx: AuthorizationContext,
   householdId: string,
   rawEdits: unknown,
+  rawFieldMarks: unknown = {},
 ): Promise<EditResult> {
   if (!canVerify(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
 
   const parsed = editsSchema.safeParse(rawEdits);
   if (!parsed.success) return { ok: false, reason: "INVALID" };
+  const parsedMarks = fieldMarksSchema.safeParse(rawFieldMarks);
+  if (!parsedMarks.success) return { ok: false, reason: "INVALID" };
 
   const h = await prisma.household.findFirst({
     where: { id: householdId, deletedAt: null },
@@ -341,7 +440,16 @@ export async function applyHouseholdEdits(
       id: true,
       communityId: true,
       enteredById: true,
-      sheet: { select: { status: true } },
+      sheet: {
+        select: {
+          id: true,
+          status: true,
+          fieldStatuses: {
+            select: { fieldPath: true, status: true },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          },
+        },
+      },
     },
   });
   if (!h) return { ok: false, reason: "NOT_FOUND" };
@@ -365,7 +473,7 @@ export async function applyHouseholdEdits(
       digitalReadiness: true,
       assistanceNeeds: { select: { needTypeId: true } },
       householdResources: { select: { resourceTypeId: true } },
-      evacuationVehicles: { select: { vehicleType: true } },
+      evacuationVehicles: { select: { vehicleType: true, detail: true } },
       alertChannelPrefs: { select: { alertChannelId: true } },
       volunteerInterests: { select: { volunteerTypeId: true } },
     },
@@ -383,7 +491,10 @@ export async function applyHouseholdEdits(
   const frpUpdate: Record<string, unknown> = {};
   const drUpdate: Record<string, unknown> = {};
   const listUpdates: Partial<Record<EditTarget, { value: string[] }>> = {};
+  let evacuationVehicleOtherUpdate: string | null | undefined;
   const editedFields: string[] = [];
+  const currentStatuses = latestFieldStatusMap(h.sheet.fieldStatuses);
+  const statusEdits: { fieldPath: string; status: FieldStatusEnum }[] = [];
 
   for (const [key, rawVal] of Object.entries(parsed.data)) {
     const field = EDITABLE_BY_KEY.get(key);
@@ -425,6 +536,10 @@ export async function applyHouseholdEdits(
       drUpdate[field.key] = empty ? null : next;
       continue;
     }
+    if (target === "evacuationVehicleOther") {
+      evacuationVehicleOtherUpdate = next === "" ? null : String(next);
+      continue;
+    }
     if (LIST_TARGETS.has(target)) {
       listUpdates[target] = { value: Array.isArray(next) ? next : [] };
       continue;
@@ -448,6 +563,31 @@ export async function applyHouseholdEdits(
     } else {
       householdUpdate[field.key] = empty ? null : next;
     }
+  }
+
+  for (const [key, nextMark] of Object.entries(parsedMarks.data)) {
+    const field = EDITABLE_BY_KEY.get(key);
+    if (!field) continue;
+    const fieldPath = statusPathOf(field);
+    const currentMark = markFromStatus(currentStatuses.get(fieldPath));
+    if (currentMark === nextMark) continue;
+    const nextStatus = nextMark === "ILLEGIBLE"
+      ? FieldStatusEnum.ILLEGIBLE
+      : nextMark === "BLANK_IN_PAPER"
+        ? FieldStatusEnum.BLANK_IN_PAPER
+        : FieldStatusEnum.HAS_VALUE;
+    currentStatuses.set(fieldPath, nextStatus);
+    statusEdits.push({ fieldPath, status: nextStatus });
+    editedFields.push(`fieldStatus:${key}`);
+  }
+
+  if (statusEdits.length > 0) {
+    householdUpdate.illegibleCount = [...currentStatuses.values()].filter(
+      (status) => status === FieldStatusEnum.ILLEGIBLE,
+    ).length;
+    householdUpdate.blankCount = [...currentStatuses.values()].filter(
+      (status) => status === FieldStatusEnum.BLANK_IN_PAPER,
+    ).length;
   }
 
   if (editedFields.length === 0) return { ok: true, changedCount: 0 };
@@ -509,6 +649,17 @@ export async function applyHouseholdEdits(
         }
       }
 
+      if (statusEdits.length > 0) {
+        await tx.fieldStatus.createMany({
+          data: statusEdits.map((item) => ({
+            sheetId: h.sheet.id,
+            entryAttemptId: null,
+            fieldPath: item.fieldPath,
+            status: item.status,
+          })),
+        });
+      }
+
       // sync รายการ M:N — ลบชุดเดิม สร้างชุดใหม่จากค่าที่แก้
       if (listUpdates.assistanceNeeds) {
         await tx.assistanceNeed.deleteMany({ where: { householdId: h.id } });
@@ -526,11 +677,28 @@ export async function applyHouseholdEdits(
       }
       if (listUpdates.evacuationVehicles) {
         await tx.evacuationVehicle.deleteMany({ where: { householdId: h.id } });
+        const previousOtherDetail = before.evacuationVehicles.find(
+          (vehicle) => vehicle.vehicleType === "OTHER",
+        )?.detail ?? null;
         for (const vehicle of listUpdates.evacuationVehicles.value) {
           await tx.evacuationVehicle.create({
-            data: { householdId: h.id, vehicleType: vehicle as never },
+            data: {
+              householdId: h.id,
+              vehicleType: vehicle as never,
+              detail:
+                vehicle === "OTHER"
+                  ? evacuationVehicleOtherUpdate === undefined
+                    ? previousOtherDetail
+                    : evacuationVehicleOtherUpdate
+                  : null,
+            },
           });
         }
+      } else if (evacuationVehicleOtherUpdate !== undefined) {
+        await tx.evacuationVehicle.updateMany({
+          where: { householdId: h.id, vehicleType: "OTHER" },
+          data: { detail: evacuationVehicleOtherUpdate },
+        });
       }
       if (listUpdates.alertChannelPrefs) {
         await tx.alertChannelPref.deleteMany({ where: { householdId: h.id } });

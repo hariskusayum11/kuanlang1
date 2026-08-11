@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   AuditAction,
   BatchStatus,
+  FieldStatusEnum,
   PrismaClient,
   SheetStatus,
   UserRoleEnum,
@@ -11,7 +12,8 @@ import type { AuthorizationContext } from "../../lib/authz/types";
 import { decryptText, encryptText, phoneBlindIndex } from "../../lib/crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../../lib/crypto/keys";
 import { loadHouseholdForReview, verifyHousehold } from "../../lib/verification/review";
-import { applyHouseholdEdits } from "../../lib/verification/edit";
+import { applyHouseholdEdits, loadHouseholdEditable } from "../../lib/verification/edit";
+import { resolveDuplicateFlag } from "../../lib/verification/duplicate-resolution";
 
 // Integration — Verifier: review (decrypt + audit READ) + verify (ENTERED_1 → VERIFIED)
 // รันเฉพาะ local dev DB — fixtures สังเคราะห์ (TESV-*) ลบใน afterAll
@@ -42,12 +44,15 @@ async function cleanup() {
     });
     const hids = households.map((h) => h.id);
     if (hids.length > 0) {
+      await prisma.evacuationVehicle.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.floodRiskProfile.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.householdVersion.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.household.deleteMany({ where: { id: { in: hids } } });
     }
   }
   const batch = await prisma.paperBatch.findUnique({ where: { code: BATCH_CODE } });
   if (batch) {
+    await prisma.fieldStatus.deleteMany({ where: { sheet: { batchId: batch.id } } });
     await prisma.paperSheet.deleteMany({ where: { batchId: batch.id } });
     await prisma.paperBatch.delete({ where: { id: batch.id } });
   }
@@ -137,6 +142,44 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     await mkHousehold("bySelf", "TESV-920002", verifier.id); // ผู้ตรวจคีย์เอง → SELF_VERIFY
     await mkHousehold("scope", "TESV-920003", keyer.id); // ทดสอบ scope/permission
     await mkHousehold("toEdit", "TESV-920004", keyer.id); // คง ENTERED_1 ไว้ทดสอบแก้ไข
+    await prisma.household.update({
+      where: { id: hh.toEdit },
+      data: {
+        assistanceTotalPersonCount: 14,
+        hasNoResources: true,
+        volunteerNotAvailable: true,
+      },
+    });
+    await prisma.floodRiskProfile.create({
+      data: {
+        householdId: hh.toEdit,
+        hasFloodedBefore: true,
+        floodDepthMetersRaw: 1,
+        floodDepthCmRaw: 75,
+        maxFloodDepthCm: 175,
+      },
+    });
+    await prisma.evacuationVehicle.create({
+      data: { householdId: hh.toEdit, vehicleType: "OTHER", detail: "รถอีแต๋น" },
+    });
+    await mkHousehold("duplicateBase", "TESV-920005", keyer.id);
+    await mkHousehold("duplicateNotDuplicate", "TESV-920006", keyer.id);
+    await mkHousehold("duplicateConfirmed", "TESV-920007", keyer.id);
+    await mkHousehold("duplicateSelf", "TESV-920008", verifier.id);
+    await prisma.household.updateMany({
+      where: {
+        id: {
+          in: [hh.duplicateBase, hh.duplicateNotDuplicate, hh.duplicateConfirmed, hh.duplicateSelf],
+        },
+      },
+      data: { houseNo: "55/5", mooNo: 7, soi: "ซอยเดียวกัน", road: "ถนนเดียวกัน" },
+    });
+    await prisma.household.updateMany({
+      where: {
+        id: { in: [hh.duplicateNotDuplicate, hh.duplicateConfirmed, hh.duplicateSelf] },
+      },
+      data: { hasDuplicateFlag: true },
+    });
 
     const np = await prisma.namePrefix.findFirst({ where: { isActive: true }, select: { id: true } });
     if (!np) throw new Error("ต้องมี NamePrefix seed ใน dev DB");
@@ -236,7 +279,83 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     });
   });
 
+  it("ธงซ้ำที่ยังไม่ตัดสิน: แสดงใบที่ตรงกันและห้ามยืนยัน VERIFIED", async () => {
+    const review = await loadHouseholdForReview(ctxVerifier, hh.duplicateNotDuplicate);
+    expect(review?.canResolveDuplicate).toBe(true);
+    expect(review?.canConfirm).toBe(false);
+    expect(review?.duplicateCandidates.map((candidate) => candidate.householdId)).toContain(
+      hh.duplicateBase,
+    );
+    expect(await verifyHousehold(ctxVerifier, hh.duplicateNotDuplicate)).toEqual({
+      ok: false,
+      reason: "DUPLICATE_UNRESOLVED",
+    });
+  });
+
+  it("ผู้ตรวจยืนยันว่าไม่ซ้ำ → ล้างธง, เก็บผู้ตัดสิน และยืนยันใบต่อได้", async () => {
+    expect(
+      await resolveDuplicateFlag(ctxVerifier, hh.duplicateNotDuplicate, "NOT_DUPLICATE"),
+    ).toEqual({ ok: true, decision: "NOT_DUPLICATE" });
+
+    const household = await prisma.household.findUniqueOrThrow({
+      where: { id: hh.duplicateNotDuplicate },
+    });
+    expect(household.hasDuplicateFlag).toBe(false);
+    expect(household.duplicateResolution).toBe("NOT_DUPLICATE");
+    expect(household.duplicateResolvedById).toBe(verifierId);
+    expect(household.duplicateResolvedAt).not.toBeNull();
+    expect((await verifyHousehold(ctxVerifier, hh.duplicateNotDuplicate)).ok).toBe(true);
+  });
+
+  it("ผู้ตรวจยืนยันว่าซ้ำจริง → คงธงและห้ามยืนยันเป็นครัวเรือนใหม่", async () => {
+    expect(
+      await resolveDuplicateFlag(ctxVerifier, hh.duplicateConfirmed, "CONFIRMED_DUPLICATE"),
+    ).toEqual({ ok: true, decision: "CONFIRMED_DUPLICATE" });
+
+    const household = await prisma.household.findUniqueOrThrow({
+      where: { id: hh.duplicateConfirmed },
+    });
+    expect(household.hasDuplicateFlag).toBe(true);
+    expect(household.duplicateResolution).toBe("CONFIRMED_DUPLICATE");
+    expect(await verifyHousehold(ctxVerifier, hh.duplicateConfirmed)).toEqual({
+      ok: false,
+      reason: "CONFIRMED_DUPLICATE",
+    });
+  });
+
+  it("ผู้คีย์ตัดสินธงซ้ำของใบตัวเองไม่ได้", async () => {
+    expect(
+      await resolveDuplicateFlag(ctxVerifier, hh.duplicateSelf, "NOT_DUPLICATE"),
+    ).toEqual({ ok: false, reason: "SELF_RESOLVE" });
+  });
+
   // ---- Slice 2: แก้ไขข้อมูล ----
+
+  it("หน้าแก้ไขเติมค่าความช่วยเหลือรวมและระดับน้ำเดิม", async () => {
+    const editable = await loadHouseholdEditable(ctxVerifier, hh.toEdit);
+    expect(editable?.values.assistanceTotalPersonCount).toBe("14");
+    expect(editable?.values.floodDepthMetersRaw).toBe("1");
+    expect(editable?.values.floodDepthCmRaw).toBe("75");
+    expect(editable?.values.hasNoResources).toBe(true);
+    expect(editable?.values.volunteerNotAvailable).toBe(true);
+  });
+
+  it("หน้าแก้ไขเติมข้อความยานพาหนะอื่น ๆ เดิม และบันทึกค่าที่แก้กลับได้", async () => {
+    const editable = await loadHouseholdEditable(ctxVerifier, hh.toEdit);
+    expect(editable?.values.evacuationVehicleTypes).toContain("OTHER");
+    expect(editable?.values.evacuationVehiclesOther).toBe("รถอีแต๋น");
+
+    expect(
+      await applyHouseholdEdits(ctxVerifier, hh.toEdit, {
+        evacuationVehiclesOther: "รถหกล้อ",
+      }),
+    ).toEqual({ ok: true, changedCount: 1 });
+
+    const other = await prisma.evacuationVehicle.findFirstOrThrow({
+      where: { householdId: hh.toEdit, vehicleType: "OTHER" },
+    });
+    expect(other.detail).toBe("รถหกล้อ");
+  });
 
   it("applyHouseholdEdits: แก้ชื่อ(🔒)/เบอร์(idx)/บ้านเลขที่/สมาชิก/คำนำหน้า(FK) + version + audit", async () => {
     const result = await applyHouseholdEdits(ctxVerifier, hh.toEdit, {
@@ -260,8 +379,9 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
 
     const version = await prisma.householdVersion.findFirstOrThrow({
       where: { householdId: hh.toEdit },
+      orderBy: { versionNo: "desc" },
     });
-    expect(version.versionNo).toBe(1);
+    expect(version.versionNo).toBe(2);
     expect(version.changedById).toBe(verifierId);
     expect(version.changeReason).toBe("verifier-edit");
 
@@ -283,6 +403,47 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(result).toEqual({ ok: true, changedCount: 0 });
     const after = await prisma.householdVersion.count({ where: { householdId: hh.toEdit } });
     expect(after).toBe(before);
+  });
+
+  it("หน้าแก้ไขโหลด F2/F3 เดิม และแก้ค่าจริงแล้วปิดสถานะเดิมได้", async () => {
+    const sheet = await prisma.paperSheet.findFirstOrThrow({
+      where: { household: { id: hh.toEdit } },
+      select: { id: true },
+    });
+    await prisma.fieldStatus.createMany({
+      data: [
+        { sheetId: sheet.id, fieldPath: "soi", status: FieldStatusEnum.BLANK_IN_PAPER },
+        { sheetId: sheet.id, fieldPath: "road", status: FieldStatusEnum.ILLEGIBLE },
+      ],
+    });
+    await prisma.household.update({
+      where: { id: hh.toEdit },
+      data: { blankCount: 1, illegibleCount: 1 },
+    });
+
+    const editable = await loadHouseholdEditable(ctxVerifier, hh.toEdit);
+    expect(editable?.fieldMarks).toMatchObject({
+      soi: "BLANK_IN_PAPER",
+      road: "ILLEGIBLE",
+    });
+
+    const result = await applyHouseholdEdits(
+      ctxVerifier,
+      hh.toEdit,
+      { soi: "ซอยที่อ่านได้แล้ว" },
+      { soi: null },
+    );
+    expect(result).toEqual({ ok: true, changedCount: 2 });
+
+    const latestSoi = await prisma.fieldStatus.findFirstOrThrow({
+      where: { sheetId: sheet.id, fieldPath: "soi" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    expect(latestSoi.status).toBe(FieldStatusEnum.HAS_VALUE);
+    const household = await prisma.household.findUniqueOrThrow({ where: { id: hh.toEdit } });
+    expect(household.soi).toBe("ซอยที่อ่านได้แล้ว");
+    expect(household.blankCount).toBe(0);
+    expect(household.illegibleCount).toBe(1);
   });
 
   it("คำนำหน้าปลอม (FK ผิด) → INVALID_MASTER และ rollback (ไม่มี version เพิ่ม)", async () => {

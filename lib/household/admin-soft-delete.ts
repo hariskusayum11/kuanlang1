@@ -16,6 +16,7 @@ import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
+import { normalizePage, normalizePageSize } from "../pagination";
 
 /** เฉพาะ ADMIN — ตรวจฝั่ง server (การซ่อนปุ่มไม่ใช่ Authorization) */
 function canManageSheets(ctx: AuthorizationContext): boolean {
@@ -119,26 +120,45 @@ export interface DeletedHouseholdRow {
   deletedAt: Date;
 }
 
+export interface DeletedHouseholdListResult {
+  allowed: boolean;
+  rows: DeletedHouseholdRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 /** รายการแบบสอบถามที่ถูกลบ (soft) สำหรับหน้า "กู้คืน" — เฉพาะ ADMIN + Audit READ */
 export async function listDeletedHouseholds(
   ctx: AuthorizationContext,
-): Promise<DeletedHouseholdRow[]> {
-  if (!canManageSheets(ctx)) return [];
+  page = 1,
+  requestedPageSize = 20,
+): Promise<DeletedHouseholdListResult> {
+  const safePage = normalizePage(page);
+  const pageSize = normalizePageSize(requestedPageSize);
+  if (!canManageSheets(ctx)) {
+    return { allowed: false, rows: [], total: 0, page: safePage, pageSize };
+  }
 
-  const rows = await prisma.household.findMany({
-    where: { deletedAt: { not: null } },
-    select: {
-      id: true,
-      deletedAt: true,
-      enteredAt: true,
-      verifiedAt: true,
-      sheet: { select: { sheetNo: true } },
-      community: { select: { nameTh: true } },
-      enteredBy: { select: { name: true } },
-    },
-    orderBy: { deletedAt: "desc" },
-    take: 200,
-  });
+  const where = { deletedAt: { not: null } };
+  const [total, rows] = await Promise.all([
+    prisma.household.count({ where }),
+    prisma.household.findMany({
+      where,
+      select: {
+        id: true,
+        deletedAt: true,
+        enteredAt: true,
+        verifiedAt: true,
+        sheet: { select: { sheetNo: true } },
+        community: { select: { nameTh: true } },
+        enteredBy: { select: { name: true } },
+      },
+      orderBy: { deletedAt: "desc" },
+      skip: (safePage - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
 
   await writeAuditLog({
     userId: ctx.userId,
@@ -148,13 +168,19 @@ export async function listDeletedHouseholds(
     changes: { count: rows.length },
   });
 
-  return rows.map((r) => ({
-    householdId: r.id,
-    sheetNo: r.sheet.sheetNo,
-    communityName: r.community.nameTh,
-    enteredByName: r.enteredBy.name,
-    enteredAt: r.enteredAt,
-    verifiedAt: r.verifiedAt,
-    deletedAt: r.deletedAt as Date,
-  }));
+  return {
+    allowed: true,
+    total,
+    page: safePage,
+    pageSize,
+    rows: rows.map((r) => ({
+      householdId: r.id,
+      sheetNo: r.sheet.sheetNo,
+      communityName: r.community.nameTh,
+      enteredByName: r.enteredBy.name,
+      enteredAt: r.enteredAt,
+      verifiedAt: r.verifiedAt,
+      deletedAt: r.deletedAt as Date,
+    })),
+  };
 }

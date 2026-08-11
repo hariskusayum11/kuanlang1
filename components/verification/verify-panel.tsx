@@ -12,6 +12,8 @@ type Props = {
 };
 
 const ERRORS: Record<string, string> = {
+  DUPLICATE_UNRESOLVED: "ต้องตัดสินธงสงสัยซ้ำก่อน จึงจะยืนยันใบนี้ได้",
+  CONFIRMED_DUPLICATE: "ใบนี้ถูกยืนยันว่าเป็นข้อมูลซ้ำ จึงไม่สามารถยืนยันเป็นครัวเรือนใหม่ได้",
   WRONG_STATUS: "ใบนี้ถูกตรวจสอบไปแล้ว หรือสถานะเปลี่ยนไป — รีเฟรชหน้าอีกครั้ง",
   SELF_VERIFY: "คุณเป็นผู้คีย์ใบนี้ จึงยืนยันเองไม่ได้ — ต้องให้ผู้ตรวจคนอื่นยืนยัน",
   NOT_FOUND: "ไม่พบใบนี้ในขอบเขตของคุณ",
@@ -69,7 +71,7 @@ export function VerifyPanel({ householdId, sheetNo }: Props) {
             </p>
             <p className="mt-3 rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-xs font-medium leading-relaxed text-slate-500">
               ระบบจะบันทึกผู้ตรวจ เวลา และเก็บสำเนาข้อมูล (version) ไว้ตรวจสอบย้อนหลัง
-              — หากพบข้อผิดพลาด ควรแก้ก่อนยืนยัน (การแก้ไขจะเปิดใช้ในเวอร์ชันถัดไป)
+              — หากพบข้อผิดพลาด ให้กลับไปกดแก้ไขและบันทึกให้เรียบร้อยก่อนยืนยัน
             </p>
             {error && (
               <p role="alert" className="mt-3 animate-pop rounded-xl border-2 border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">

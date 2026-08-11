@@ -4,7 +4,7 @@
 
 export const REGISTRATION_RATE_LIMIT = {
   windowMs: 60 * 60 * 1000, // 1 ชั่วโมง
-  max: 5, // 5 คำขอ/ชม. ต่อ IP — สอดคล้อง /sign-up/email rule ใน lib/auth.ts
+  max: 10, // 10 คำขอ/ชม. ต่อ IP — สอดคล้อง /sign-up/email rule ใน lib/auth.ts
 } as const;
 
 interface Bucket {

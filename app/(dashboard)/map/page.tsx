@@ -1,123 +1,158 @@
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { getSurveyMap } from "@/lib/geo/survey-map";
-import { SurveyMap } from "@/components/geo/survey-map";
-import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
+import { PageHero, SectionTitle } from "@/components/layout/page-hero";
+import { getHouseholdLayerMap, type HouseholdMapFilters } from "@/lib/geo/household-layer-map";
+import { HouseholdLayerMap } from "@/components/geo/household-layer-map";
+import { getSystemPreferences } from "@/lib/settings/core";
+import {
+  canManageImportantSites,
+  getImportantSites,
+  IMPORTANT_SITE_TYPES,
+  type ImportantSitePoint,
+} from "@/lib/geo/important-sites";
+import { saveImportantSiteAction } from "@/lib/geo/important-site-actions";
+import { DeleteImportantSiteForm } from "@/components/geo/delete-important-site-form";
 
-export const metadata = { title: "แผนที่การสำรวจ" };
+export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
 
-// แผนที่ภาพรวมการสำรวจระดับชุมชน — เห็นว่าสำรวจไปพื้นที่ไหน มากน้อยแค่ไหน
-// Privacy: aggregate ระดับชุมชน (ไม่มีพิกัดรายบ้าน) · RBAC household.view · Audit READ
-export default async function SurveyMapPage() {
+type SearchParams = {
+  community?: string; tambon?: string; from?: string; to?: string;
+  siteSaved?: string; siteDeleted?: string; siteError?: string;
+};
+
+export default async function SurveyMapPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
-  const data = await getSurveyMap(ctx);
-  const hasAny = data.points.length > 0;
+  const sp = await searchParams;
+  const filters: HouseholdMapFilters = {
+    communityId: sp.community || undefined,
+    tambonId: sp.tambon || undefined,
+    dateFrom: sp.from || undefined,
+    dateTo: sp.to || undefined,
+  };
+  const [householdMap, preferences, sites] = await Promise.all([
+    getHouseholdLayerMap(ctx, filters),
+    getSystemPreferences(),
+    getImportantSites(filters.communityId),
+  ]);
+  const center = householdMap.points.length
+    ? householdMap.center
+    : sites.length
+      ? { lat: sites.reduce((sum, site) => sum + site.lat, 0) / sites.length, lng: sites.reduce((sum, site) => sum + site.lng, 0) / sites.length }
+      : { lat: preferences.mapDefaultLat, lng: preferences.mapDefaultLng };
+  const canManage = canManageImportantSites(ctx);
 
   return (
     <div className="w-full space-y-7 animate-fade-in">
       <PageHero
-        title="แผนที่การสำรวจ"
+        title="แผนที่ข้อมูลพื้นที่"
         tone="brand"
-        description="ภาพรวมว่าสำรวจไปพื้นที่ไหนแล้วบ้าง แยกตามชุมชน — หมุดใหญ่ = คีย์เข้ามามาก สีบอกสถานะเทียบเป้าหมาย"
-        badge={
-          <>
-            <span className="live-dot" />
-            คีย์แล้ว {data.totalKeyed.toLocaleString("th-TH")} · ตรวจแล้ว {data.totalVerified.toLocaleString("th-TH")}
-          </>
-        }
+        description="ดูบ้านกลุ่มเปราะบาง ทักษะผู้สนใจเป็นอาสาสมัคร บ้านพักพิง จุดสำคัญในพื้นที่ และฮีตแมประดับน้ำจากแบบสอบถามที่ตรวจแล้ว"
+        badge={<>จุดบ้าน {householdMap.points.length.toLocaleString("th-TH")} · จุดสำคัญ {sites.length.toLocaleString("th-TH")}</>}
       />
 
-      {/* คำอธิบายสี */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
-        <LegendDot color="#14b8a6" label="ผ่านเป้า (>60%)" />
-        <LegendDot color="#2563eb" label="มีการสำรวจแล้ว" />
-        <LegendDot color="#94a3b8" label="ยังไม่สำรวจ" />
-        <span className="inline-flex items-center gap-2 text-slate-500">
-          <span className="inline-block h-3 w-4 rounded-sm border-2 border-dashed border-slate-400" />
-          ขอบเขตร่าง (ยังไม่รับรอง)
-        </span>
-      </div>
+      {sp.siteSaved ? <Notice tone="success">บันทึกจุดสำคัญแล้ว</Notice> : null}
+      {sp.siteDeleted ? <Notice tone="warning">ลบจุดสำคัญออกจากระบบแล้ว ไม่สามารถกู้คืนจากหน้านี้ได้</Notice> : null}
+      {sp.siteError ? <Notice tone="error">{sp.siteError}</Notice> : null}
 
-      <section className="card overflow-hidden p-0">
-        {hasAny ? (
-          <SurveyMap points={data.points} boundaries={data.boundaries} center={data.center} />
-        ) : (
-          <EmptyState
-            mood="sleep"
-            tone="brand"
-            title="ยังไม่มีชุมชนให้แสดง"
-            description="เมื่อมีชุมชนที่กำหนดตำแหน่งแล้ว แผนที่จะแสดงที่นี่"
-          />
-        )}
-      </section>
+      <MapFilters filters={filters} options={householdMap.options} />
 
-      {/* ตารางประกอบ — เข้าถึงได้ด้วยคีย์บอร์ด/Screen reader และเห็นตัวเลขชัดแม้แผนที่โหลดไม่ขึ้น */}
       <section className="card overflow-hidden">
         <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
-          <SectionTitle title="สรุปรายชุมชน" tone="brand" />
+          <SectionTitle title="แผนที่ปฏิบัติการ" tone="alert" />
+          <p className="mt-1 text-xs text-slate-500">ข้อมูลบ้านใช้เฉพาะใบ VERIFIED ที่ไม่ถูกลบหรือยืนยันว่าเป็นใบซ้ำ และไม่แสดงชื่อ เบอร์โทร หรือบ้านเลขที่</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b-2 border-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                <th className="py-2.5 pl-6 pr-4">ชุมชน</th>
-                <th className="py-2.5 pr-4 text-right">คีย์แล้ว</th>
-                <th className="py-2.5 pr-4 text-right">ตรวจแล้ว</th>
-                <th className="py-2.5 pr-4 text-right">Coverage</th>
-                <th className="py-2.5 pr-6">ตำแหน่ง</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {data.points.map((p) => (
-                <tr key={p.communityId} className="transition-colors hover:bg-brand-50/50">
-                  <td className="py-3 pl-6 pr-4">
-                    <span className="font-semibold text-slate-800">{p.nameTh}</span>
-                    <span className="ml-1 text-xs text-slate-400">{p.code}</span>
-                  </td>
-                  <td className="py-3 pr-4 text-right font-bold tabular-nums text-brand-700">
-                    {p.keyed.toLocaleString("th-TH")}
-                  </td>
-                  <td className="py-3 pr-4 text-right tabular-nums text-emerald-700">
-                    {p.verified.toLocaleString("th-TH")}
-                  </td>
-                  <td className="py-3 pr-4 text-right tabular-nums">
-                    {p.coveragePercent === null ? (
-                      <span className="text-slate-400">ยังไม่ทราบ</span>
-                    ) : (
-                      <span className={p.meetsTarget ? "font-bold text-emerald-700" : "text-slate-600"}>
-                        {p.coveragePercent.toFixed(1)}%
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-6">
-                    {p.lat !== null && p.lng !== null ? (
-                      <span className="badge badge-neutral text-[11px]">บนแผนที่</span>
-                    ) : (
-                      <span className="text-xs text-slate-400">ยังไม่กำหนด</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-2 gap-3 border-b-2 border-slate-100 p-4 md:grid-cols-3 xl:grid-cols-6">
+          <MapMetric label="มีกลุ่มเปราะบาง" value={householdMap.totals.vulnerable} />
+          <MapMetric label="สนใจเป็นอาสาสมัคร" value={householdMap.totals.volunteer} />
+          <MapMetric label="บ้านพักพิงเบื้องต้น" value={householdMap.totals.hostHouse} />
+          <MapMetric label="มีข้อมูลระดับน้ำ" value={householdMap.totals.floodDepth} />
+          <MapMetric label="จุดสำคัญพื้นที่" value={sites.length} unit="จุด" />
+          <MapMetric label="ไม่มีพิกัด" value={householdMap.missingCoordinates.uniqueHouseholds} warning />
+        </div>
+        <HouseholdLayerMap
+          points={householdMap.points}
+          sites={sites}
+          availableVolunteerSkills={householdMap.options.volunteerSkills}
+          center={center}
+          defaultZoom={preferences.mapDefaultZoom}
+        />
+        <div className="border-t-2 border-slate-100 bg-sun-50/60 px-5 py-3 text-xs text-slate-600">
+          ไม่มีพิกัด: กลุ่มเปราะบาง {householdMap.missingCoordinates.vulnerable.toLocaleString("th-TH")} หลัง · ผู้สนใจอาสาสมัคร {householdMap.missingCoordinates.volunteer.toLocaleString("th-TH")} หลัง · จุดพักพิง {householdMap.missingCoordinates.hostHouse.toLocaleString("th-TH")} หลัง · มีระดับน้ำ {householdMap.missingCoordinates.floodDepth.toLocaleString("th-TH")} หลัง
         </div>
       </section>
 
+      {canManage ? <ImportantSiteManager sites={sites} communities={householdMap.options.communities} /> : null}
+
       <p className="px-1 text-xs leading-relaxed text-slate-500">
-        หมายเหตุ: หมุดใช้ <b>จุดศูนย์กลางชุมชนโดยประมาณ</b> (ยังไม่ใช่ขอบเขตจริง) และเป็นข้อมูล
-        <b>ระดับชุมชน</b> ไม่แสดงพิกัดรายบ้านเพื่อความเป็นส่วนตัว · &quot;คีย์แล้ว&quot; นับทุกใบที่คีย์เข้าระบบ
-        ส่วน &quot;ตรวจแล้ว&quot; นับเฉพาะ VERIFIED · Coverage เทียบกับจำนวนครัวเรือนทั้งหมด (ถ้าทราบ)
+        ฮีตแมปใช้ “ระดับน้ำสูงสุด — ซม.” ของแต่ละครัวเรือน จุดที่อยู่ใกล้กันจะซ้อนสีเข้มขึ้น จึงใช้ดูแนวโน้มพื้นที่ได้ แต่ไม่ใช่แบบจำลองระดับน้ำหรือขอบเขตน้ำท่วมทางวิศวกรรม
       </p>
     </div>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function ImportantSiteManager({ sites, communities }: { sites: ImportantSitePoint[]; communities: { id: string; label: string }[] }) {
   return (
-    <span className="inline-flex items-center gap-2">
-      <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-    </span>
+    <section className="card overflow-hidden">
+      <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4"><SectionTitle title="จัดการจุดสำคัญบนแผนที่" tone="mint" /><p className="mt-1 text-xs text-slate-500">เฉพาะผู้ดูแลระบบ เพิ่มโรงเรียน วัด/มัสยิด ศูนย์อพยพ และพื้นที่สำคัญอื่นได้</p></div>
+      <div className="grid gap-6 p-5 xl:grid-cols-[1fr_1.25fr]">
+        <form action={saveImportantSiteAction} className="rounded-2xl border-2 border-brand-100 bg-brand-50/30 p-4">
+          <h3 className="mb-4 font-bold text-slate-800">เพิ่มจุดใหม่</h3>
+          <SiteFields communities={communities} />
+          <button type="submit" className="btn btn-primary mt-4 w-full">เพิ่มจุดบนแผนที่</button>
+        </form>
+        <div>
+          <h3 className="mb-3 font-bold text-slate-800">รายการปัจจุบัน ({sites.length.toLocaleString("th-TH")})</h3>
+          {sites.length ? <div className="space-y-2">{sites.map((site) => (
+            <details key={site.id} className="rounded-xl border-2 border-slate-100 bg-white">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700">{site.name} <span className="ml-2 text-xs font-normal text-slate-400">{site.communityName} · {siteTypeLabel(site.type)}</span></summary>
+              <div className="border-t border-slate-100 p-4">
+                <form action={saveImportantSiteAction}>
+                  <input type="hidden" name="id" value={site.id} />
+                  <SiteFields communities={communities} site={site} />
+                  <button type="submit" className="btn btn-primary mt-4">บันทึกการแก้ไข</button>
+                </form>
+                <DeleteImportantSiteForm id={site.id} name={site.name} />
+              </div>
+            </details>
+          ))}</div> : <p className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-400">ยังไม่มีจุดสำคัญ</p>}
+        </div>
+      </div>
+    </section>
   );
+}
+
+function SiteFields({ communities, site }: { communities: { id: string; label: string }[]; site?: ImportantSitePoint }) {
+  const field = "mt-1 block w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm";
+  return <div className="grid gap-3 sm:grid-cols-2">
+    <label className="text-xs font-bold text-slate-600">ชื่อจุด<input required maxLength={150} name="name" defaultValue={site?.name} className={field} placeholder="เช่น โรงเรียนบ้านคลอง" /></label>
+    <label className="text-xs font-bold text-slate-600">ประเภท<select required name="type" defaultValue={site?.type ?? "SCHOOL"} className={field}>{IMPORTANT_SITE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
+    <label className="text-xs font-bold text-slate-600">ชุมชน<select required name="communityId" defaultValue={site?.communityId ?? ""} className={field}><option value="" disabled>เลือกชุมชน</option>{communities.map((community) => <option key={community.id} value={community.id}>{community.label}</option>)}</select></label>
+    <label className="text-xs font-bold text-slate-600">ความจุ (คน)<input min={0} step={1} type="number" name="capacity" defaultValue={site?.capacity ?? ""} className={field} /></label>
+    <label className="text-xs font-bold text-slate-600">ละติจูด<input required step="any" type="number" name="latitude" defaultValue={site?.lat} className={field} placeholder="7.0075" /></label>
+    <label className="text-xs font-bold text-slate-600">ลองจิจูด<input required step="any" type="number" name="longitude" defaultValue={site?.lng} className={field} placeholder="100.4200" /></label>
+    <label className="text-xs font-bold text-slate-600 sm:col-span-2">ที่อยู่/รายละเอียด<input maxLength={500} name="address" defaultValue={site?.address ?? ""} className={field} /></label>
+  </div>;
+}
+
+function siteTypeLabel(type: ImportantSitePoint["type"]) { return IMPORTANT_SITE_TYPES.find((item) => item.value === type)?.label ?? "จุดสำคัญ"; }
+
+function Notice({ tone, children }: { tone: "success" | "warning" | "error"; children: React.ReactNode }) {
+  const cls = tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : tone === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800";
+  return <div className={`rounded-xl border-2 px-4 py-3 text-sm font-semibold ${cls}`}>{children}</div>;
+}
+
+function MapFilters({ filters, options }: { filters: HouseholdMapFilters; options: { communities: { id: string; label: string }[]; tambons: { id: string; label: string }[] } }) {
+  const input = "mt-1 block w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm";
+  return <form method="get" className="card p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">ตัวกรองข้อมูลแผนที่</h2><p className="text-xs text-slate-500">มีผลกับจุดบ้านและฮีตแมป จุดสำคัญกรองตามชุมชน</p></div><a href="/map" className="text-sm font-semibold text-brand-700 hover:underline">ล้างตัวกรอง</a></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+    <label className="text-xs font-bold text-slate-600">ชุมชน<select name="community" defaultValue={filters.communityId ?? ""} className={input}><option value="">ทุกชุมชน</option>{options.communities.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+    <label className="text-xs font-bold text-slate-600">ตำบล<select name="tambon" defaultValue={filters.tambonId ?? ""} className={input}><option value="">ทุกตำบล</option>{options.tambons.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+    <label className="text-xs font-bold text-slate-600">ตั้งแต่วันที่สำรวจ<input type="date" name="from" defaultValue={filters.dateFrom} className={input} /></label>
+    <label className="text-xs font-bold text-slate-600">ถึงวันที่สำรวจ<input type="date" name="to" defaultValue={filters.dateTo} className={input} /></label>
+    <button type="submit" className="btn btn-primary self-end py-2.5">แสดงผล</button>
+  </div></form>;
+}
+
+function MapMetric({ label, value, warning = false, unit = "หลัง" }: { label: string; value: number; warning?: boolean; unit?: string }) {
+  return <div className="rounded-xl border-2 border-slate-100 bg-white px-4 py-3"><p className="text-[11px] font-semibold text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold tabular-nums ${warning ? "text-sun-800" : "text-brand-700"}`}>{value.toLocaleString("th-TH")} <span className="text-xs font-medium text-slate-400">{unit}</span></p></div>;
 }

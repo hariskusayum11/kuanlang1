@@ -16,7 +16,6 @@ import {
 import { UserRoleEditor } from "@/components/admin/user-role-editor";
 import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
 import { UserDeleteButton } from "@/components/admin/user-delete-button";
-import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ผู้ใช้และบทบาท" };
@@ -41,8 +40,6 @@ export default async function AdminUsersPage() {
           </>
         }
       />
-
-      <AdminTabs />
 
       <section className="card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">

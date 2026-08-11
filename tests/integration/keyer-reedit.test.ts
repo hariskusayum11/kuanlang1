@@ -3,7 +3,7 @@ import { PrismaClient, SheetStatus, UserRoleEnum } from "@prisma/client";
 import { loadContextOrThrow } from "../helpers/authz";
 import type { AuthorizationContext } from "../../lib/authz/types";
 import { entryPayloadSchema } from "../../lib/entry/payload";
-import { submitEntry } from "../../lib/entry/save";
+import { loadDraftPayload, submitEntry } from "../../lib/entry/save";
 import {
   claimSheetById,
   getMySubmittedSheets,
@@ -203,6 +203,41 @@ describe.skipIf(!isLocalDevDb)("Integration: ผู้คีย์แก้ใ�
     expect(afterEdit.sheet.status).toBe(SheetStatus.ENTERED_1); // กลับไปรอตรวจ
     expect(afterEdit.verifiedById).toBeNull();
     expect(afterEdit.verifiedAt).toBeNull();
+  });
+
+  it("สถานะไม่ได้กรอกในกระดาษแสดงเมื่อผู้กรอกเปิดแก้ และถูกล้างเมื่อกรอกค่าจริง", async () => {
+    const started = await startSheet(ctxKeyer, { communityId });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    const marked = entryPayloadSchema.parse({
+      answers: { houseNo: "8/8", memberCount: 2, hasVulnerable: false },
+      marks: { soi: "BLANK_IN_PAPER" },
+    });
+    expect((await submitEntry(ctxKeyer, started.sheetId, marked)).ok).toBe(true);
+
+    expect((await openSheetByCode(ctxKeyer, started.sheetNo)).ok).toBe(true);
+    const reopenedDraft = await loadDraftPayload(ctxKeyer, started.sheetId);
+    expect(reopenedDraft?.marks.soi).toBe("BLANK_IN_PAPER");
+
+    const corrected = entryPayloadSchema.parse({
+      answers: {
+        houseNo: "8/8",
+        memberCount: 2,
+        hasVulnerable: false,
+        soi: "ซอยที่กรอกเพิ่ม",
+      },
+      marks: {},
+    });
+    expect((await submitEntry(ctxKeyer, started.sheetId, corrected)).ok).toBe(true);
+
+    const saved = await prisma.household.findUniqueOrThrow({
+      where: { sheetId: started.sheetId },
+      select: { soi: true, blankCount: true },
+    });
+    expect(saved.soi).toBe("ซอยที่กรอกเพิ่ม");
+    expect(saved.blankCount).toBe(0);
+    expect(await prisma.fieldStatus.count({ where: { sheetId: started.sheetId } })).toBe(0);
   });
 
   it("5) ออกจากฟอร์มกลางคัน → คืนสถานะเดิม ไม่กลายเป็นใบว่าง", async () => {

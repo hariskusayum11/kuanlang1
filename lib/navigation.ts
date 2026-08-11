@@ -1,82 +1,118 @@
 import { PERMISSIONS, type Permission } from "./authz/permissions";
 
 export interface NavItem {
+  group: "overview" | "data" | "analysis" | "system";
   label: string;
   href: string;
   permission: Permission;
   implemented: boolean;
+  activeHrefs?: readonly string[];
+  fallback?: { permission: Permission; href: string };
+  iconHref?: string;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
   {
-    label: "ภาพรวม",
+    group: "overview",
+    label: "แดชบอร์ดผู้บริหาร",
     href: "/dashboard",
     permission: PERMISSIONS.DASHBOARD_VIEW,
     implemented: true,
   },
   {
-    label: "ชุมชน",
-    href: "/communities",
-    permission: PERMISSIONS.COMMUNITY_VIEW,
-    implemented: true,
-  },
-  {
-    label: "ครัวเรือน",
-    href: "/households",
-    permission: PERMISSIONS.HOUSEHOLD_VIEW,
-    implemented: true,
-  },
-  {
-    label: "แบบสอบถาม",
+    group: "data",
+    label: "คีย์แบบสอบถาม",
     href: "/surveys",
     permission: PERMISSIONS.SURVEY_ENTRY,
     implemented: true,
+    iconHref: "/surveys",
   },
   {
-    label: "การตรวจสอบข้อมูล",
+    group: "data",
+    label: "รอตรวจสอบ",
     href: "/verification",
     permission: PERMISSIONS.VERIFICATION_VIEW,
     implemented: true,
   },
   {
-    label: "ความเสี่ยง",
+    group: "data",
+    label: "ข้อมูลครัวเรือน",
+    href: "/households",
+    permission: PERMISSIONS.HOUSEHOLD_VIEW,
+    implemented: true,
+  },
+  {
+    group: "data",
+    label: "ถังขยะแบบสอบถาม",
+    href: "/admin/sheets",
+    permission: PERMISSIONS.USER_MANAGE,
+    implemented: true,
+    iconHref: "/admin/sheets",
+  },
+  {
+    group: "analysis",
+    label: "ข้อมูลชุมชน",
+    href: "/communities",
+    permission: PERMISSIONS.COMMUNITY_VIEW,
+    implemented: true,
+  },
+  {
+    group: "analysis",
+    label: "แผนที่ข้อมูลสำรวจ",
+    href: "/map",
+    permission: PERMISSIONS.HOUSEHOLD_VIEW,
+    implemented: true,
+    iconHref: "/map",
+  },
+  {
+    group: "analysis",
+    label: "ความเสี่ยงและการช่วยเหลือ",
     href: "/risk",
     permission: PERMISSIONS.HOUSEHOLD_VIEW,
     implemented: true,
   },
   {
-    label: "แผนที่การสำรวจ",
-    href: "/map",
-    permission: PERMISSIONS.HOUSEHOLD_VIEW,
-    implemented: true,
-  },
-  {
-    label: "รายงาน",
+    group: "analysis",
+    label: "รายงานและส่งออก",
     href: "/reports",
     permission: PERMISSIONS.REPORT_VIEW,
     implemented: true,
   },
-  // เมนูเดียวรวมงานผู้ดูแล — ผู้ใช้/บทบาท + คำขอลงทะเบียน (Owner request 2026-08-04)
-  // เฉพาะ ADMIN เท่านั้นที่มีทั้ง user.manage และ registration.manage
-  // href ชี้กลุ่ม /admin (redirect → /admin/users) แล้วสลับหน้าในกลุ่มด้วยแท็บ
   {
-    label: "จัดการผู้ใช้งาน",
-    href: "/admin",
+    group: "system",
+    label: "ผู้ใช้และสิทธิ์",
+    href: "/admin/users",
     permission: PERMISSIONS.USER_MANAGE,
     implemented: true,
+    iconHref: "/admin",
   },
   {
+    group: "system",
+    label: "คำขอลงทะเบียน",
+    href: "/admin/registrations",
+    permission: PERMISSIONS.REGISTRATION_MANAGE,
+    implemented: true,
+    iconHref: "/admin/registrations",
+  },
+  {
+    group: "system",
     label: "ตั้งค่าระบบ",
     href: "/settings",
     permission: PERMISSIONS.SETTINGS_VIEW,
-    implemented: false,
+    implemented: true,
   },
 ];
 
 export function visibleNavItems(
   permissions: readonly Permission[],
 ): NavItem[] {
-  return NAV_ITEMS.filter((item) => permissions.includes(item.permission));
+  return NAV_ITEMS.flatMap((item) => {
+    if (permissions.includes(item.permission)) return [item];
+    if (item.fallback && permissions.includes(item.fallback.permission)) {
+      return [{ ...item, href: item.fallback.href }];
+    }
+    return [];
+  });
 }
 
 /**

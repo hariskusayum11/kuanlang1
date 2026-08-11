@@ -12,6 +12,7 @@ import { getKeyring, getSearchHashKey } from "../../lib/crypto/keys";
 import { openSheetByCode } from "../../lib/entry/claim";
 import { entryPayloadSchema } from "../../lib/entry/payload";
 import { loadDraftPayload, saveDraft, submitEntry } from "../../lib/entry/save";
+import { getEntrySuggestions } from "../../lib/entry/suggestions";
 
 // Integration tests — Entry Save: Draft/Submit แบบเข้ารหัส (R5 + R4-1 Single-Entry)
 // -----------------------------------------------------------------------------
@@ -148,6 +149,8 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       respondentLastName: "ระบบ",
       respondentPhone: "081-234-5678",
       houseNo: "12/3",
+      mooNo: 5,
+      road: "ถนนทดสอบ",
       memberCount: 4,
       hasVulnerable: true,
       surveyedAt: "15/03/2568",
@@ -296,6 +299,18 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     expect(attempt.submittedAt).not.toBeNull();
   });
 
+  it("คำแนะนำผู้สำรวจคืนเฉพาะประวัติของคนกรอกคนปัจจุบัน", async () => {
+    const mine = await getEntrySuggestions(ctxA);
+    expect(mine.surveyorFirstNameOnPaper[0]?.value).toBe("สมชาย");
+    expect(mine.surveyorFirstNameOnPaper[0]?.fill).toMatchObject({
+      surveyorFirstNameOnPaper: "สมชาย",
+      surveyorLastNameOnPaper: "นักสำรวจ",
+    });
+
+    const otherUser = await getEntrySuggestions(ctxB);
+    expect(otherUser.surveyorFirstNameOnPaper ?? []).toEqual([]);
+  });
+
   it("พิกัดแยกสองช่อง → ประกอบเป็นคู่ + derive lat/lng · volunteerNotAvailable ลงคอลัมน์", async () => {
     const sheetId = sheetIds[SHEETS[4]];
     expect((await openSheetByCode(ctxA, SHEETS[4])).ok).toBe(true);
@@ -303,6 +318,9 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     const payload = entryPayloadSchema.parse({
       answers: {
         houseNo: "9/9",
+        mooNo: 5,
+        road: "ถนนทดสอบ",
+        respondentPhone: "081-234-5678",
         latitudeText: "7.006",
         longitudeText: "100.474",
         volunteerNotAvailable: true,
@@ -323,6 +341,11 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     expect(Number(hh.latitude)).toBeCloseTo(7.006, 5);
     expect(Number(hh.longitude)).toBeCloseTo(100.474, 5);
     expect(hh.volunteerNotAvailable).toBe(true);
+    expect(result.duplicateSuspected).toBe(false); // เบอร์เหมือนใบแรก แต่ที่อยู่ไม่เหมือน
+    const otherVehicle = await prisma.evacuationVehicle.findFirstOrThrow({
+      where: { householdId: hh.id, vehicleType: "OTHER" },
+    });
+    expect(otherVehicle.detail).toBe("รถอีแต๋น");
   });
 
   it("ส่งซ้ำ / ส่งใบที่ไม่ได้ถือ lock → ปฏิเสธ", async () => {
@@ -334,7 +357,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
     });
   });
 
-  it("เบอร์ซ้ำกับใบก่อน → duplicateSuspected + hasDuplicateFlag (จับผ่าน blind index)", async () => {
+  it("ที่อยู่ตรงกันครบชุด → duplicateSuspected + hasDuplicateFlag โดยไม่ใช้เบอร์โทร", async () => {
     const sheetNo = SHEETS[1];
     const opened = await openSheetByCode(ctxB, sheetNo);
     expect(opened.ok).toBe(true);
@@ -343,7 +366,10 @@ describe.skipIf(!isLocalDevDb)("Integration: Entry Save (Draft/Submit เข้�
       answers: {
         respondentFirstName: "คนละคน",
         respondentLastName: "เบอร์เดียวกัน",
-        respondentPhone: "+66 81 234 5678", // รูปแบบต่าง แต่ normalize แล้วตรงใบแรก
+        respondentPhone: "0999999999", // คนละเบอร์ — ไม่มีผลต่อการตรวจซ้ำ
+        houseNo: "12/3",
+        mooNo: 5,
+        road: "ถนนทดสอบ",
         hasVulnerable: false,
       },
     });

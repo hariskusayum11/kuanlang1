@@ -8,7 +8,7 @@
 //   + snapshot HouseholdVersion + Audit VERIFY (race-guarded กันกดซ้ำ)
 // - Audit ห้าม log ค่า PII ดิบ — เก็บเฉพาะ entity อ้างอิงและ metadata ปลอดภัย
 
-import { AuditAction, FieldStatusEnum, Prisma, SheetStatus } from "@prisma/client";
+import { AuditAction, DuplicateResolutionEnum, FieldStatusEnum, Prisma, SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -63,6 +63,19 @@ export interface HouseholdReview {
   illegibleCount: number;
   blankCount: number;
   hasDuplicateFlag: boolean;
+  duplicateResolution: DuplicateResolutionEnum | null;
+  duplicateResolvedAt: Date | null;
+  duplicateResolvedByName: string | null;
+  duplicateCandidates: {
+    householdId: string;
+    sheetNo: string;
+    communityName: string;
+    houseNo: string | null;
+    mooNo: number | null;
+    status: SheetStatus;
+  }[];
+  canResolveDuplicate: boolean;
+  deletedAt: Date | null;
   /** ยืนยันได้: สถานะ ENTERED_1 และผู้ตรวจไม่ใช่ผู้คีย์เอง */
   canConfirm: boolean;
   sections: { title: string; fields: ReviewField[] }[];
@@ -137,11 +150,13 @@ function floodDepthText(m: number | null, cm: number | null): string | null {
 export async function loadHouseholdForReview(
   ctx: AuthorizationContext,
   householdId: string,
+  options: { includeDeleted?: boolean } = {},
 ): Promise<HouseholdReview | null> {
   if (!canVerify(ctx)) return null;
+  const includeDeleted = options.includeDeleted === true && ctx.roles.includes("ADMIN");
 
   const h = await prisma.household.findFirst({
-    where: { id: householdId, deletedAt: null },
+    where: includeDeleted ? { id: householdId } : { id: householdId, deletedAt: null },
     include: {
       sheet: { select: { sheetNo: true, status: true } },
       community: { select: { nameTh: true } },
@@ -153,6 +168,7 @@ export async function loadHouseholdForReview(
       ownershipType: { select: { nameTh: true } },
       enteredBy: { select: { name: true } },
       verifiedBy: { select: { name: true } },
+      duplicateResolvedBy: { select: { name: true } },
       // ขยายเพื่อแสดงทุกส่วน (Owner: ตรวจต้องเห็นฟิลด์ทั้งหมดที่คีย์มา)
       assistanceNeeds: {
         orderBy: { needType: { sortOrder: "asc" } },
@@ -197,15 +213,40 @@ export async function loadHouseholdForReview(
   });
 
   const enteredByMe = h.enteredById === ctx.userId;
+  const duplicateCandidates = h.houseNo != null && h.mooNo != null
+    ? await prisma.household.findMany({
+        where: {
+          id: { not: h.id },
+          communityId: h.communityId,
+          houseNo: h.houseNo,
+          mooNo: h.mooNo,
+          soi: h.soi,
+          road: h.road,
+          tambonId: h.tambonId,
+          deletedAt: null,
+        },
+        orderBy: { enteredAt: "asc" },
+        select: {
+          id: true,
+          houseNo: true,
+          mooNo: true,
+          sheet: { select: { sheetNo: true, status: true } },
+          community: { select: { nameTh: true } },
+        },
+      })
+    : [];
   const frp = h.floodRiskProfile;
 
   // --- ส่วนที่ 3 และฟิลด์ 4-5: ฟิลด์รวมที่แสดงเป็นรายการ (M:N) — รวมเป็นข้อความ
   const resourceList = h.householdResources.map(
     (r) => r.resourceType.nameTh + (r.quantity != null ? ` (${r.quantity})` : ""),
   );
-  const vehicleList = h.evacuationVehicles.map(
-    (v) => enumLabel(VEHICLE_LABEL, v.vehicleType) ?? v.detail ?? "",
-  );
+  const vehicleList = h.evacuationVehicles.map((vehicle) => {
+    const label = enumLabel(VEHICLE_LABEL, vehicle.vehicleType) ?? "";
+    return vehicle.vehicleType === "OTHER" && vehicle.detail
+      ? `${label} — ${vehicle.detail}`
+      : label;
+  });
   const channelList = h.alertChannelPrefs.map((c) => c.alertChannel.nameTh);
   const volunteerList = h.volunteerInterests.map((v) => v.volunteerType.nameTh);
   const assistanceList = h.assistanceNeeds.map((a) => {
@@ -419,7 +460,29 @@ export async function loadHouseholdForReview(
     illegibleCount: h.illegibleCount,
     blankCount: h.blankCount,
     hasDuplicateFlag: h.hasDuplicateFlag,
-    canConfirm: h.sheet.status === SheetStatus.ENTERED_1 && !enteredByMe,
+    duplicateResolution: h.duplicateResolution,
+    duplicateResolvedAt: h.duplicateResolvedAt,
+    duplicateResolvedByName: h.duplicateResolvedBy?.name ?? null,
+    duplicateCandidates: duplicateCandidates.map((candidate) => ({
+      householdId: candidate.id,
+      sheetNo: candidate.sheet.sheetNo,
+      communityName: candidate.community.nameTh,
+      houseNo: candidate.houseNo,
+      mooNo: candidate.mooNo,
+      status: candidate.sheet.status,
+    })),
+    canResolveDuplicate:
+      h.deletedAt === null &&
+      h.sheet.status === SheetStatus.ENTERED_1 &&
+      !enteredByMe &&
+      h.hasDuplicateFlag &&
+      h.duplicateResolution === null,
+    deletedAt: h.deletedAt,
+    canConfirm:
+      h.deletedAt === null &&
+      h.sheet.status === SheetStatus.ENTERED_1 &&
+      !enteredByMe &&
+      !h.hasDuplicateFlag,
     sections,
     vulnerablePersons: h.vulnerablePersons.map((p) => ({
       seq: p.seq,
@@ -430,7 +493,12 @@ export async function loadHouseholdForReview(
       ageStatus: p.ageStatus,
       phone: safeDecrypt(p.phone),
       phoneStatus: p.phoneStatus,
-      vulnerabilities: p.vulnerabilities.map((v) => v.vulnerabilityType.nameTh),
+      vulnerabilities: p.vulnerabilities.map((item) => {
+        const detail = safeDecrypt(item.detail);
+        return detail
+          ? `${item.vulnerabilityType.nameTh} — ${detail}`
+          : item.vulnerabilityType.nameTh;
+      }),
     })),
   };
 }
@@ -439,7 +507,14 @@ export type VerifyResult =
   | { ok: true }
   | {
       ok: false;
-      reason: "NOT_ALLOWED" | "NOT_FOUND" | "WRONG_STATUS" | "SELF_VERIFY" | "ERROR";
+      reason:
+        | "NOT_ALLOWED"
+        | "NOT_FOUND"
+        | "WRONG_STATUS"
+        | "SELF_VERIFY"
+        | "DUPLICATE_UNRESOLVED"
+        | "CONFIRMED_DUPLICATE"
+        | "ERROR";
     };
 
 /**
@@ -459,6 +534,8 @@ export async function verifyHousehold(
       communityId: true,
       sheetId: true,
       enteredById: true,
+      hasDuplicateFlag: true,
+      duplicateResolution: true,
       sheet: { select: { status: true } },
     },
   });
@@ -469,6 +546,12 @@ export async function verifyHousehold(
   if (h.sheet.status !== SheetStatus.ENTERED_1) return { ok: false, reason: "WRONG_STATUS" };
   // แยกหน้าที่: ผู้คีย์ยืนยันงานตัวเองไม่ได้ (BR — separation of duties)
   if (h.enteredById === ctx.userId) return { ok: false, reason: "SELF_VERIFY" };
+  if (h.hasDuplicateFlag && h.duplicateResolution === null) {
+    return { ok: false, reason: "DUPLICATE_UNRESOLVED" };
+  }
+  if (h.duplicateResolution === DuplicateResolutionEnum.CONFIRMED_DUPLICATE) {
+    return { ok: false, reason: "CONFIRMED_DUPLICATE" };
+  }
 
   const now = new Date();
   try {

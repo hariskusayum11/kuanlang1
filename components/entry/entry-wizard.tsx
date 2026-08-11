@@ -6,6 +6,7 @@ import { visibleSteps, type EntryField } from "@/lib/entry/steps";
 import { collectMissing, missingCountByStep } from "@/lib/entry/validation";
 import type { EntryMasterData } from "@/lib/entry/master-data";
 import type { EntryPayload } from "@/lib/entry/payload";
+import type { EntrySuggestion, EntrySuggestions } from "@/lib/entry/suggestions";
 import {
   changeSheetCommunityAction,
   claimSheetAction,
@@ -40,6 +41,7 @@ type Props = {
   initialRemainingMs: number;
   /** ร่างที่บันทึกไว้ (ถอดรหัสฝั่ง server แล้ว) — null = เริ่มฟอร์มว่าง */
   initialDraft: EntryPayload | null;
+  suggestions: EntrySuggestions;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -112,6 +114,7 @@ export function EntryWizard({
   lockExpiresAt,
   initialRemainingMs,
   initialDraft,
+  suggestions,
 }: Props) {
   const router = useRouter();
   // ชุมชนของใบ — เปลี่ยนได้เผื่อเลือกผิดตอนเริ่ม (รหัสเดิมไม่เสีย)
@@ -245,17 +248,17 @@ export function EntryWizard({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  // F2 = ILLEGIBLE, F3 = BLANK_IN_PAPER บนฟิลด์ที่โฟกัสอยู่ (FR-ENT-06/07)
+  // F3 = ไม่ได้กรอกในกระดาษบนฟิลด์ที่โฟกัสอยู่ (ปุ่มบนจอเป็นวิธีหลัก)
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "F2" && e.key !== "F3") return;
+      if (e.key !== "F3") return;
       const target = document.activeElement as HTMLElement | null;
       const name =
         target?.dataset?.fieldName ??
         target?.closest<HTMLElement>("[data-field-name]")?.dataset.fieldName;
       if (!name) return;
       e.preventDefault();
-      const mark: FieldMark = e.key === "F2" ? "ILLEGIBLE" : "BLANK_IN_PAPER";
+      const mark: FieldMark = "BLANK_IN_PAPER";
       setMarks((prev) => ({ ...prev, [name]: prev[name] === mark ? null : mark }));
       touched.current = true;
       dirty.current = true;
@@ -326,6 +329,17 @@ export function EntryWizard({
     dirty.current = true;
     setAnswers((prev) => ({ ...prev, [name]: value }));
     setMarks((prev) => (prev[name] ? { ...prev, [name]: null } : prev));
+  }
+
+  function applySuggestion(suggestion: EntrySuggestion) {
+    touched.current = true;
+    dirty.current = true;
+    setAnswers((prev) => ({ ...prev, ...suggestion.fill }));
+    setMarks((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(suggestion.fill)) next[key] = null;
+      return next;
+    });
   }
 
   // เปลี่ยนชุมชนของใบ (เลือกผิดตอนเริ่ม) — รหัสเดิมไม่เสีย · โหลด master ของชุมชนใหม่ด้วย
@@ -704,12 +718,9 @@ export function EntryWizard({
               <>ระบบบันทึกร่างอัตโนมัติระหว่างคีย์ (ข้อมูลถูกเข้ารหัสก่อนเก็บ)</>
             )}
           </p>
-          <div className="flex items-center gap-3 text-[11px] text-slate-500">
+          <div className="hidden items-center gap-3 text-[11px] text-slate-500 sm:flex">
             <span className="flex items-center gap-1">
-              <kbd className="kbd">F2</kbd> อ่านไม่ออก
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="kbd">F3</kbd> ว่างในกระดาษ
+              <kbd className="kbd">F3</kbd> ไม่ได้กรอกในกระดาษ
             </span>
           </div>
         </div>
@@ -739,8 +750,8 @@ export function EntryWizard({
               ยังไม่ได้ตอบ {missing.length} ช่อง — ส่งใบไม่ได้
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-sun-700">
-              ฟิลด์ ⭐ ต้องมีค่า หรือทำเครื่องหมาย <kbd className="kbd">F2</kbd> (อ่านไม่ออก) /{" "}
-              <kbd className="kbd">F3</kbd> (ว่างในกระดาษ) — คลิกเพื่อไปแก้
+              ฟิลด์ ⭐ ต้องมีค่า หรือเลือก “ไม่ได้กรอกในกระดาษ” ที่คำถาม
+              (คอมพิวเตอร์ยังใช้ <kbd className="kbd">F3</kbd> ได้) — คลิกเพื่อไปแก้
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {missing.map((m) => (
@@ -893,6 +904,13 @@ export function EntryWizard({
                       }
                       onExtraChange={(k, v) => setAnswer(k, v)}
                       missingKeys={showValidation ? missingKeys : undefined}
+                      suggestions={suggestions[f.name]}
+                      onSuggestionSelect={applySuggestion}
+                      onMarkChange={(nextMark) => {
+                        touched.current = true;
+                        dirty.current = true;
+                        setMarks((prev) => ({ ...prev, [f.name]: nextMark }));
+                      }}
                     />
                   </div>
                 ))}

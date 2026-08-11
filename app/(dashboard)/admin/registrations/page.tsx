@@ -7,7 +7,6 @@ import {
 import { REQUESTABLE_ROLE_LABELS } from "@/lib/registration/validation";
 import { RegistrationDecideButtons } from "@/components/admin/registration-queue";
 import { RegistrationDecidedActions } from "@/components/admin/registration-decided-actions";
-import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "คำขอลงทะเบียน" };
@@ -51,8 +50,6 @@ export default async function RegistrationsPage() {
           </>
         }
       />
-
-      <AdminTabs />
 
       {/* คิวรอตรวจ */}
       <section className="card overflow-hidden">

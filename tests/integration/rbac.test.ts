@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PrismaClient, UserRoleEnum } from "@prisma/client";
+import { PrismaClient, SheetStatus, UserRoleEnum } from "@prisma/client";
 import { loadContextOrThrow } from "../helpers/authz";
 import { PERMISSIONS } from "../../lib/authz/permissions";
 import { canAccessCommunity } from "../../lib/authz/access";
@@ -157,10 +157,10 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     });
     expect(counts).toEqual({
       communities: 0,
-      tambons: 0,
-      moos: 0,
-      households: 0,
-      evacuationSites: 0,
+      keyed: 0,
+      verified: 0,
+      pending: 0,
+      keyers: 0,
     });
   });
 
@@ -173,27 +173,29 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     const expectedCommunities = await prisma.community.count({
       where: { id: tk01Id, deletedAt: null },
     });
-    const cts = await prisma.communityTambon.findMany({
-      where: { communityId: tk01Id },
-      select: { tambonId: true },
+    const expectedKeyed = await prisma.household.count({
+      where: { communityId: tk01Id, deletedAt: null },
     });
-    const tambonIds = [...new Set(cts.map((c) => c.tambonId))];
-    const expectedMoos = await prisma.moo.count({
-      where: { tambonId: { in: tambonIds } },
+    const expectedVerified = await prisma.household.count({
+      where: {
+        communityId: tk01Id,
+        deletedAt: null,
+        hasDuplicateFlag: false,
+        sheet: { status: SheetStatus.VERIFIED },
+      },
     });
-    const expectedHouseholds = await prisma.household.count({
-      where: { communityId: tk01Id },
-    });
-    const expectedEvac = await prisma.evacuationSite.count({
-      where: { communityId: tk01Id },
+    const expectedKeyerGroups = await prisma.household.groupBy({
+      by: ["enteredById"],
+      where: { communityId: tk01Id, deletedAt: null },
+      orderBy: { enteredById: "asc" },
     });
 
     expect(counts).toEqual({
       communities: expectedCommunities,
-      tambons: tambonIds.length,
-      moos: expectedMoos,
-      households: expectedHouseholds,
-      evacuationSites: expectedEvac,
+      keyed: expectedKeyed,
+      verified: expectedVerified,
+      pending: Math.max(0, expectedKeyed - expectedVerified),
+      keyers: expectedKeyerGroups.length,
     });
     expect(counts.communities).toBe(1);
   });

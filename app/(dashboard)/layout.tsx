@@ -3,6 +3,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { getAuthorizationContext } from "@/lib/authz/context";
 import { visibleNavItems } from "@/lib/navigation";
+import { countWaitingVerification } from "@/lib/verification/queue";
+import { countPendingRegistrationRequests } from "@/lib/registration/core";
 
 // Protected layout — ตรวจ session + isActive + "มีเมนูอย่างน้อยหนึ่ง" ฝั่ง Server ทุก request
 // สิทธิ์รายหน้า (dashboard.view / survey.entry ฯลฯ) บังคับที่แต่ละ page เอง
@@ -15,9 +17,25 @@ export default async function DashboardLayout({
 }) {
   const ctx = await getAuthorizationContext();
   if (!ctx) redirect("/login");
+  const [waitingVerification, pendingRegistrations] = await Promise.all([
+    countWaitingVerification(ctx),
+    countPendingRegistrationRequests(ctx),
+  ]);
 
   const navItems = visibleNavItems(ctx.permissions).map(
-    ({ label, href, implemented }) => ({ label, href, implemented }),
+    ({ group, label, href, implemented, activeHrefs, iconHref }) => ({
+      group,
+      label,
+      href,
+      implemented,
+      activeHrefs,
+      iconHref,
+      notificationCount: href === "/verification" || activeHrefs?.includes("/verification")
+        ? waitingVerification || undefined
+        : href === "/admin/registrations" || activeHrefs?.includes("/admin/registrations")
+          ? pendingRegistrations || undefined
+          : undefined,
+    }),
   );
   if (navItems.length === 0) redirect("/access-denied");
 
