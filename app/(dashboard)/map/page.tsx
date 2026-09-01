@@ -12,6 +12,8 @@ import {
 } from "@/lib/geo/important-sites";
 import { saveImportantSiteAction } from "@/lib/geo/important-site-actions";
 import { DeleteImportantSiteForm } from "@/components/geo/delete-important-site-form";
+import { dateRangeError } from "@/lib/household/trusted-where";
+import { ThaiDateRangeFields } from "@/components/report/thai-date-range-filter";
 
 export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ type SearchParams = {
 };
 
 export default async function SurveyMapPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
+  const ctx = await requirePermission(PERMISSIONS.MAP_VIEW);
   const sp = await searchParams;
   const filters: HouseholdMapFilters = {
     communityId: sp.community || undefined,
@@ -30,6 +32,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
     dateFrom: sp.from || undefined,
     dateTo: sp.to || undefined,
   };
+  const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
   const [householdMap, preferences, sites] = await Promise.all([
     getHouseholdLayerMap(ctx, filters),
     getSystemPreferences(),
@@ -56,11 +59,12 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
       {sp.siteError ? <Notice tone="error">{sp.siteError}</Notice> : null}
 
       <MapFilters filters={filters} options={householdMap.options} />
+      {filterError ? <Notice tone="error">ช่วงวันที่ไม่ถูกต้อง: {filterError} กรุณาแก้วันที่แล้วกด “แสดงผล” อีกครั้ง</Notice> : null}
 
       <section className="card overflow-hidden">
         <div className="border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
           <SectionTitle title="แผนที่ปฏิบัติการ" tone="alert" />
-          <p className="mt-1 text-xs text-slate-500">ข้อมูลบ้านใช้เฉพาะใบ VERIFIED ที่ไม่ถูกลบหรือยืนยันว่าเป็นใบซ้ำ และไม่แสดงชื่อ เบอร์โทร หรือบ้านเลขที่</p>
+          <p className="mt-1 text-xs text-slate-500">ข้อมูลบ้านใช้เฉพาะใบที่ตรวจแล้ว ไม่ถูกลบหรือยืนยันว่าเป็นใบซ้ำ แสดงที่อยู่สำหรับระบุจุดและนำทาง แต่ไม่แสดงชื่อหรือเบอร์โทรศัพท์</p>
         </div>
         <div className="grid grid-cols-2 gap-3 border-b-2 border-slate-100 p-4 md:grid-cols-3 xl:grid-cols-6">
           <MapMetric label="มีกลุ่มเปราะบาง" value={householdMap.totals.vulnerable} />
@@ -85,7 +89,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
       {canManage ? <ImportantSiteManager sites={sites} communities={householdMap.options.communities} /> : null}
 
       <p className="px-1 text-xs leading-relaxed text-slate-500">
-        ฮีตแมปใช้ “ระดับน้ำสูงสุด — ซม.” ของแต่ละครัวเรือน จุดที่อยู่ใกล้กันจะซ้อนสีเข้มขึ้น จึงใช้ดูแนวโน้มพื้นที่ได้ แต่ไม่ใช่แบบจำลองระดับน้ำหรือขอบเขตน้ำท่วมทางวิศวกรรม
+        ฮีตแมปใช้ระดับน้ำสูงสุดจริงจากช่อง “เมตร + เซนติเมตร” ของแต่ละครัวเรือน แล้วแสดงผลเป็นเมตร จุดที่อยู่ใกล้กันจะซ้อนสีเข้มขึ้น จึงใช้ดูแนวโน้มพื้นที่ได้ แต่ไม่ใช่แบบจำลองระดับน้ำหรือขอบเขตน้ำท่วมทางวิศวกรรม
       </p>
     </div>
   );
@@ -147,8 +151,12 @@ function MapFilters({ filters, options }: { filters: HouseholdMapFilters; option
   return <form method="get" className="card p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">ตัวกรองข้อมูลแผนที่</h2><p className="text-xs text-slate-500">มีผลกับจุดบ้านและฮีตแมป จุดสำคัญกรองตามชุมชน</p></div><a href="/map" className="text-sm font-semibold text-brand-700 hover:underline">ล้างตัวกรอง</a></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
     <label className="text-xs font-bold text-slate-600">ชุมชน<select name="community" defaultValue={filters.communityId ?? ""} className={input}><option value="">ทุกชุมชน</option>{options.communities.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
     <label className="text-xs font-bold text-slate-600">ตำบล<select name="tambon" defaultValue={filters.tambonId ?? ""} className={input}><option value="">ทุกตำบล</option>{options.tambons.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-    <label className="text-xs font-bold text-slate-600">ตั้งแต่วันที่สำรวจ<input type="date" name="from" defaultValue={filters.dateFrom} className={input} /></label>
-    <label className="text-xs font-bold text-slate-600">ถึงวันที่สำรวจ<input type="date" name="to" defaultValue={filters.dateTo} className={input} /></label>
+    <ThaiDateRangeFields
+      from={filters.dateFrom}
+      to={filters.dateTo}
+      fromLabel="ตั้งแต่วันที่สำรวจ"
+      toLabel="ถึงวันที่สำรวจ"
+    />
     <button type="submit" className="btn btn-primary self-end py-2.5">แสดงผล</button>
   </div></form>;
 }

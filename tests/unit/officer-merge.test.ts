@@ -41,6 +41,7 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
       ...ROLE_PERMISSIONS[UserRoleEnum.COORDINATOR],
       ...ROLE_PERMISSIONS[UserRoleEnum.VERIFIER],
       PERMISSIONS.HOUSEHOLD_VIEW, // ดูข้อมูลครัวเรือนที่คีย์แล้ว (OFFICER เดิมมีอยู่)
+      PERMISSIONS.MAP_VIEW, // ดูแผนที่ข้อมูลสำรวจเพื่อปฏิบัติงานในพื้นที่
     ]);
     expect([...officer].sort()).toEqual([...expected].sort());
   });
@@ -51,6 +52,7 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
       PERMISSIONS.COMMUNITY_VIEW,
       PERMISSIONS.COMMUNITY_MANAGE,
       PERMISSIONS.HOUSEHOLD_VIEW,
+      PERMISSIONS.MAP_VIEW,
       PERMISSIONS.VERIFICATION_VIEW,
       PERMISSIONS.REPORT_VIEW,
     ]) {

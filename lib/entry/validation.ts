@@ -24,6 +24,7 @@ export interface VulnerableRowLike {
   firstName: string;
   lastName: string;
   age: string;
+  ageUnit?: "YEAR" | "MONTH";
   phone: string;
   vulnerabilities: string[];
   details: Record<string, string>;
@@ -180,6 +181,17 @@ export function collectMissing(args: CollectMissingArgs): MissingItem[] {
         if (!answered) {
           out.push({ key: f.name, label: f.label, stepId: step.id, stepIndex });
         }
+        continue;
+      }
+
+      if (
+        f.type === "number" &&
+        f.min != null &&
+        !marks[f.name] &&
+        typeof answers[f.name] === "number" &&
+        (answers[f.name] as number) < f.min
+      ) {
+        out.push({ key: f.name, label: f.label, stepId: step.id, stepIndex });
         continue;
       }
 

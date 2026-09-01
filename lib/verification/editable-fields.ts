@@ -63,6 +63,8 @@ export interface EditableField {
   masterKey?: EditableMasterKey;
   /** number: ค่าสูงสุด */
   max?: number;
+  /** number: ค่าต่ำสุด */
+  min?: number;
   /** boolean: ป้ายแสดงของ true/false (เช่น "มี"/"ไม่มี") */
   booleanLabels?: { true: string; false: string };
   /** radio/checkbox-group: ตัวเลือก enum ตามกระดาษ (M:N ใช้เป็น array) */
@@ -102,7 +104,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   { key: "respondentLastName", label: "นามสกุลผู้ให้ข้อมูล", kind: "text", sensitive: true, maxLength: 200 },
   { key: "respondentPhone", label: "เบอร์โทรผู้ให้ข้อมูล", kind: "phone", sensitive: true, isPhone: true },
   { key: "houseNo", label: "บ้านเลขที่", kind: "text", maxLength: 64 },
-  { key: "mooNo", label: "หมู่", kind: "number", max: 999 },
+  { key: "mooNo", label: "หมู่", kind: "number", min: 1, max: 999 },
   { key: "soi", label: "ซอย", kind: "text", maxLength: 120 },
   { key: "road", label: "ถนน", kind: "text", maxLength: 120 },
   { key: "tambonId", label: "ตำบล", kind: "select", masterKey: "tambons" },

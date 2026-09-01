@@ -48,6 +48,9 @@ const ICONS: Record<string, React.ReactNode> = {
   "/map": (
     <path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14" />
   ),
+  "/medical": (
+    <path d="M12 21s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 11c0 5.6-7 10-7 10zM12 10v6M9 13h6" />
+  ),
   "/risk": (
     <path d="M12 3l9 16H3L12 3zM12 9v4M12 17h.01" />
   ),

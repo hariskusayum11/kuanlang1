@@ -9,6 +9,7 @@
 // - Audit ห้าม log ค่า PII ดิบ — เก็บเฉพาะ entity อ้างอิงและ metadata ปลอดภัย
 
 import { AuditAction, DuplicateResolutionEnum, FieldStatusEnum, Prisma, SheetStatus } from "@prisma/client";
+import { highestTriage, type TriageCode } from "../../domain/triage";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -44,6 +45,7 @@ export interface ReviewVulnerablePerson {
   name: string | null;
   nameStatus: FieldStatusEnum;
   age: number | null;
+  ageMonths: number | null;
   ageStatus: FieldStatusEnum;
   phone: string | null;
   phoneStatus: FieldStatusEnum;
@@ -213,7 +215,7 @@ export async function loadHouseholdForReview(
   });
 
   const enteredByMe = h.enteredById === ctx.userId;
-  const duplicateCandidates = h.houseNo != null && h.mooNo != null
+  const duplicateCandidates = h.houseNo != null && h.mooNo != null && h.mooNo > 0
     ? await prisma.household.findMany({
         where: {
           id: { not: h.id },
@@ -295,7 +297,7 @@ export async function loadHouseholdForReview(
         },
         { label: "เบอร์โทรผู้ให้ข้อมูล", value: safeDecrypt(h.respondentPhone), sensitive: true },
         { label: "บ้านเลขที่", value: h.houseNo },
-        { label: "หมู่", value: h.mooNo != null ? `หมู่ ${h.mooNo}` : h.moo ? `หมู่ ${h.moo.number}` : null },
+        { label: "หมู่", value: h.mooNo != null && h.mooNo > 0 ? `หมู่ ${h.mooNo}` : h.moo && h.moo.number > 0 ? `หมู่ ${h.moo.number}` : null },
         { label: "ซอย", value: h.soi },
         { label: "ถนน", value: h.road },
         { label: "ตำบล", value: h.tambon?.nameTh ?? null },
@@ -490,6 +492,7 @@ export async function loadHouseholdForReview(
       name: joinName(null, null, safeDecrypt(p.firstName), safeDecrypt(p.lastName)),
       nameStatus: p.nameStatus,
       age: p.age,
+      ageMonths: p.ageMonths,
       ageStatus: p.ageStatus,
       phone: safeDecrypt(p.phone),
       phoneStatus: p.phoneStatus,
@@ -536,6 +539,7 @@ export async function verifyHousehold(
       enteredById: true,
       hasDuplicateFlag: true,
       duplicateResolution: true,
+      surveyedAt: true,
       sheet: { select: { status: true } },
     },
   });
@@ -562,6 +566,32 @@ export async function verifyHousehold(
         data: { status: SheetStatus.VERIFIED },
       });
       if (flipped.count !== 1) return { kind: "WRONG_STATUS" as const };
+
+      // คำนวณระดับเร่งด่วนรายบุคคลจากประเภทความเปราะบางที่ผู้ตรวจยืนยันแล้ว
+      // หากเลือกหลายประเภท ใช้ระดับที่เร่งด่วนที่สุด (วิกฤต > เร่งด่วน > เฝ้าระวัง)
+      const vulnerablePeople = await tx.vulnerablePerson.findMany({
+        where: { householdId: h.id, isActive: true },
+        select: {
+          id: true,
+          vulnerabilities: {
+            select: { vulnerabilityType: { select: { basePriority: true } } },
+          },
+        },
+      });
+      for (const person of vulnerablePeople) {
+        const triageLevel = highestTriage(
+          person.vulnerabilities.map((item) => item.vulnerabilityType.basePriority as TriageCode),
+        );
+        await tx.vulnerablePerson.update({
+          where: { id: person.id },
+          data: {
+            triageLevel,
+            triageComputedAt: now,
+            triageBasedOnDate: h.surveyedAt,
+            triageStale: false,
+          },
+        });
+      }
 
       // 2) snapshot ทั้ง record (ฟิลด์อ่อนไหวยังเป็น ciphertext ใน snapshot — ไม่รั่ว plaintext)
       // JSON.parse(stringify) แปลง Decimal(lat/lng)/Date เป็นค่า JSON-safe ก่อนเก็บลง Json column

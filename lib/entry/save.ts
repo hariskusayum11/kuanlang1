@@ -155,6 +155,7 @@ interface VulnerableRowMapped {
   lastName: string | null;
   nameStatus: FieldStatusEnum;
   age: number | null;
+  ageMonths: number | null;
   ageStatus: FieldStatusEnum;
   phone: string | null;
   phoneStatus: FieldStatusEnum;
@@ -196,7 +197,8 @@ export function mapVulnerableRows(
   return kept.map(({ r, origIndex }, i) => {
     const ageRaw = String(r.age).trim();
     const ageNum = Number(ageRaw);
-    const ageValid = ageRaw !== "" && Number.isInteger(ageNum) && ageNum >= 0 && ageNum <= 120;
+    const ageIsMonths = r.ageUnit === "MONTH";
+    const ageValid = ageRaw !== "" && Number.isInteger(ageNum) && ageNum >= 0 && ageNum <= (ageIsMonths ? 11 : 120);
     const hasName = r.firstName.trim() !== "" || r.lastName.trim() !== "";
     const nameMark = markOf(origIndex, "firstName") ?? markOf(origIndex, "lastName");
     return {
@@ -206,7 +208,8 @@ export function mapVulnerableRows(
       firstName: r.firstName.trim() || null,
       lastName: r.lastName.trim() || null,
       nameStatus: hasName ? FieldStatusEnum.HAS_VALUE : emptyStatusFromMark(nameMark),
-      age: ageValid ? ageNum : null,
+      age: ageValid ? (ageIsMonths ? 0 : ageNum) : null,
+      ageMonths: ageValid && ageIsMonths ? ageNum : null,
       ageStatus:
         ageRaw === ""
           ? emptyStatusFromMark(markOf(origIndex, "age"))
@@ -346,7 +349,10 @@ export async function submitEntry(
       : null,
     respondentPhoneIdx,
     houseNo: answerString(clean, "houseNo"),
-    mooNo: answerCount(clean, "mooNo"),
+    mooNo: (() => {
+      const value = answerCount(clean, "mooNo");
+      return value != null && value > 0 ? value : null;
+    })(),
     soi: answerString(clean, "soi"),
     road: answerString(clean, "road"),
     tambonId: answerString(clean, "tambonId"),
@@ -444,7 +450,7 @@ export async function submitEntry(
       };
       // ตรวจซ้ำเฉพาะเมื่อบ้านเลขที่และหมู่มีค่าครบ และที่อยู่ทุกส่วนตรงกัน
       // ไม่ใช้ชื่อหรือเบอร์โทร เพราะญาติ/ผู้ประสานงานอาจใช้ข้อมูลร่วมกันได้
-      const duplicateSuspected = addressForDuplicate.houseNo != null && addressForDuplicate.mooNo != null
+      const duplicateSuspected = addressForDuplicate.houseNo != null && addressForDuplicate.mooNo != null && addressForDuplicate.mooNo > 0
         ? (await tx.household.count({
             where: {
               ...addressForDuplicate,
@@ -535,6 +541,7 @@ export async function submitEntry(
               : null,
             nameStatus: row.nameStatus,
             age: row.age,
+            ageMonths: row.ageMonths,
             ageStatus: row.ageStatus,
             phone: row.phone
               ? encryptText(row.phone, keyring, CURRENT_KEY_VERSION)

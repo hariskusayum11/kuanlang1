@@ -5,6 +5,8 @@ import type { AuthorizationContext } from "../authz/types";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import { buildVerifiedMapHouseholdWhere } from "../household/trusted-where";
+import { effectiveTriage, type TriageCode } from "../../domain/triage";
+import { calculateFloodDepthCm } from "../../domain/flood/depth";
 
 export interface HouseholdMapFilters {
   communityId?: string;
@@ -20,6 +22,13 @@ export interface VolunteerMapSkill {
 
 export interface HouseholdLayerPoint {
   id: string;
+  sheetNo: string;
+  surveyNo: string | null;
+  houseNo: string | null;
+  mooNo: number | null;
+  soi: string | null;
+  road: string | null;
+  tambonName: string | null;
   lat: number;
   lng: number;
   communityName: string;
@@ -60,7 +69,7 @@ export async function getHouseholdLayerMap(
   ctx: AuthorizationContext,
   filters: HouseholdMapFilters,
 ): Promise<HouseholdLayerMapResult> {
-  if (!hasPermission(ctx, PERMISSIONS.HOUSEHOLD_VIEW)) {
+  if (!hasPermission(ctx, PERMISSIONS.MAP_VIEW)) {
     return {
       points: [], center: FALLBACK,
       missingCoordinates: { uniqueHouseholds: 0, vulnerable: 0, volunteer: 0, hostHouse: 0, floodDepth: 0 },
@@ -90,12 +99,24 @@ export async function getHouseholdLayerMap(
       where: layerWhere,
       select: {
         id: true,
+        surveyNo: true,
+        houseNo: true,
+        mooNo: true,
+        soi: true,
+        road: true,
         latitude: true,
         longitude: true,
+        sheet: { select: { sheetNo: true } },
         community: { select: { nameTh: true } },
+        tambon: { select: { nameTh: true } },
         vulnerablePersons: {
           where: { isActive: true },
-          select: { triageLevel: true },
+          select: {
+            triageLevel: true,
+            vulnerabilities: {
+              select: { vulnerabilityType: { select: { basePriority: true } } },
+            },
+          },
         },
         volunteerInterests: {
           where: { isAvailable: true },
@@ -104,7 +125,14 @@ export async function getHouseholdLayerMap(
         assistanceNeeds: {
           select: { personCount: true, needType: { select: { nameTh: true } } },
         },
-        floodRiskProfile: { select: { canBeHostHouse: true, maxFloodDepthCm: true } },
+        floodRiskProfile: {
+          select: {
+            canBeHostHouse: true,
+            floodDepthMetersRaw: true,
+            floodDepthCmRaw: true,
+            maxFloodDepthCm: true,
+          },
+        },
       },
     }),
     prisma.community.findMany({
@@ -129,7 +157,13 @@ export async function getHouseholdLayerMap(
     const vulnerable = household.vulnerablePersons.length > 0;
     const volunteer = household.volunteerInterests.length > 0;
     const hostHouse = household.floodRiskProfile?.canBeHostHouse === true;
-    const hasFloodDepth = household.floodRiskProfile?.maxFloodDepthCm != null;
+    const floodDepthCm = household.floodRiskProfile
+      ? calculateFloodDepthCm(
+          household.floodRiskProfile.floodDepthMetersRaw,
+          household.floodRiskProfile.floodDepthCmRaw,
+        ) ?? household.floodRiskProfile.maxFloodDepthCm
+      : null;
+    const hasFloodDepth = floodDepthCm != null;
     if (vulnerable) totals.vulnerable += 1;
     if (volunteer) totals.volunteer += 1;
     if (hostHouse) totals.hostHouse += 1;
@@ -148,11 +182,21 @@ export async function getHouseholdLayerMap(
 
     const triage = { P1: 0, P2: 0, P3: 0, UNASSESSED: 0 };
     for (const person of household.vulnerablePersons) {
-      const key = person.triageLevel ?? "UNASSESSED";
-      triage[key] += 1;
+      const level = effectiveTriage(
+        person.triageLevel as TriageCode | null,
+        person.vulnerabilities.map((item) => item.vulnerabilityType.basePriority as TriageCode),
+      );
+      triage[level ?? "UNASSESSED"] += 1;
     }
     points.push({
       id: household.id,
+      sheetNo: household.sheet.sheetNo,
+      surveyNo: household.surveyNo,
+      houseNo: household.houseNo,
+      mooNo: household.mooNo != null && household.mooNo > 0 ? household.mooNo : null,
+      soi: household.soi,
+      road: household.road,
+      tambonName: household.tambon?.nameTh ?? null,
       lat,
       lng: lng as number,
       communityName: household.community.nameTh,
@@ -167,7 +211,7 @@ export async function getHouseholdLayerMap(
         people: need.personCount,
       })),
       potentialHostHouse: hostHouse,
-      floodDepthCm: household.floodRiskProfile?.maxFloodDepthCm ?? null,
+      floodDepthCm,
     });
     sumLat += lat;
     sumLng += lng as number;
@@ -177,7 +221,7 @@ export async function getHouseholdLayerMap(
     userId: ctx.userId,
     action: AuditAction.READ,
     entityType: "HouseholdLayerMap",
-    reason: `เปิดแผนที่จุดบ้านแบบไม่แสดง PII (${points.length} จุด, ไม่มีพิกัด ${missing.uniqueHouseholds})`,
+    reason: `เปิดแผนที่จุดครัวเรือนพร้อมที่อยู่สำหรับผู้มีสิทธิ์ (${points.length} จุด, ไม่มีพิกัด ${missing.uniqueHouseholds})`,
   });
 
   return {

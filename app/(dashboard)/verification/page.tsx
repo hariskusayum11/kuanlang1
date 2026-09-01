@@ -245,7 +245,7 @@ function QueueTable({ items, isAdmin, startIndex }: { items: VerificationQueueIt
               </td>
               <td className="py-2.5 pr-4 text-xs tabular-nums text-slate-500">{q.enteredAt.toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</td>
               <td className="py-2.5 pr-4 font-semibold text-slate-800">{q.communityName}</td>
-              <td className="py-2.5 pr-4 text-slate-600">{q.houseNo ? `${q.houseNo}${q.mooNo != null ? ` หมู่ ${q.mooNo}` : ""}` : "—"}</td>
+              <td className="py-2.5 pr-4 text-slate-600">{q.houseNo ? `${q.houseNo}${q.mooNo != null && q.mooNo > 0 ? ` หมู่ ${q.mooNo}` : ""}` : "—"}</td>
               <td className="py-2.5 pr-4 text-slate-600">{q.enteredByName}</td>
               <td className="py-2.5 pr-4">
                 {q.duplicateResolution === "CONFIRMED_DUPLICATE" ? (

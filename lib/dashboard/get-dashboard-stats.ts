@@ -11,9 +11,13 @@ export type DashboardScope = {
 
 const ZERO_COUNTS: DashboardCounts = {
   communities: 0,
+  received: 0,
   keyed: 0,
   verified: 0,
   pending: 0,
+  ready: 0,
+  editing: 0,
+  duplicates: 0,
   keyers: 0,
 };
 

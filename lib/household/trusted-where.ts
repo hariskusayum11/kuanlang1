@@ -20,6 +20,16 @@ function validDate(value?: string): Date | undefined {
   return Number.isNaN(date.valueOf()) ? undefined : date;
 }
 
+/** ตรวจช่วงวันที่ก่อน query เพื่อไม่ให้ช่วงกลับด้านแสดงยอดศูนย์แบบชวนเข้าใจผิด */
+export function dateRangeError(dateFrom?: string, dateTo?: string): string | null {
+  const from = validDate(dateFrom);
+  const to = validDate(dateTo);
+  if (dateFrom && !from) return "วันที่เริ่มต้นไม่ถูกต้อง";
+  if (dateTo && !to) return "วันที่สิ้นสุดไม่ถูกต้อง";
+  if (from && to && from > to) return "วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด";
+  return null;
+}
+
 /** ใบที่ใช้งานได้: ไม่ถูกลบ และไม่ถูกผู้ตรวจยืนยันว่าเป็นใบซ้ำจริง */
 export function buildUsableHouseholdWhere(
   filters: HouseholdAnalyticsFilters,

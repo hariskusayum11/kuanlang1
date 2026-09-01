@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient, UserRoleEnum } from "@prisma/client";
 import { buildAuthorization } from "../../lib/authz/access";
 import type { AuthorizationContext } from "../../lib/authz/types";
-import { deleteImportantSite, getImportantSites, saveImportantSite } from "../../lib/geo/important-sites";
+import { canManageImportantSites, deleteImportantSite, getImportantSites, saveImportantSite } from "../../lib/geo/important-sites";
 import { getHouseholdLayerMap } from "../../lib/geo/household-layer-map";
 
 const dbUrl = process.env.DATABASE_URL ?? "";
@@ -73,5 +73,19 @@ describe.skipIf(!isLocalDevDb)("Integration: important map sites", () => {
       "EARLY_WARNING", "RESCUE", "KITCHEN", "ELDERLY_CARE",
       "RECOVERY", "MECHANIC", "ELECTRICIAN", "CONSTRUCTION",
     ]));
+  });
+
+  it("EXECUTIVE เปิดดูแผนที่ได้ แต่จัดการจุดสำคัญไม่ได้", async () => {
+    const authorization = buildAuthorization([UserRoleEnum.EXECUTIVE]);
+    const executiveCtx: AuthorizationContext = {
+      ...ctx,
+      roles: [UserRoleEnum.EXECUTIVE],
+      permissions: authorization.permissions,
+      isGlobalScope: authorization.isGlobalScope,
+    };
+
+    const map = await getHouseholdLayerMap(executiveCtx, {});
+    expect(map.options.volunteerSkills.length).toBeGreaterThan(0);
+    expect(canManageImportantSites(executiveCtx)).toBe(false);
   });
 });

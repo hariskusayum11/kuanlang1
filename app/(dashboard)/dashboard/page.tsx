@@ -12,8 +12,11 @@ import { defaultLandingPath } from "@/lib/navigation";
 import { APPLIED_MIGRATION_COUNT } from "@/lib/app-config";
 import type { DashboardCounts } from "@/lib/dashboard/stats";
 import { fetchQuestionnaireAnalytics, type NamedCount } from "@/lib/dashboard/questionnaire-analytics";
-import type { HouseholdAnalyticsFilters, SurveyStatusFilter } from "@/lib/household/trusted-where";
+import { dateRangeError, type HouseholdAnalyticsFilters, type SurveyStatusFilter } from "@/lib/household/trusted-where";
+import { ThaiDateRangeFields } from "@/components/report/thai-date-range-filter";
 import { getSystemPreferences } from "@/lib/settings/core";
+import { floodDepthMeters } from "@/domain/flood/depth";
+import { TRIAGE_EXAMPLE } from "@/domain/triage";
 
 export const metadata = { title: "แดชบอร์ดผู้บริหาร" };
 export const dynamic = "force-dynamic";
@@ -44,14 +47,14 @@ const BAR: Record<Tone, string> = {
   mint: "bg-emerald-400",
 };
 
-const CARD_TONE: Record<keyof DashboardCounts, Tone> = {
+const CARD_TONE: Record<ReturnType<typeof toStatCards>[number]["key"], Tone> = {
   communities: "brand",
   keyed: "brand",
   verified: "mint",
   pending: "sun",
   keyers: "ink",
 };
-const CARD_ICON: Record<keyof DashboardCounts, string> = {
+const CARD_ICON: Record<ReturnType<typeof toStatCards>[number]["key"], string> = {
   communities: "M3 21h18M6 21V8l6-4 6 4v13M10 21v-5h4v5",
   keyed: "M4 7h16M4 12h16M4 17h10", // รายการที่คีย์
   verified: "M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4", // โล่ + ติ๊ก
@@ -91,6 +94,7 @@ export default async function DashboardPage({
     dateTo: sp.to || undefined,
     status,
   };
+  const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
   const [counts, coverage, analytics] = await Promise.all([
     fetchScopedDashboardCounts(scope),
     fetchCommunityCoverage(scope),
@@ -125,6 +129,7 @@ export default async function DashboardPage({
       ) : null}
 
       <DashboardFilters filters={filters} options={analytics.options} />
+      {filterError ? <DateRangeAlert message={filterError} /> : null}
 
       {/* สถิติหลัก */}
       <section>
@@ -148,14 +153,22 @@ export default async function DashboardPage({
                 >
                   {card.value.toLocaleString("th-TH")}
                 </p>
+                {card.key === "keyed" ? (
+                  <p className="mt-3 border-t border-slate-100 pt-2 text-xs leading-5 text-slate-500">
+                    รับเข้าระบบ {counts.received.toLocaleString("th-TH")} ใบ<br />
+                    หักซ้ำจริง {counts.duplicates.toLocaleString("th-TH")} ใบ
+                  </p>
+                ) : null}
+                {card.key === "pending" ? (
+                  <p className="mt-3 border-t border-slate-100 pt-2 text-xs leading-5 text-slate-500">
+                    พร้อมตรวจ {counts.ready.toLocaleString("th-TH")} ใบ<br />
+                    กำลังแก้ไข {counts.editing.toLocaleString("th-TH")} ใบ
+                  </p>
+                ) : null}
               </div>
             );
           })}
         </div>
-        <p className="mt-3 text-xs text-slate-500">
-          &quot;คีย์แล้ว&quot; นับทุกใบที่คีย์เข้าระบบ · &quot;ตรวจแล้ว&quot; นับเฉพาะ VERIFIED ·
-          &quot;ยังไม่ผ่านตรวจ&quot; = คีย์แล้วทั้งหมด − ตรวจแล้ว (รวมใบที่กำลังเปิดแก้)
-        </p>
       </section>
 
       <section className="space-y-4">
@@ -175,12 +188,61 @@ export default async function DashboardPage({
       </section>
 
       <section className="grid gap-5 xl:grid-cols-2">
-        <AnalyticsPanel title="ระดับความเร่งด่วนของกลุ่มเปราะบาง" description="P1 เร่งด่วนสูงสุด · ไม่รวมรายชื่อหรือข้อมูลส่วนบุคคล">
+        <AnalyticsPanel
+          title="รายละเอียดบุคคลกลุ่มเปราะบาง"
+          description="แบ่งช่วงอายุจากบุคคลที่บันทึกในตารางกลุ่มเปราะบางเท่านั้น"
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <MiniMetric label="เด็กต่ำกว่า 5 ปี" value={analytics.vulnerability.ages.under5} suffix="คน" />
+            <MiniMetric label="เด็ก 5–17 ปี" value={analytics.vulnerability.ages.age5To17} suffix="คน" />
+            <MiniMetric label="อายุ 18–59 ปี" value={analytics.vulnerability.ages.age18To59} suffix="คน" />
+            <MiniMetric label="อายุ 60 ปีขึ้นไป" value={analytics.vulnerability.ages.age60Plus} suffix="คน" />
+            <MiniMetric label="ไม่ระบุอายุ" value={analytics.vulnerability.ages.unknown} suffix="คน" />
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            รวมทุกช่วงอายุ {analytics.summary.vulnerablePeople.toLocaleString("th-TH")} คน
+          </p>
+          <div className="mt-4 border-t-2 border-slate-100 pt-4">
+            <h4 className="mb-3 text-xs font-bold text-slate-700">ลักษณะความเปราะบางตามแบบสอบถาม</h4>
+            <BarList rows={analytics.vulnerability.types} tone="alert" empty="ยังไม่มีการระบุลักษณะความเปราะบาง" />
+            {analytics.vulnerability.unclassifiedPeople > 0 ? (
+              <p className="mt-3 text-xs font-semibold text-sun-800">
+                ยังไม่ระบุประเภท {analytics.vulnerability.unclassifiedPeople.toLocaleString("th-TH")} คน
+              </p>
+            ) : null}
+            <p className="mt-2 text-[11px] leading-5 text-slate-400">หนึ่งคนเลือกได้มากกว่าหนึ่งประเภท ยอดส่วนนี้จึงอาจรวมเกินจำนวนบุคคล</p>
+          </div>
+        </AnalyticsPanel>
+
+        <AnalyticsPanel
+          title="ที่อยู่อาศัยและกรรมสิทธิ์"
+          description="จำนวนระดับครัวเรือน ใช้ประกอบการวางแผนช่วยเหลือและที่พักชั่วคราว"
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <MiniMetric label="บ้านเช่า/เช่าซื้อ" value={analytics.housing.rentedHouseholds} suffix="หลัง" />
+            <MiniMetric label="ไม่ระบุกรรมสิทธิ์" value={analytics.housing.unknownOwnership} suffix="หลัง" />
+            <MiniMetric label="ไม่ระบุประเภทอาคาร" value={analytics.housing.unknownBuildingType} suffix="หลัง" />
+          </div>
+          <div className="mt-4 grid gap-5 border-t-2 border-slate-100 pt-4 sm:grid-cols-2">
+            <div>
+              <h4 className="mb-3 text-xs font-bold text-slate-700">ประเภทกรรมสิทธิ์</h4>
+              <BarList rows={analytics.housing.ownershipTypes} tone="brand" empty="ยังไม่มีข้อมูลกรรมสิทธิ์" />
+            </div>
+            <div>
+              <h4 className="mb-3 text-xs font-bold text-slate-700">ประเภทสิ่งปลูกสร้าง</h4>
+              <BarList rows={analytics.housing.buildingTypes} tone="mint" empty="ยังไม่มีข้อมูลประเภทอาคาร" />
+            </div>
+          </div>
+        </AnalyticsPanel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-2">
+        <AnalyticsPanel title="ระดับความเร่งด่วนของกลุ่มเปราะบาง" description="ใช้ระดับที่เร่งด่วนที่สุดเมื่อบุคคลหนึ่งมีหลายลักษณะ · ไม่รวมรายชื่อหรือข้อมูลส่วนบุคคล">
           <BarList
             rows={[
-              { key: "P1", label: "P1 วิกฤต", count: analytics.triage.P1 },
-              { key: "P2", label: "P2 เร่งด่วน", count: analytics.triage.P2 },
-              { key: "P3", label: "P3 เฝ้าระวัง", count: analytics.triage.P3 },
+              { key: "P1", label: `วิกฤต — ${TRIAGE_EXAMPLE.P1}`, count: analytics.triage.P1 },
+              { key: "P2", label: `เร่งด่วน — ${TRIAGE_EXAMPLE.P2}`, count: analytics.triage.P2 },
+              { key: "P3", label: `เฝ้าระวัง — ${TRIAGE_EXAMPLE.P3}`, count: analytics.triage.P3 },
               { key: "NA", label: "ยังไม่ประเมิน", count: analytics.triage.UNASSESSED },
             ]}
             tone="alert"
@@ -192,8 +254,8 @@ export default async function DashboardPage({
         <AnalyticsPanel title="ประวัติและความพร้อมรับน้ำท่วม" description="สรุปจากข้อมูลระดับครัวเรือน">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <MiniMetric label="เคยน้ำท่วม" value={analytics.flood.floodedHouseholds} suffix="หลัง" />
-            <MiniMetric label="ระดับน้ำเฉลี่ย" value={roundOrZero(analytics.flood.averageDepthCm)} suffix="ซม." />
-            <MiniMetric label="ระดับน้ำสูงสุด" value={analytics.flood.maximumDepthCm ?? 0} suffix="ซม." />
+            <MiniMetric label="ระดับน้ำเฉลี่ย" value={floodDepthMeters(analytics.flood.averageDepthCm) ?? 0} suffix="เมตร" />
+            <MiniMetric label="ระดับน้ำสูงสุด" value={floodDepthMeters(analytics.flood.maximumDepthCm) ?? 0} suffix="เมตร" />
             <MiniMetric label="ท่วมนานเฉลี่ย" value={roundOrZero(analytics.flood.averageDurationDays)} suffix="วัน" />
             <MiniMetric label="ไม่มีชุดยังชีพ" value={analytics.flood.withoutSurvivalKit} suffix="หลัง" />
             <MiniMetric label="ไม่มีทรัพยากร" value={analytics.flood.withoutResources} suffix="หลัง" />
@@ -431,12 +493,12 @@ function DashboardFilters({
           <option value="">ทุกตำบล</option>
           {options.tambons.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </FilterSelect>
-        <label className="text-xs font-bold text-slate-600">ตั้งแต่วันที่สำรวจ
-          <input type="date" name="from" defaultValue={filters.dateFrom} className="mt-1 block w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm" />
-        </label>
-        <label className="text-xs font-bold text-slate-600">ถึงวันที่สำรวจ
-          <input type="date" name="to" defaultValue={filters.dateTo} className="mt-1 block w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm" />
-        </label>
+        <ThaiDateRangeFields
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          fromLabel="ตั้งแต่วันที่สำรวจ"
+          toLabel="ถึงวันที่สำรวจ"
+        />
         <div className="flex items-end gap-2">
           <FilterSelect name="status" label="สถานะตรวจสอบ" value={filters.status} className="flex-1">
             <option value="VERIFIED">ตรวจแล้ว</option>
@@ -447,6 +509,14 @@ function DashboardFilters({
         </div>
       </div>
     </form>
+  );
+}
+
+function DateRangeAlert({ message }: { message: string }) {
+  return (
+    <div role="alert" className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+      ช่วงวันที่ไม่ถูกต้อง: {message} กรุณาแก้วันที่แล้วกด “แสดงผล” อีกครั้ง
+    </div>
   );
 }
 
@@ -511,7 +581,7 @@ function BarList({ rows, tone, empty = "ยังไม่มีข้อมู�
       {rows.map((row) => (
         <div key={row.key}>
           <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-            <span className="min-w-0 truncate font-semibold text-slate-600" title={row.label}>{row.label}</span>
+            <span className="min-w-0 break-words font-semibold leading-5 text-slate-600">{row.label}</span>
             <span className="shrink-0 font-bold tabular-nums text-slate-800">{row.count.toLocaleString("th-TH")}</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">

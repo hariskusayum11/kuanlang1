@@ -6,6 +6,7 @@ import {
   exportExecutiveReport,
   parseExecutiveReportFilters,
 } from "@/lib/report/executive-summary";
+import { dateRangeError } from "@/lib/household/trusted-where";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function GET(request: Request): Promise<Response> {
     to: params.get("to"),
     status: params.get("status"),
   });
+  const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
+  if (filterError) return new Response(`ช่วงวันที่ไม่ถูกต้อง: ${filterError}`, { status: 400 });
   const report = await exportExecutiveReport(ctx, filters);
   if (!report) return new Response("ไม่มีสิทธิ์เข้าถึง", { status: 403 });
 

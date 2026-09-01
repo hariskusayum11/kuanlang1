@@ -22,6 +22,8 @@ import {
   totalSystemWeight,
   type RiskLevel,
 } from "@/domain/risk";
+import { effectiveTriage, type TriageCode } from "@/domain/triage";
+import { calculateFloodDepthCm } from "@/domain/flood/depth";
 
 /** เพดานจำนวนครัวเรือนที่ดึงมาคำนวณต่อครั้ง — กันโหลดทั้งฐานในคำขอเดียว */
 export const RISK_LIST_LIMIT = 500;
@@ -114,6 +116,8 @@ export async function getRiskList(
         select: {
           floorLevelVsRoad: true,
           hasFloodedBefore: true,
+          floodDepthMetersRaw: true,
+          floodDepthCmRaw: true,
           maxFloodDepthCm: true,
           lastFloodDurationDays: true,
           hasSurvivalKit: true,
@@ -125,7 +129,7 @@ export async function getRiskList(
         select: {
           triageLevel: true,
           vulnerabilities: {
-            select: { vulnerabilityType: { select: { code: true } } },
+            select: { vulnerabilityType: { select: { code: true, basePriority: true } } },
           },
         },
       },
@@ -135,7 +139,10 @@ export async function getRiskList(
   const rows: RiskRow[] = households.map((h) => {
     const p = h.floodRiskProfile;
     const triages = h.vulnerablePersons
-      .map((v) => v.triageLevel)
+      .map((v) => effectiveTriage(
+        v.triageLevel as TriageCode | null,
+        v.vulnerabilities.map((item) => item.vulnerabilityType.basePriority as TriageCode),
+      ))
       .filter((t): t is NonNullable<typeof t> => t !== null);
     const codes = h.vulnerablePersons.flatMap((v) =>
       v.vulnerabilities.map((pv) => pv.vulnerabilityType.code),
@@ -144,7 +151,9 @@ export async function getRiskList(
     const input = householdToRiskInput({
       floorLevelVsRoad: p?.floorLevelVsRoad ?? null,
       hasFloodedBefore: p?.hasFloodedBefore ?? null,
-      maxFloodDepthCm: p?.maxFloodDepthCm ?? null,
+      maxFloodDepthCm: p
+        ? calculateFloodDepthCm(p.floodDepthMetersRaw, p.floodDepthCmRaw) ?? p.maxFloodDepthCm
+        : null,
       lastFloodDurationDays: p?.lastFloodDurationDays ?? null,
       hasSurvivalKit: p?.hasSurvivalKit ?? null,
       nearestEvacSiteType: p?.nearestEvacSiteType ?? null,

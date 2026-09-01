@@ -18,6 +18,7 @@ import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 import { decryptText, encryptText, normalizePhone, phoneBlindIndex } from "../crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring, getSearchHashKey } from "../crypto/keys";
+import { calculateFloodDepthCm } from "../../domain/flood/depth";
 import { getEntryMasterData } from "../entry/master-data";
 import {
   EDITABLE_BY_KEY,
@@ -63,6 +64,7 @@ export interface EditableValues {
     lastName: string;
     nameStatus: FieldStatusEnum;
     age: number | null;
+    ageMonths: number | null;
     ageStatus: FieldStatusEnum;
     phone: string;
     phoneStatus: FieldStatusEnum;
@@ -246,7 +248,7 @@ export async function loadHouseholdEditable(
     respondentLastName: safeDecrypt(h.respondentLastName),
     respondentPhone: safeDecrypt(h.respondentPhone),
     houseNo: v(h.houseNo),
-    mooNo: h.mooNo != null ? String(h.mooNo) : "",
+    mooNo: h.mooNo != null && h.mooNo > 0 ? String(h.mooNo) : "",
     soi: v(h.soi),
     road: v(h.road),
     tambonId: v(h.tambonId),
@@ -296,6 +298,7 @@ export async function loadHouseholdEditable(
       lastName: safeDecrypt(person.lastName),
       nameStatus: person.nameStatus,
       age: person.age,
+      ageMonths: person.ageMonths,
       ageStatus: person.ageStatus,
       phone: safeDecrypt(person.phone),
       phoneStatus: person.phoneStatus,
@@ -358,7 +361,7 @@ export function normalizeValue(
   if (field.kind === "number") {
     if (raw === null || String(raw).trim() === "") return { ok: true, value: "" };
     const n = typeof raw === "number" ? raw : Number(String(raw).trim());
-    if (!Number.isInteger(n) || n < 0 || (field.max != null && n > field.max)) {
+    if (!Number.isInteger(n) || n < (field.min ?? 0) || (field.max != null && n > field.max)) {
       return { ok: false };
     }
     return { ok: true, value: String(n) };
@@ -563,6 +566,17 @@ export async function applyHouseholdEdits(
     } else {
       householdUpdate[field.key] = empty ? null : next;
     }
+  }
+
+  if ("floodDepthMetersRaw" in frpUpdate || "floodDepthCmRaw" in frpUpdate) {
+    const previous = before.floodRiskProfile as Record<string, unknown> | null;
+    const meters = "floodDepthMetersRaw" in frpUpdate
+      ? frpUpdate.floodDepthMetersRaw as number | null
+      : previous?.floodDepthMetersRaw as number | null | undefined;
+    const centimeters = "floodDepthCmRaw" in frpUpdate
+      ? frpUpdate.floodDepthCmRaw as number | null
+      : previous?.floodDepthCmRaw as number | null | undefined;
+    frpUpdate.maxFloodDepthCm = calculateFloodDepthCm(meters, centimeters);
   }
 
   for (const [key, nextMark] of Object.entries(parsedMarks.data)) {

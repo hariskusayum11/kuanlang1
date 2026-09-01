@@ -5,6 +5,7 @@ import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 import type { HouseholdAnalyticsFilters, SurveyStatusFilter } from "../household/trusted-where";
+import { floodDepthMeters } from "../../domain/flood/depth";
 
 export type ExecutiveReport = QuestionnaireAnalytics;
 
@@ -64,9 +65,9 @@ export function executiveReportRows(report: ExecutiveReport): CsvRow[] {
     ["ภาพรวม", "ประชากรรวม", report.summary.people, "คน"],
     ["กลุ่มเปราะบาง", "ครัวเรือนที่มีกลุ่มเปราะบาง", report.summary.vulnerableHouseholds, "ครัวเรือน"],
     ["กลุ่มเปราะบาง", "บุคคลกลุ่มเปราะบาง", report.summary.vulnerablePeople, "คน"],
-    ["กลุ่มเปราะบาง", "P1 วิกฤต", report.triage.P1, "คน"],
-    ["กลุ่มเปราะบาง", "P2 เร่งด่วน", report.triage.P2, "คน"],
-    ["กลุ่มเปราะบาง", "P3 เฝ้าระวัง", report.triage.P3, "คน"],
+    ["กลุ่มเปราะบาง", "วิกฤต", report.triage.P1, "คน"],
+    ["กลุ่มเปราะบาง", "เร่งด่วน", report.triage.P2, "คน"],
+    ["กลุ่มเปราะบาง", "เฝ้าระวัง", report.triage.P3, "คน"],
     ["กลุ่มเปราะบาง", "ยังไม่ประเมิน", report.triage.UNASSESSED, "คน"],
     ["ความช่วยเหลือ", "จำนวนผู้ต้องการความช่วยเหลือรวม", report.summary.assistancePeople, "คน"],
     ...report.assistance.flatMap<CsvRow>((item) => [
@@ -74,8 +75,8 @@ export function executiveReportRows(report: ExecutiveReport): CsvRow[] {
       ["ความช่วยเหลือ", `${item.label} — จำนวนคน`, item.people ?? 0, "คน"],
     ]),
     ["น้ำท่วม", "ครัวเรือนที่เคยน้ำท่วม", report.flood.floodedHouseholds, "ครัวเรือน"],
-    ["น้ำท่วม", "ระดับน้ำเฉลี่ย", Math.round(report.flood.averageDepthCm ?? 0), "ซม."],
-    ["น้ำท่วม", "ระดับน้ำสูงสุด", report.flood.maximumDepthCm ?? 0, "ซม."],
+    ["น้ำท่วม", "ระดับน้ำเฉลี่ย", floodDepthMeters(report.flood.averageDepthCm) ?? 0, "เมตร"],
+    ["น้ำท่วม", "ระดับน้ำสูงสุด", floodDepthMeters(report.flood.maximumDepthCm) ?? 0, "เมตร"],
     ["น้ำท่วม", "ระยะเวลาน้ำท่วมเฉลี่ย", Math.round(report.flood.averageDurationDays ?? 0), "วัน"],
     ["ความพร้อม", "ไม่มีชุดยังชีพ", report.flood.withoutSurvivalKit, "ครัวเรือน"],
     ["ความพร้อม", "ไม่มีทรัพยากร", report.flood.withoutResources, "ครัวเรือน"],

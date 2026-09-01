@@ -38,9 +38,14 @@ function selectedParts(value: string): { day: number; month: number; year: numbe
 export function ThaiDatePicker({
   value,
   onChange,
+  min,
+  max,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** ขอบเขตแบบ ISO YYYY-MM-DD; ใช้กับตัวกรองโดยไม่กระทบวันที่แบบสอบถาม */
+  min?: string;
+  max?: string;
 }) {
   const selected = useMemo(() => selectedParts(value), [value]);
   const today = new Date();
@@ -85,7 +90,7 @@ export function ThaiDatePicker({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 transition-colors ${
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border-2 transition-colors ${
           open
             ? "border-brand-500 bg-brand-50 text-brand-700"
             : "border-slate-200 text-slate-500 hover:border-brand-300 hover:bg-brand-50"
@@ -101,7 +106,7 @@ export function ThaiDatePicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[52px] z-40 w-[min(304px,calc(100vw-2rem))] animate-pop rounded-2xl border-2 border-brand-100 bg-white p-4 shadow-xl">
+        <div className="absolute right-0 top-[46px] z-40 w-[min(264px,calc(100vw-2rem))] animate-pop rounded-xl border-2 border-brand-100 bg-white p-3 shadow-xl">
           <div className="flex items-center justify-between gap-2">
             <button type="button" onClick={() => moveMonth(-1)} className="btn btn-ghost btn-sm" aria-label="เดือนก่อนหน้า">‹</button>
             <div className="text-center">
@@ -111,24 +116,29 @@ export function ThaiDatePicker({
             <button type="button" onClick={() => moveMonth(1)} className="btn btn-ghost btn-sm" aria-label="เดือนถัดไป">›</button>
           </div>
 
-          <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+          <div className="mt-2 grid grid-cols-7 gap-0.5 text-center">
             {WEEKDAYS.map((weekday) => (
               <span key={weekday} className="py-1 text-[11px] font-bold text-slate-400">{weekday}</span>
             ))}
             {cells.map((day, index) => {
-              if (day === null) return <span key={`blank-${index}`} className="h-8" />;
+              if (day === null) return <span key={`blank-${index}`} className="h-7" />;
               const active = selected?.day === day && selected.month === view.month && selected.year === view.year;
               const isToday = today.getDate() === day && today.getMonth() === view.month && today.getFullYear() === view.year;
+              const iso = `${view.year}-${pad(view.month + 1)}-${pad(day)}`;
+              const disabled = Boolean((min && iso < min) || (max && iso > max));
               return (
                 <button
                   key={day}
                   type="button"
+                  disabled={disabled}
                   onClick={() => {
                     onChange(toThaiDate(day, view.month, view.year));
                     setOpen(false);
                   }}
-                  className={`h-8 rounded-lg text-sm font-semibold tabular-nums transition-colors ${
-                    active
+                  className={`h-7 rounded-md text-xs font-semibold tabular-nums transition-colors ${
+                    disabled
+                      ? "cursor-not-allowed text-slate-300"
+                      : active
                       ? "bg-brand-600 text-white shadow-sm"
                       : isToday
                         ? "border border-brand-300 bg-brand-50 text-brand-800"
@@ -141,7 +151,7 @@ export function ThaiDatePicker({
             })}
           </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
             <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs font-bold text-slate-500 hover:text-red-600">ล้างวันที่</button>
             <button
               type="button"

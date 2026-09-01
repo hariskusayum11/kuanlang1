@@ -147,28 +147,48 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
   // Master data ยืนยันตัวเลขตายตัวได้ (มาจากซีด) — ส่วน household มาจากการคีย์จริง
   // จึงเทียบกับค่าใน DB ณ ขณะนั้น เพื่อตรวจว่า "data layer นับถูก" ไม่ใช่ "DB ต้องว่าง"
   it("Dashboard data layer: fetchDashboardCounts นับตรงกับ DB", async () => {
-    const [counts, communities, keyed, verified, keyerGroups] = await Promise.all([
+    const [counts, communities, received, keyed, verified, ready, keyerGroups] = await Promise.all([
       fetchDashboardCounts(),
       prisma.community.count({ where: { deletedAt: null } }),
       prisma.household.count({ where: { deletedAt: null } }),
       prisma.household.count({
         where: {
           deletedAt: null,
-          hasDuplicateFlag: false,
+          OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+        },
+      }),
+      prisma.household.count({
+        where: {
+          deletedAt: null,
+          sheet: { status: SheetStatus.ENTERED_1 },
+          OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+        },
+      }),
+      prisma.household.count({
+        where: {
+          deletedAt: null,
           sheet: { status: SheetStatus.VERIFIED },
+          OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
         },
       }),
       prisma.household.groupBy({
         by: ["enteredById"],
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+        },
         orderBy: { enteredById: "asc" },
       }),
     ]);
     expect(counts).toEqual({
       communities,
+      received,
       keyed,
       verified,
-      pending: Math.max(0, keyed - verified),
+      pending: keyed - verified,
+      ready,
+      editing: keyed - verified - ready,
+      duplicates: received - keyed,
       keyers: keyerGroups.length,
     });
   });

@@ -87,6 +87,7 @@ describe("answer helpers — อ่านค่าอย่างระวัง
   it("answerCount: รับ string ตัวเลข, ปฏิเสธติดลบ/ทศนิยม", () => {
     expect(answerCount(p, "memberCount")).toBe(4);
     expect(answerCount(p, "badCount")).toBeNull();
+    expect(answerCount(p, "empty")).toBeNull();
   });
 
   it("answerBoolean: false จริง ≠ ไม่ได้ตอบ (null)", () => {
@@ -116,6 +117,24 @@ describe("mapVulnerableRows — ตารางกลุ่มเปราะบ
     expect(row.ageStatus).toBe(FieldStatusEnum.ILLEGIBLE);
     expect(row.phone).toBeNull();
     expect(row.phoneStatus).toBe(FieldStatusEnum.BLANK_IN_PAPER);
+  });
+
+  it("อายุเด็กเป็นเดือนเก็บหน่วยแยก และใช้ age=0 สำหรับกฎคัดกรองเด็ก", () => {
+    const [row] = mapVulnerableRows([
+      { prefix: "", prefixOther: "", firstName: "เด็ก", lastName: "", age: "6", ageUnit: "MONTH", phone: "", vulnerabilities: [], details: {} },
+    ]);
+    expect(row.age).toBe(0);
+    expect(row.ageMonths).toBe(6);
+    expect(row.ageStatus).toBe(FieldStatusEnum.HAS_VALUE);
+  });
+
+  it("อายุหน่วยเดือนไม่รับค่ามากกว่า 11", () => {
+    const [row] = mapVulnerableRows([
+      { prefix: "", prefixOther: "", firstName: "เด็ก", lastName: "", age: "12", ageUnit: "MONTH", phone: "", vulnerabilities: [], details: {} },
+    ]);
+    expect(row.age).toBeNull();
+    expect(row.ageMonths).toBeNull();
+    expect(row.ageStatus).toBe(FieldStatusEnum.ILLEGIBLE);
   });
 
   it("แถวว่างแต่ถูกมาร์ก F2/F3 ต้องคงไว้ — สถานะรายช่องตามมาร์ก", () => {

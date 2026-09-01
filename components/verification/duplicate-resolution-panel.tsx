@@ -101,7 +101,7 @@ export function DuplicateResolutionPanel({ householdId, candidates, canResolve }
                 <td className="px-4 py-3 font-mono font-bold">{candidate.sheetNo}</td>
                 <td className="px-4 py-3">{candidate.communityName}</td>
                 <td className="px-4 py-3">
-                  {candidate.houseNo ?? "—"} / {candidate.mooNo ?? "—"}
+                  {candidate.houseNo ?? "—"} / {candidate.mooNo != null && candidate.mooNo > 0 ? candidate.mooNo : "—"}
                 </td>
                 <td className="px-4 py-3">{candidate.status}</td>
                 <td className="px-4 py-3 text-right">

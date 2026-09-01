@@ -4,6 +4,8 @@
 > ขอบเขต: Permission model กลาง + Authorization context ฝั่ง Server + Route protection + Sidebar ตามสิทธิ์ + Dashboard แบบ Scoped + Dev access script
 > ไม่รวม: การแก้ schema/migration/seed, Audit logging (ดู §10), CRUD modules, UI จัดการผู้ใช้/มอบหมาย role
 
+> อัปเดต 2026-08-25/28: เจ้าของระบบยืนยันให้ผู้บริหารและแพทย์ใช้บัญชี/Role `EXECUTIVE` ร่วมกันชั่วคราว จึงเพิ่ม permission งานสุขภาพแบบแยก `medical.dashboard.view`, `medical.case.view`, `medical.map.view`, `medical.report.export`, `report.personal.export` โดยทะเบียนและ Excel รายบุคคลเป็น read-only, จำกัดเฉพาะใบ VERIFIED ที่ไม่ใช่ใบซ้ำจริง และลง Audit READ/EXPORT ทุกครั้ง การแยก Role แพทย์ภายหลังทำได้โดยย้าย permission ชุดนี้โดยไม่ต้องเปิด `household.view` หรือสิทธิ์แก้ไขข้อมูล
+
 ## 1. สรุปสถาปัตยกรรม
 
 - **Single source of truth**: สิทธิ์ทั้งหมดประกาศที่ `lib/authz/permissions.ts` + `lib/authz/role-permissions.ts` — ห้ามเช็ค role กระจายตามหน้า

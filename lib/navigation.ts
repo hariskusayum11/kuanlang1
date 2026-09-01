@@ -58,9 +58,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     group: "analysis",
+    label: "ข้อมูลสุขภาพและกลุ่มเปราะบาง",
+    href: "/medical",
+    permission: PERMISSIONS.MEDICAL_CASE_VIEW,
+    implemented: true,
+  },
+  {
+    group: "analysis",
     label: "แผนที่ข้อมูลสำรวจ",
     href: "/map",
-    permission: PERMISSIONS.HOUSEHOLD_VIEW,
+    permission: PERMISSIONS.MAP_VIEW,
     implemented: true,
     iconHref: "/map",
   },
@@ -77,6 +84,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/reports",
     permission: PERMISSIONS.REPORT_VIEW,
     implemented: true,
+  },
+  {
+    group: "analysis",
+    label: "ผลงานผู้กรอก",
+    href: "/keyer-performance",
+    permission: PERMISSIONS.REPORT_VIEW,
+    implemented: true,
+    iconHref: "/reports",
   },
   {
     group: "system",

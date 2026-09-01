@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUsableHouseholdWhere, buildVerifiedMapHouseholdWhere } from "../../lib/household/trusted-where";
+import { buildUsableHouseholdWhere, buildVerifiedMapHouseholdWhere, dateRangeError } from "../../lib/household/trusted-where";
 
 describe("trusted household criteria", () => {
   it("รักษา community scope แยกจากตัวกรองที่ผู้ใช้ส่งมา", () => {
@@ -33,3 +33,13 @@ describe("trusted household criteria", () => {
   });
 });
 
+describe("date range validation", () => {
+  it("ปฏิเสธช่วงวันที่กลับด้าน", () => {
+    expect(dateRangeError("2026-08-12", "2026-07-01")).toBe("วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด");
+  });
+
+  it("ยอมรับวันเดียวกันและช่วงปกติ", () => {
+    expect(dateRangeError("2026-08-12", "2026-08-12")).toBeNull();
+    expect(dateRangeError("2026-07-01", "2026-08-12")).toBeNull();
+  });
+});

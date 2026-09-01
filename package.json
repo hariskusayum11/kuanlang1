@@ -27,6 +27,7 @@
   "dependencies": {
     "@prisma/client": "5.22.0",
     "better-auth": "1.6.23",
+    "exceljs": "^4.4.0",
     "leaflet": "^1.9.4",
     "next": "^16.2.11",
     "react": "^19.2.8",

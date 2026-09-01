@@ -47,6 +47,8 @@ export interface EntryField {
   booleanLabels?: { true: string; false: string; trueFirst: boolean };
   /** number: บังคับจำนวนเต็มไม่ติดลบ (เช่น อายุ/จำนวนคน) */
   integer?: boolean;
+  /** number: ค่าต่ำสุดที่ยอมรับ */
+  min?: number;
   /** number: ค่าสูงสุดที่ยอมรับ (clamp ระหว่างพิมพ์) */
   max?: number;
   /** number/measure-pair: หน่วยแสดงต่อท้ายช่อง (เช่น "เมตร") */
@@ -241,7 +243,7 @@ export const ENTRY_STEPS: EntryStep[] = [
     kind: "fields",
     fields: [
       { name: "houseNo", label: "เลขที่", type: "text", critical: true, required: true },
-      { name: "mooNo", label: "หมู่ที่", type: "number", integer: true, max: 999, critical: true, required: true },
+      { name: "mooNo", label: "หมู่ที่", type: "number", integer: true, min: 1, max: 999, critical: true, required: true },
       { name: "soi", label: "ซอย", type: "text", startsRow: true },
       { name: "road", label: "ถนน", type: "text" },
       { name: "tambonId", label: "ตำบล", type: "radio", masterKey: "tambons", required: true },

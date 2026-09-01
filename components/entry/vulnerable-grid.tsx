@@ -9,6 +9,7 @@ export interface VulnerableRow {
   firstName: string;
   lastName: string;
   age: string;
+  ageUnit: "YEAR" | "MONTH";
   phone: string;
   vulnerabilities: string[]; // vulnerabilityType ids
   details: Record<string, string>; // vulnerabilityTypeId -> detail (เมื่อ requiresDetail)
@@ -21,6 +22,7 @@ export function emptyVulnerableRow(): VulnerableRow {
     firstName: "",
     lastName: "",
     age: "",
+    ageUnit: "YEAR",
     phone: "",
     vulnerabilities: [],
     details: {},
@@ -184,17 +186,28 @@ export function VulnerableGrid({
               </div>
               <div className="space-y-1.5">
                 <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">
-                  อายุ (ปี)
+                  อายุ
                   <CellMarkBadge mark={markOf(i, "age")} />
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  data-field-name={`vg-${i}-age`}
-                  value={row.age}
-                  onChange={(e) => editMarkableCell(i, "age", sanitizeIntString(e.target.value, 120))}
-                  className={`field ${markBorder(markOf(i, "age"))}`}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    data-field-name={`vg-${i}-age`}
+                    value={row.age}
+                    onChange={(e) => editMarkableCell(i, "age", sanitizeIntString(e.target.value, row.ageUnit === "MONTH" ? 11 : 120))}
+                    className={`field min-w-0 flex-1 ${markBorder(markOf(i, "age"))}`}
+                  />
+                  <select
+                    aria-label={`หน่วยอายุคนที่ ${i + 1}`}
+                    value={row.ageUnit}
+                    onChange={(e) => update(i, { age: "", ageUnit: e.target.value as "YEAR" | "MONTH" })}
+                    className="field !w-24 shrink-0"
+                  >
+                    <option value="YEAR">ปี</option>
+                    <option value="MONTH">เดือน</option>
+                  </select>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-600">

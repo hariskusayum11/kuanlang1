@@ -68,7 +68,7 @@ function PersonCard({ person }: { person: ReviewVulnerablePerson }) {
         </p>
         <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
           <span className="flex items-center gap-1">
-            อายุ {person.age ?? "—"}
+            อายุ {person.ageMonths != null ? `${person.ageMonths} เดือน` : person.age != null ? `${person.age} ปี` : "—"}
             <StatusBadge status={person.ageStatus} />
           </span>
           <span className="flex items-center gap-1">

@@ -144,9 +144,15 @@ describe("buildAuthorization", () => {
     expect(authz.permissions).toContain(PERMISSIONS.VERIFICATION_VIEW);
   });
 
-  it("EXECUTIVE ดูได้แต่ไม่มีสิทธิ์จัดการผู้ใช้/ตั้งค่า", () => {
+  it("EXECUTIVE/แพทย์ดูข้อมูลสุขภาพได้ แต่ไม่มีสิทธิ์จัดการผู้ใช้/ตั้งค่า/แก้ครัวเรือน", () => {
     const authz = buildAuthorization([UserRoleEnum.EXECUTIVE]);
     expect(authz.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);
+    expect(authz.permissions).toContain(PERMISSIONS.MAP_VIEW);
+    expect(authz.permissions).toContain(PERMISSIONS.MEDICAL_CASE_VIEW);
+    expect(authz.permissions).toContain(PERMISSIONS.MEDICAL_MAP_VIEW);
+    expect(authz.permissions).toContain(PERMISSIONS.MEDICAL_REPORT_EXPORT);
+    expect(authz.permissions).toContain(PERMISSIONS.PERSONAL_REPORT_EXPORT);
+    expect(authz.permissions).not.toContain(PERMISSIONS.HOUSEHOLD_VIEW);
     expect(authz.permissions).not.toContain(PERMISSIONS.USER_MANAGE);
     expect(authz.permissions).not.toContain(PERMISSIONS.SETTINGS_VIEW);
   });
@@ -207,9 +213,11 @@ describe("visibleNavItems", () => {
       "ข้อมูลครัวเรือน",
       "ถังขยะแบบสอบถาม",
       "ข้อมูลชุมชน",
+      "ข้อมูลสุขภาพและกลุ่มเปราะบาง",
       "แผนที่ข้อมูลสำรวจ",
       "ความเสี่ยงและการช่วยเหลือ",
       "รายงานและส่งออก",
+      "ผลงานผู้กรอก",
       "ผู้ใช้และสิทธิ์",
       "คำขอลงทะเบียน",
       "ตั้งค่าระบบ",
@@ -220,6 +228,8 @@ describe("visibleNavItems", () => {
       "data",
       "data",
       "data",
+      "analysis",
+      "analysis",
       "analysis",
       "analysis",
       "analysis",
@@ -241,6 +251,9 @@ describe("visibleNavItems", () => {
     const hrefs = visibleNavItems(permissions).map((i) => i.href);
     expect(hrefs).not.toContain("/settings");
     expect(hrefs).toContain("/dashboard");
+    expect(hrefs).toContain("/map");
+    expect(hrefs).toContain("/medical");
+    expect(hrefs).not.toContain("/households");
   });
 
   it("เมนูที่ implemented แล้ว ตรงกับหน้าที่สร้างจริง", () => {
@@ -252,9 +265,11 @@ describe("visibleNavItems", () => {
       "/households",
       "/admin/sheets",
       "/communities",
+      "/medical",
       "/map",
       "/risk",
       "/reports",
+      "/keyer-performance",
       "/admin/users",
       "/admin/registrations",
       "/settings",

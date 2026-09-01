@@ -182,7 +182,8 @@ export function FieldInput({
         const raw =
           typeof value === "number" || typeof value === "string" ? String(value) : "";
         const current = raw === "" ? null : Number(raw);
-        const atMin = current == null || !Number.isFinite(current) || current <= 0;
+        const min = field.min ?? 0;
+        const atMin = current == null || !Number.isFinite(current) || current <= min;
         const atMax =
           field.max != null && current != null && Number.isFinite(current)
             ? current >= field.max
@@ -190,9 +191,9 @@ export function FieldInput({
         // ปุ่ม +/- เพิ่มลดทีละ 1 (สะดวกบนแท็บเล็ต) — clamp ที่ 0 และ field.max
         // tabIndex=-1 เพื่อไม่ขวางลำดับ Tab ระหว่างช่อง ผู้คีย์ยังพิมพ์ตัวเลขได้ตามปกติ
         const bump = (delta: number) => {
-          const base = current != null && Number.isFinite(current) ? current : 0;
+          const base = current != null && Number.isFinite(current) ? current : min - 1;
           let next = base + delta;
-          if (next < 0) next = 0;
+          if (next < min) next = min;
           if (field.max != null && next > field.max) next = field.max;
           onChange(next);
         };

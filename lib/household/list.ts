@@ -141,7 +141,11 @@ function toRow(h: RawRow): HouseholdListRow {
     tambonName: h.tambon?.nameTh ?? null,
     houseNo: h.houseNo,
     // paper-first: ใช้เลขหมู่ดิบก่อน · fallback master Moo สำหรับใบเก่าที่ผูก FK ไว้
-    mooNo: h.mooNo ?? h.moo?.number ?? null,
+    mooNo: h.mooNo != null && h.mooNo > 0
+      ? h.mooNo
+      : h.moo?.number != null && h.moo.number > 0
+        ? h.moo.number
+        : null,
     soi: h.soi,
     road: h.road,
     memberCount: h.memberCount,

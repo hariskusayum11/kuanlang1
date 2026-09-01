@@ -25,6 +25,7 @@ type Props = {
     lastName: string;
     nameStatus: StoredStatus;
     age: number | null;
+    ageMonths: number | null;
     ageStatus: StoredStatus;
     phone: string;
     phoneStatus: StoredStatus;
@@ -379,7 +380,7 @@ export function EditPanelFull({ householdId, initialValues, initialFieldMarks, v
                         />
                         <StoredPersonValue
                           label="อายุ"
-                          value={person.age == null ? "" : `${person.age} ปี`}
+                          value={person.ageMonths != null ? `${person.ageMonths} เดือน` : person.age == null ? "" : `${person.age} ปี`}
                           status={person.ageStatus}
                         />
                         <StoredPersonValue

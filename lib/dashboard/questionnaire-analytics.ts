@@ -5,6 +5,8 @@ import {
   type HouseholdAnalyticsFilters,
 } from "../household/trusted-where";
 import type { DashboardScope } from "./get-dashboard-stats";
+import { effectiveTriage, type TriageCode } from "../../domain/triage";
+import { calculateFloodDepthCm } from "../../domain/flood/depth";
 
 export interface NamedCount {
   key: string;
@@ -22,6 +24,24 @@ export interface QuestionnaireAnalytics {
     assistancePeople: number;
   };
   triage: Record<"P1" | "P2" | "P3" | "UNASSESSED", number>;
+  vulnerability: {
+    ages: {
+      under5: number;
+      age5To17: number;
+      age18To59: number;
+      age60Plus: number;
+      unknown: number;
+    };
+    types: NamedCount[];
+    unclassifiedPeople: number;
+  };
+  housing: {
+    rentedHouseholds: number;
+    unknownOwnership: number;
+    unknownBuildingType: number;
+    ownershipTypes: NamedCount[];
+    buildingTypes: NamedCount[];
+  };
   assistance: NamedCount[];
   flood: {
     floodedHouseholds: number;
@@ -62,6 +82,20 @@ const VEHICLE_LABEL: Record<VehicleType, string> = {
   OTHER: "อื่น ๆ",
 };
 
+export function summarizeVulnerableAges(
+  groups: { age: number | null; count: number }[],
+): QuestionnaireAnalytics["vulnerability"]["ages"] {
+  const result = { under5: 0, age5To17: 0, age18To59: 0, age60Plus: 0, unknown: 0 };
+  for (const group of groups) {
+    if (group.age == null) result.unknown += group.count;
+    else if (group.age < 5) result.under5 += group.count;
+    else if (group.age < 18) result.age5To17 += group.count;
+    else if (group.age < 60) result.age18To59 += group.count;
+    else result.age60Plus += group.count;
+  }
+  return result;
+}
+
 export async function fetchQuestionnaireAnalytics(
   scope: DashboardScope,
   filters: HouseholdAnalyticsFilters,
@@ -73,11 +107,19 @@ export async function fetchQuestionnaireAnalytics(
     householdAggregate,
     vulnerableHouseholds,
     vulnerablePeople,
-    triageGroups,
+    vulnerableAgeGroups,
+    vulnerabilityGroups,
+    vulnerabilityTypes,
+    unclassifiedVulnerablePeople,
+    vulnerablePeopleForTriage,
+    ownershipGroups,
+    ownershipTypes,
+    buildingGroups,
+    buildingTypes,
     assistanceGroups,
     assistanceTypes,
     floodedHouseholds,
-    floodAggregate,
+    floodRecords,
     withoutSurvivalKit,
     withoutResources,
     vehicleGroups,
@@ -105,9 +147,48 @@ export async function fetchQuestionnaireAnalytics(
     prisma.household.count({ where: { ...where, vulnerablePersons: { some: { isActive: true } } } }),
     prisma.vulnerablePerson.count({ where: { household: where, isActive: true } }),
     prisma.vulnerablePerson.groupBy({
-      by: ["triageLevel"],
+      by: ["age"],
       where: { household: where, isActive: true },
       _count: { _all: true },
+    }),
+    prisma.personVulnerability.groupBy({
+      by: ["vulnerabilityTypeId"],
+      where: { person: { household: where, isActive: true } },
+      _count: { _all: true },
+    }),
+    prisma.vulnerabilityType.findMany({
+      select: { id: true, nameTh: true, sortOrder: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.vulnerablePerson.count({
+      where: { household: where, isActive: true, vulnerabilities: { none: {} } },
+    }),
+    prisma.vulnerablePerson.findMany({
+      where: { household: where, isActive: true },
+      select: {
+        triageLevel: true,
+        vulnerabilities: {
+          select: { vulnerabilityType: { select: { basePriority: true } } },
+        },
+      },
+    }),
+    prisma.household.groupBy({
+      by: ["ownershipTypeId"],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.ownershipType.findMany({
+      select: { id: true, code: true, nameTh: true, sortOrder: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.household.groupBy({
+      by: ["buildingTypeId"],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.buildingType.findMany({
+      select: { id: true, nameTh: true, sortOrder: true },
+      orderBy: { sortOrder: "asc" },
     }),
     prisma.assistanceNeed.groupBy({
       by: ["needTypeId"],
@@ -117,10 +198,14 @@ export async function fetchQuestionnaireAnalytics(
     }),
     prisma.assistanceNeedType.findMany({ select: { id: true, nameTh: true, sortOrder: true } }),
     prisma.floodRiskProfile.count({ where: { household: where, hasFloodedBefore: true } }),
-    prisma.floodRiskProfile.aggregate({
+    prisma.floodRiskProfile.findMany({
       where: { household: where, hasFloodedBefore: true },
-      _avg: { maxFloodDepthCm: true, lastFloodDurationDays: true },
-      _max: { maxFloodDepthCm: true },
+      select: {
+        floodDepthMetersRaw: true,
+        floodDepthCmRaw: true,
+        maxFloodDepthCm: true,
+        lastFloodDurationDays: true,
+      },
     }),
     prisma.floodRiskProfile.count({ where: { household: where, hasSurvivalKit: false } }),
     prisma.household.count({ where: { ...where, hasNoResources: true } }),
@@ -168,14 +253,29 @@ export async function fetchQuestionnaireAnalytics(
   ]);
 
   const triage = { P1: 0, P2: 0, P3: 0, UNASSESSED: 0 };
-  for (const group of triageGroups) {
-    const key = group.triageLevel ?? "UNASSESSED";
-    triage[key] = group._count._all;
+  for (const person of vulnerablePeopleForTriage) {
+    const level = effectiveTriage(
+      person.triageLevel as TriageCode | null,
+      person.vulnerabilities.map((item) => item.vulnerabilityType.basePriority as TriageCode),
+    );
+    triage[level ?? "UNASSESSED"] += 1;
   }
 
   const assistanceById = new Map(assistanceGroups.map((g) => [g.needTypeId, g]));
   const alertsById = new Map(alertGroups.map((g) => [g.alertChannelId, g._count._all]));
   const volunteersById = new Map(volunteerGroups.map((g) => [g.volunteerTypeId, g._count._all]));
+  const vulnerabilityById = new Map(vulnerabilityGroups.map((g) => [g.vulnerabilityTypeId, g._count._all]));
+  const ownershipById = new Map(ownershipGroups.map((g) => [g.ownershipTypeId, g._count._all]));
+  const buildingById = new Map(buildingGroups.map((g) => [g.buildingTypeId, g._count._all]));
+  const rentedType = ownershipTypes.find((type) => type.code === "RENTED");
+  const floodDepths = floodRecords.flatMap((record) => {
+    const depth = calculateFloodDepthCm(record.floodDepthMetersRaw, record.floodDepthCmRaw)
+      ?? record.maxFloodDepthCm;
+    return depth == null ? [] : [depth];
+  });
+  const floodDurations = floodRecords.flatMap((record) =>
+    record.lastFloodDurationDays == null ? [] : [record.lastFloodDurationDays],
+  );
 
   return {
     summary: {
@@ -186,6 +286,29 @@ export async function fetchQuestionnaireAnalytics(
       assistancePeople: householdAggregate._sum.assistanceTotalPersonCount ?? 0,
     },
     triage,
+    vulnerability: {
+      ages: summarizeVulnerableAges(
+        vulnerableAgeGroups.map((group) => ({ age: group.age, count: group._count._all })),
+      ),
+      types: vulnerabilityTypes.flatMap((type) => {
+        const count = vulnerabilityById.get(type.id) ?? 0;
+        return count ? [{ key: type.id, label: type.nameTh, count }] : [];
+      }),
+      unclassifiedPeople: unclassifiedVulnerablePeople,
+    },
+    housing: {
+      rentedHouseholds: rentedType ? ownershipById.get(rentedType.id) ?? 0 : 0,
+      unknownOwnership: ownershipById.get(null) ?? 0,
+      unknownBuildingType: buildingById.get(null) ?? 0,
+      ownershipTypes: ownershipTypes.flatMap((type) => {
+        const count = ownershipById.get(type.id) ?? 0;
+        return count ? [{ key: type.id, label: type.nameTh, count }] : [];
+      }),
+      buildingTypes: buildingTypes.flatMap((type) => {
+        const count = buildingById.get(type.id) ?? 0;
+        return count ? [{ key: type.id, label: type.nameTh, count }] : [];
+      }),
+    },
     assistance: assistanceTypes
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .flatMap((type) => {
@@ -196,9 +319,13 @@ export async function fetchQuestionnaireAnalytics(
       }),
     flood: {
       floodedHouseholds,
-      averageDepthCm: floodAggregate._avg.maxFloodDepthCm,
-      maximumDepthCm: floodAggregate._max.maxFloodDepthCm,
-      averageDurationDays: floodAggregate._avg.lastFloodDurationDays,
+      averageDepthCm: floodDepths.length
+        ? floodDepths.reduce((sum, depth) => sum + depth, 0) / floodDepths.length
+        : null,
+      maximumDepthCm: floodDepths.length ? Math.max(...floodDepths) : null,
+      averageDurationDays: floodDurations.length
+        ? floodDurations.reduce((sum, days) => sum + days, 0) / floodDurations.length
+        : null,
       withoutSurvivalKit,
       withoutResources,
     },

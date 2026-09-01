@@ -2,7 +2,7 @@
 // ทุกฟังก์ชันตรวจ permission + community scope จาก ctx ฝั่ง server เท่านั้น
 // ห้ามเชื่อ userId/role/scope จาก client — actions.ts เป็นผู้โหลด ctx จาก session จริง
 
-import { AuditAction, SheetStatus } from "@prisma/client";
+import { AuditAction, Prisma, SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -143,10 +143,68 @@ export async function getMyDraftSheets(ctx: AuthorizationContext, limit = 10) {
  * กรองด้วย `enteredById` ไม่ใช่ community scope — ผู้คีย์จึงเห็นเฉพาะงานของตน
  * แม้ระบบจะยกเลิกการจำกัดขอบเขตชุมชนไปแล้ว (#R7-B)
  */
-export async function getMySubmittedSheets(ctx: AuthorizationContext, limit = 50) {
+export type MySubmittedStatusFilter = "ALL" | "VERIFIED" | "PENDING" | "EDITING";
+
+export interface MySubmittedFilters {
+  query?: string;
+  communityId?: string;
+  status?: MySubmittedStatusFilter;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function submittedDate(value?: string, endOfRange = false): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00+07:00`);
+  if (Number.isNaN(date.valueOf())) return undefined;
+  if (endOfRange) date.setDate(date.getDate() + 1);
+  return date;
+}
+
+/** เงื่อนไขเดียวสำหรับทั้งรายการและยอดรวม ป้องกันเลขแบ่งหน้าไม่ตรงกับผลค้นหา */
+export function buildMySubmittedWhere(
+  userId: string,
+  filters: MySubmittedFilters = {},
+): Prisma.HouseholdWhereInput {
+  const query = filters.query?.trim().slice(0, 80) ?? "";
+  const from = submittedDate(filters.dateFrom);
+  const to = submittedDate(filters.dateTo, true);
+  const status = filters.status ?? "ALL";
+  const statusWhere: Prisma.PaperSheetWhereInput = status === "VERIFIED"
+    ? { status: SheetStatus.VERIFIED }
+    : status === "EDITING"
+      ? { status: SheetStatus.LOCKED }
+      : status === "PENDING"
+        ? { status: { notIn: [SheetStatus.VERIFIED, SheetStatus.LOCKED] } }
+        : {};
+
+  return {
+    enteredById: userId,
+    deletedAt: null,
+    ...(filters.communityId ? { communityId: filters.communityId } : {}),
+    ...(from || to ? { enteredAt: {
+      ...(from ? { gte: from } : {}),
+      ...(to ? { lt: to } : {}),
+    } } : {}),
+    sheet: {
+      ...statusWhere,
+    },
+    ...(query ? { OR: [
+      { houseNo: { contains: query, mode: "insensitive" } },
+      { sheet: { sheetNo: { contains: query, mode: "insensitive" } } },
+    ] } : {}),
+  };
+}
+
+export async function getMySubmittedSheets(
+  ctx: AuthorizationContext,
+  limit = 50,
+  offset = 0,
+  filters: MySubmittedFilters = {},
+) {
   if (!canEnter(ctx)) return [];
   const rows = await prisma.household.findMany({
-    where: { enteredById: ctx.userId, deletedAt: null },
+    where: buildMySubmittedWhere(ctx.userId, filters),
     select: {
       enteredAt: true,
       verifiedAt: true,
@@ -162,6 +220,7 @@ export async function getMySubmittedSheets(ctx: AuthorizationContext, limit = 50
       },
     },
     orderBy: { enteredAt: "desc" },
+    skip: Math.max(0, offset),
     take: limit,
   });
 
@@ -177,6 +236,16 @@ export async function getMySubmittedSheets(ctx: AuthorizationContext, limit = 50
     /** ใบกำลังถูกเปิดแก้อยู่ (โดยตัวเอง) — ยังไม่ได้ส่งกลับ */
     editing: h.sheet.status === SheetStatus.LOCKED,
   }));
+}
+
+export async function countMySubmittedSheets(
+  ctx: AuthorizationContext,
+  filters: MySubmittedFilters = {},
+): Promise<number> {
+  if (!canEnter(ctx)) return 0;
+  return prisma.household.count({
+    where: buildMySubmittedWhere(ctx.userId, filters),
+  });
 }
 
 const ENTERED_STATUSES: SheetStatus[] = [

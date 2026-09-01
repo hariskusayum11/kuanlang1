@@ -5,6 +5,36 @@ import "leaflet/dist/leaflet.css";
 import type { HouseholdLayerPoint, VolunteerMapSkill } from "@/lib/geo/household-layer-map";
 import type { ImportantSitePoint } from "@/lib/geo/important-sites";
 
+const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
+
+type SavedMapView = { lat: number; lng: number; zoom: number };
+
+function readSavedMapView(): SavedMapView | null {
+  try {
+    const raw = window.localStorage.getItem(MAP_VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SavedMapView>;
+    if (![value.lat, value.lng, value.zoom].every((item) => typeof item === "number" && Number.isFinite(item))) return null;
+    if (value.lat! < -90 || value.lat! > 90 || value.lng! < -180 || value.lng! > 180 || value.zoom! < 1 || value.zoom! > 19) return null;
+    return value as SavedMapView;
+  } catch {
+    return null;
+  }
+}
+
+function saveMapView(map: import("leaflet").Map): void {
+  const center = map.getCenter();
+  try {
+    window.localStorage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify({
+      lat: center.lat,
+      lng: center.lng,
+      zoom: map.getZoom(),
+    } satisfies SavedMapView));
+  } catch {
+    // Storage อาจถูกปิดโดย browser — แผนที่ยังใช้งานต่อได้ตามปกติ
+  }
+}
+
 type LayerKey = "vulnerable" | "volunteer" | "host";
 const LAYERS: { key: LayerKey; label: string; shortLabel: string; color: string; iconPath: string }[] = [
   { key: "vulnerable", label: "กลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M12 21s-7-4.35-7-10a4 4 0 017-2.65A4 4 0 0119 11c0 5.65-7 10-7 10z" },
@@ -22,17 +52,48 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char] ?? char);
 }
 
+function pointAddress(point: HouseholdLayerPoint): string {
+  const parts = [
+    point.houseNo ? `บ้านเลขที่ ${point.houseNo}` : "ไม่ระบุบ้านเลขที่",
+    point.mooNo != null && point.mooNo > 0 ? `หมู่ ${point.mooNo}` : null,
+    point.soi ? `ซอย ${point.soi}` : null,
+    point.road ? `ถนน ${point.road}` : null,
+    point.tambonName ? `ตำบล${point.tambonName}` : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+function popupRow(label: string, value: string): string {
+  return `<div style="display:grid;grid-template-columns:94px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid #eef2f7">
+    <span style="color:#64748b;font-size:12px">${label}</span>
+    <span style="color:#1e293b;font-size:12px;font-weight:600">${value}</span>
+  </div>`;
+}
+
 function popup(point: HouseholdLayerPoint): string {
-  const parts = [`<b>${escapeHtml(point.communityName)}</b>`];
+  const details: string[] = [];
   if (point.vulnerableCount) {
-    parts.push(`กลุ่มเปราะบาง <b>${point.vulnerableCount.toLocaleString("th-TH")}</b> คน (P1 ${point.triage.P1} · P2 ${point.triage.P2} · P3 ${point.triage.P3})`);
+    details.push(popupRow("กลุ่มเปราะบาง", `<b>${point.vulnerableCount.toLocaleString("th-TH")}</b> คน<br/><span style="font-weight:400;color:#475569">วิกฤต ${point.triage.P1} · เร่งด่วน ${point.triage.P2} · เฝ้าระวัง ${point.triage.P3}${point.triage.UNASSESSED ? ` · ยังไม่ประเมิน ${point.triage.UNASSESSED}` : ""}</span>`));
   }
   if (point.assistanceNeeds.length) {
-    parts.push(`ความต้องการ: ${point.assistanceNeeds.map((need) => `${escapeHtml(need.label)}${need.people === null ? "" : ` ${need.people.toLocaleString("th-TH")} คน`}`).join(", ")}`);
+    details.push(popupRow("ต้องการช่วยเหลือ", point.assistanceNeeds.map((need) => `${escapeHtml(need.label)}${need.people === null ? "" : ` ${need.people.toLocaleString("th-TH")} คน`}`).join("<br/>")));
   }
-  if (point.volunteerSkills.length) parts.push(`สนใจอาสาสมัคร: ${point.volunteerSkills.map((skill) => escapeHtml(skill.label)).join(", ")}`);
-  if (point.potentialHostHouse) parts.push("ยินยอมเป็นจุดพักพิงเบื้องต้น");
-  return `<div style="font-family:system-ui;min-width:220px;line-height:1.6">${parts.join("<br/>")}</div>`;
+  if (point.volunteerSkills.length) {
+    details.push(popupRow("ทักษะอาสา", point.volunteerSkills.map((skill) => escapeHtml(skill.label)).join(" · ")));
+  }
+  if (point.potentialHostHouse) details.push(popupRow("จุดพักพิง", "ยินยอมเป็นจุดพักพิงเบื้องต้น"));
+  if (point.floodDepthCm != null) {
+    details.push(popupRow("ระดับน้ำสูงสุด", `${(point.floodDepthCm / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })} เมตร`));
+  }
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`;
+  return `<div style="font-family:system-ui;min-width:270px;max-width:340px;line-height:1.45">
+    <div style="padding-bottom:8px;border-bottom:2px solid #dbeafe">
+      <div style="font-size:15px;font-weight:800;color:#0f172a">${escapeHtml(pointAddress(point))}</div>
+      <div style="margin-top:3px;font-size:12px;color:#64748b">${escapeHtml(point.communityName)} · รหัสใบ ${escapeHtml(point.sheetNo)}${point.surveyNo ? ` · ลำดับ ${escapeHtml(point.surveyNo)}` : ""}</div>
+    </div>
+    <div>${details.join("") || `<p style="margin:10px 0;color:#64748b">ไม่มีข้อมูลกลุ่มที่เลือกเพิ่มเติม</p>`}</div>
+    <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:10px;padding:8px 12px;border-radius:8px;background:#2563eb;color:white;text-align:center;text-decoration:none;font-size:12px;font-weight:700">เปิดเส้นทางใน Google Maps ↗</a>
+  </div>`;
 }
 
 function markerLayers(point: HouseholdLayerPoint, active: Record<LayerKey, boolean>, volunteerSkill: string) {
@@ -77,9 +138,9 @@ function markerHtml(layers: typeof LAYERS, skills: VolunteerMapSkill[], count: n
 
 function groupedPopup(points: HouseholdLayerPoint[]): string {
   if (points.length === 1) return popup(points[0]);
-  return `<div style="font-family:system-ui;min-width:240px;max-height:280px;overflow:auto;line-height:1.5">
-    <b>พิกัดนี้มี ${points.length.toLocaleString("th-TH")} รายการ</b>
-    ${points.map((point, index) => `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0"><b>รายการ ${index + 1}</b>${popup(point).replace(/^<div[^>]*>|<\/div>$/g, "")}</div>`).join("")}
+  return `<div style="font-family:system-ui;min-width:290px;max-height:380px;overflow:auto;line-height:1.5">
+    <div style="position:sticky;top:0;z-index:1;padding:8px;background:white;border-bottom:2px solid #cbd5e1;font-weight:800">พิกัดนี้มี ${points.length.toLocaleString("th-TH")} ครัวเรือน</div>
+    ${points.map((point, index) => `<div style="margin-top:10px;padding:8px;border:1px solid #e2e8f0;border-radius:10px"><div style="margin-bottom:6px;color:#2563eb;font-size:12px;font-weight:800">ครัวเรือนที่ ${index + 1}</div>${popup(point)}</div>`).join("")}
   </div>`;
 }
 
@@ -160,7 +221,13 @@ export function HouseholdLayerMap({ points, sites, availableVolunteerSkills, cen
     (async () => {
       const L = (await import("leaflet")).default;
       if (cancelled || !ref.current) return;
-      map = L.map(ref.current, { scrollWheelZoom: false }).setView([center.lat, center.lng], defaultZoom);
+      const savedView = readSavedMapView();
+      map = L.map(ref.current, { scrollWheelZoom: true }).setView(
+        savedView ? [savedView.lat, savedView.lng] : [center.lat, center.lng],
+        savedView?.zoom ?? defaultZoom,
+      );
+      const persistView = () => { if (map) saveMapView(map); };
+      map.on("moveend zoomend", persistView);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(map);
       const bounds = L.latLngBounds([]);
       const groups = new Map<string, HouseholdLayerPoint[]>();
@@ -200,9 +267,17 @@ export function HouseholdLayerMap({ points, sites, availableVolunteerSkills, cen
         }
       }
       if (showHeatmap) removeHeatmap = addFloodHeatmap(L, map, points);
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: Math.min(defaultZoom, 17) });
+      // ครั้งแรกจัดมุมให้เห็นข้อมูลทั้งหมด แต่เมื่อเคยเลื่อน/ซูมแล้วให้คงมุมเดิมหลังรีเฟรช
+      // หากตัวกรองเปลี่ยนไปยังพื้นที่อื่นจนมุมเดิมไม่ครอบข้อมูล จึงค่อยจัดมุมใหม่
+      const savedViewStillRelevant = savedView && bounds.isValid()
+        ? bounds.pad(0.5).contains([savedView.lat, savedView.lng])
+        : false;
+      if (bounds.isValid() && !savedViewStillRelevant) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: Math.min(defaultZoom, 17) });
+      }
+      persistView();
     })();
-    return () => { cancelled = true; removeHeatmap(); map?.remove(); };
+    return () => { cancelled = true; removeHeatmap(); if (map) saveMapView(map); map?.remove(); };
   }, [points, sites, center.lat, center.lng, defaultZoom, active, volunteerSkill, showSites, showHeatmap]);
 
   return (
@@ -235,7 +310,7 @@ export function HouseholdLayerMap({ points, sites, availableVolunteerSkills, cen
         <strong>สัญลักษณ์ทักษะ:</strong>
         {availableVolunteerSkills.map((skill) => { const style = skillStyle(skill); return <span key={skill.code} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-100 px-2 py-1"><LayerIcon path={style.iconPath} color={style.color} />{skill.label}</span>; })}
       </div>
-      {showHeatmap ? <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-white px-4 py-2 text-[11px] text-slate-600"><strong>ระดับน้ำสูงสุด:</strong><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-yellow-300" /> ต่ำกว่า 30 ซม.</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-amber-500" /> 30–79 ซม.</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-orange-600" /> 80–149 ซม.</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-red-700" /> 150 ซม.ขึ้นไป</span><span>บริเวณที่จุดใกล้กันจะมีสีเข้มขึ้น</span></div> : null}
+      {showHeatmap ? <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-white px-4 py-2 text-[11px] text-slate-600"><strong>ระดับน้ำสูงสุด:</strong><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-yellow-300" /> ต่ำกว่า 0.30 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-amber-500" /> 0.30–0.79 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-orange-600" /> 0.80–1.49 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-red-700" /> 1.50 เมตรขึ้นไป</span><span>บริเวณที่จุดใกล้กันจะมีสีเข้มขึ้น</span></div> : null}
       <div ref={ref} className="h-[580px] w-full" role="img" aria-label="แผนที่จุดครัวเรือนแยกตามกลุ่มข้อมูล" />
     </div>
   );

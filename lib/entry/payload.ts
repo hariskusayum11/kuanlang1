@@ -46,6 +46,8 @@ export const vulnerableRowSchema = z.object({
   firstName: z.string().max(200).default(""),
   lastName: z.string().max(200).default(""),
   age: z.union([z.string().max(6), z.number()]).default(""),
+  // optional เพื่อให้ร่าง/ข้อมูลเดิมที่สร้างก่อนมีหน่วยอายุยังอ่านได้ (ตีความเป็นปี)
+  ageUnit: z.enum(["YEAR", "MONTH"]).optional(),
   phone: z.string().max(30).default(""),
   vulnerabilities: z.array(z.string().max(64)).max(30).default([]),
   details: z.record(z.string().max(64), z.string().max(500)).default({}),
@@ -117,6 +119,7 @@ export function answerBoolean(payload: EntryPayload, name: string): boolean | nu
 /** ตัวเลขจำนวนเต็มไม่ติดลบ — ค่าผิดชนิด/ติดลบ → null (เก็บดิบไว้ใน payload) */
 export function answerCount(payload: EntryPayload, name: string): number | null {
   const v = payload.answers[name];
+  if (typeof v === "string" && v.trim() === "") return null;
   const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
   if (!Number.isInteger(n) || n < 0 || n > 100000) return null;
   return n;

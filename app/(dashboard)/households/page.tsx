@@ -215,7 +215,7 @@ function FilterSelect({
 function formatAddress(r: HouseholdListRow): string {
   const parts = [
     r.houseNo ? `บ้านเลขที่ ${r.houseNo}` : null,
-    r.mooNo != null ? `หมู่ ${r.mooNo}` : null,
+    r.mooNo != null && r.mooNo > 0 ? `หมู่ ${r.mooNo}` : null,
     r.soi ? `ซ.${r.soi}` : null,
     r.road ? `ถ.${r.road}` : null,
   ].filter(Boolean);

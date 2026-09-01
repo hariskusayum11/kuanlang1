@@ -157,9 +157,13 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     });
     expect(counts).toEqual({
       communities: 0,
+      received: 0,
       keyed: 0,
       verified: 0,
       pending: 0,
+      ready: 0,
+      editing: 0,
+      duplicates: 0,
       keyers: 0,
     });
   });
@@ -174,27 +178,50 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
       where: { id: tk01Id, deletedAt: null },
     });
     const expectedKeyed = await prisma.household.count({
+      where: {
+        communityId: tk01Id,
+        deletedAt: null,
+        OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+      },
+    });
+    const expectedReceived = await prisma.household.count({
       where: { communityId: tk01Id, deletedAt: null },
     });
     const expectedVerified = await prisma.household.count({
       where: {
         communityId: tk01Id,
         deletedAt: null,
-        hasDuplicateFlag: false,
         sheet: { status: SheetStatus.VERIFIED },
+        OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+      },
+    });
+    const expectedReady = await prisma.household.count({
+      where: {
+        communityId: tk01Id,
+        deletedAt: null,
+        sheet: { status: SheetStatus.ENTERED_1 },
+        OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
       },
     });
     const expectedKeyerGroups = await prisma.household.groupBy({
       by: ["enteredById"],
-      where: { communityId: tk01Id, deletedAt: null },
+      where: {
+        communityId: tk01Id,
+        deletedAt: null,
+        OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
+      },
       orderBy: { enteredById: "asc" },
     });
 
     expect(counts).toEqual({
       communities: expectedCommunities,
+      received: expectedReceived,
       keyed: expectedKeyed,
       verified: expectedVerified,
-      pending: Math.max(0, expectedKeyed - expectedVerified),
+      pending: expectedKeyed - expectedVerified,
+      ready: expectedReady,
+      editing: expectedKeyed - expectedVerified - expectedReady,
+      duplicates: expectedReceived - expectedKeyed,
       keyers: expectedKeyerGroups.length,
     });
     expect(counts.communities).toBe(1);

@@ -3,7 +3,7 @@ import { UserRoleEnum } from "@prisma/client";
 /** ชื่อบทบาทภาษาไทย — ใช้ร่วมกันทุกหน้า (ห้าม hardcode ซ้ำในคอมโพเนนต์) */
 export const ROLE_LABELS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.ADMIN]: "ผู้ดูแลระบบ",
-  [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร",
+  [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร/แพทย์",
   [UserRoleEnum.OFFICER]: "เจ้าหน้าที่",
   [UserRoleEnum.COORDINATOR]: "ผู้ประสานงาน",
   [UserRoleEnum.VERIFIER]: "ผู้ตรวจสอบข้อมูล",
@@ -71,7 +71,7 @@ export const RESERVED_ROLES: readonly UserRoleEnum[] = [
 /** คำอธิบายสั้น ๆ ต่อบทบาท — ช่วยแอดมินเลือกได้ถูกตั้งแต่ครั้งแรก */
 export const ROLE_HINTS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.ADMIN]: "ทั้งระบบ + จัดการผู้ใช้และบทบาท",
-  [UserRoleEnum.EXECUTIVE]: "ดูภาพรวมทั้งระบบ อ่านอย่างเดียว แก้ข้อมูลไม่ได้",
+  [UserRoleEnum.EXECUTIVE]: "ดูภาพรวมทั้งระบบและข้อมูลสุขภาพที่ตรวจแล้ว อ่านอย่างเดียว แก้ข้อมูลไม่ได้",
   [UserRoleEnum.OFFICER]: "จัดการชุมชน/ปึกที่รับผิดชอบ + ตรวจสอบข้อมูลได้",
   [UserRoleEnum.COORDINATOR]: "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้",
   [UserRoleEnum.VERIFIER]:

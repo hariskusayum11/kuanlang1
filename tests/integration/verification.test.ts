@@ -44,6 +44,8 @@ async function cleanup() {
     });
     const hids = households.map((h) => h.id);
     if (hids.length > 0) {
+      await prisma.personVulnerability.deleteMany({ where: { person: { householdId: { in: hids } } } });
+      await prisma.vulnerablePerson.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.evacuationVehicle.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.floodRiskProfile.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.householdVersion.deleteMany({ where: { householdId: { in: hids } } });
@@ -139,6 +141,18 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     };
 
     await mkHousehold("byKeyer", "TESV-920001", keyer.id); // ผู้ตรวจไม่ใช่ผู้คีย์ → ยืนยันได้
+    await prisma.household.update({ where: { id: hh.byKeyer }, data: { hasVulnerable: true } });
+    const triageTypes = await prisma.vulnerabilityType.findMany({
+      where: { code: { in: ["BEDRIDDEN", "CHILD_UNDER_5"] } },
+      select: { id: true },
+    });
+    if (triageTypes.length !== 2) throw new Error("ต้องมี VulnerabilityType seed สำหรับทดสอบ Triage");
+    const vulnerablePerson = await prisma.vulnerablePerson.create({
+      data: { householdId: hh.byKeyer, seq: 1, age: 70 },
+    });
+    await prisma.personVulnerability.createMany({
+      data: triageTypes.map((type) => ({ personId: vulnerablePerson.id, vulnerabilityTypeId: type.id })),
+    });
     await mkHousehold("bySelf", "TESV-920002", verifier.id); // ผู้ตรวจคีย์เอง → SELF_VERIFY
     await mkHousehold("scope", "TESV-920003", keyer.id); // ทดสอบ scope/permission
     await mkHousehold("toEdit", "TESV-920004", keyer.id); // คง ENTERED_1 ไว้ทดสอบแก้ไข
@@ -231,6 +245,12 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     const household = await prisma.household.findUniqueOrThrow({ where: { id: hh.byKeyer } });
     expect(household.verifiedById).toBe(verifierId);
     expect(household.verifiedAt).not.toBeNull();
+
+    const vulnerablePerson = await prisma.vulnerablePerson.findFirstOrThrow({
+      where: { householdId: hh.byKeyer },
+    });
+    expect(vulnerablePerson.triageLevel).toBe("P1");
+    expect(vulnerablePerson.triageComputedAt).not.toBeNull();
 
     const batch = await prisma.paperBatch.findUniqueOrThrow({ where: { code: BATCH_CODE } });
 
@@ -348,13 +368,19 @@ describe.skipIf(!isLocalDevDb)("Integration: Verification (review + verify)", ()
     expect(
       await applyHouseholdEdits(ctxVerifier, hh.toEdit, {
         evacuationVehiclesOther: "รถหกล้อ",
+        floodDepthMetersRaw: "2",
+        floodDepthCmRaw: "25",
       }),
-    ).toEqual({ ok: true, changedCount: 1 });
+    ).toEqual({ ok: true, changedCount: 3 });
 
     const other = await prisma.evacuationVehicle.findFirstOrThrow({
       where: { householdId: hh.toEdit, vehicleType: "OTHER" },
     });
     expect(other.detail).toBe("รถหกล้อ");
+    const flood = await prisma.floodRiskProfile.findUniqueOrThrow({
+      where: { householdId: hh.toEdit },
+    });
+    expect(flood.maxFloodDepthCm).toBe(225);
   });
 
   it("applyHouseholdEdits: แก้ชื่อ(🔒)/เบอร์(idx)/บ้านเลขที่/สมาชิก/คำนำหน้า(FK) + version + audit", async () => {

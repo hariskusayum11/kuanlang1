@@ -14,6 +14,18 @@ const report: ExecutiveReport = {
     assistancePeople: 5,
   },
   triage: { P1: 1, P2: 0, P3: 1, UNASSESSED: 0 },
+  vulnerability: {
+    ages: { under5: 1, age5To17: 0, age18To59: 0, age60Plus: 1, unknown: 0 },
+    types: [{ key: "elderly", label: "ผู้สูงอายุ", count: 1 }],
+    unclassifiedPeople: 0,
+  },
+  housing: {
+    rentedHouseholds: 1,
+    unknownOwnership: 0,
+    unknownBuildingType: 0,
+    ownershipTypes: [{ key: "rent", label: "เช่า / เช่าซื้อ", count: 1 }],
+    buildingTypes: [{ key: "house", label: "บ้านพักอาศัย", count: 2 }],
+  },
   assistance: [{ key: "food", label: "อาหาร, น้ำดื่ม", count: 2, people: 5 }],
   flood: {
     floodedHouseholds: 1,
@@ -51,7 +63,7 @@ describe("executive report", () => {
     const csv = buildExecutiveCsv(report);
     expect(csv).toContain("หมวด,รายการ,จำนวน,หน่วย");
     expect(csv).toContain('"อาหาร, น้ำดื่ม — จำนวนครัวเรือน"');
-    expect(csv).toContain("P1 วิกฤต");
+    expect(csv).toContain("กลุ่มเปราะบาง,วิกฤต,1,คน");
     expect(csv).toContain("ไม่มีพิกัด");
     expect(csv).not.toContain("คนกรอก");
   });
