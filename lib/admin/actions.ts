@@ -8,10 +8,12 @@ import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
   deleteUser,
+  recoverUser,
   setUserActive,
   setUserGlobalScope,
   setUserRoles,
   type DeleteUserResult,
+  type RecoverUserResult,
   type SetActiveResult,
   type SetGlobalScopeResult,
   type SetRolesResult,
@@ -90,7 +92,7 @@ export type DeleteUserActionResult =
   | DeleteUserResult
   | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
 
-/** ลบบัญชีผู้ใช้ (soft delete) — ตรวจ RBAC + guard ฝั่ง server ใน core */
+/** ลบบัญชีผู้ใช้ (hard delete + soft fallback) — ตรวจ RBAC + guard ฝั่ง server ใน core */
 export async function deleteUserAction(
   input: unknown,
 ): Promise<DeleteUserActionResult> {
@@ -101,4 +103,21 @@ export async function deleteUserAction(
   if (!parsed.success) return { ok: false, reason: "INVALID" };
 
   return deleteUser(ctx, parsed.data.userId);
+}
+
+export type RecoverUserActionResult =
+  | RecoverUserResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** กู้คืนบัญชีที่ถูกปฏิเสธ/ยกเลิก (อนุมัติใหม่) — ตรวจ RBAC + guard ฝั่ง server ใน core */
+export async function recoverUserAction(
+  input: unknown,
+): Promise<RecoverUserActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = userIdSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return recoverUser(ctx, parsed.data.userId);
 }

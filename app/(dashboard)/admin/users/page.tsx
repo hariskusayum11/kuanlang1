@@ -10,11 +10,13 @@ import {
 import { listUsers } from "@/lib/admin/users";
 import {
   ACCOUNT_STATUS_LABELS,
+  canRecover,
   canToggleActivation,
   type AccountStatus,
 } from "@/domain/admin/account-status";
 import { UserRoleEditor } from "@/components/admin/user-role-editor";
 import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
+import { UserRecoverButton } from "@/components/admin/user-recover-button";
 import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
@@ -135,10 +137,12 @@ export default async function AdminUsersPage() {
                             isSelf={isSelf}
                           />
                         )}
+                        {canRecover(u.accountStatus) && (
+                          <UserRecoverButton userId={u.id} userName={u.name} />
+                        )}
                         <UserDeleteButton
                           userId={u.id}
                           userName={u.name}
-                          hasManageableStatus={canToggleActivation(u.accountStatus)}
                           isSelf={isSelf}
                         />
                         </div>

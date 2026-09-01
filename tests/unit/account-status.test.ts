@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACCOUNT_STATUS_LABELS,
+  canRecover,
   canToggleActivation,
   deriveAccountStatus,
   type AccountStatus,
@@ -52,6 +53,20 @@ describe("canToggleActivation", () => {
     expect(canToggleActivation("PENDING_APPROVAL")).toBe(false);
     expect(canToggleActivation("REJECTED")).toBe(false);
     expect(canToggleActivation("CANCELLED")).toBe(false);
+  });
+});
+
+describe("canRecover", () => {
+  it("กู้คืนได้เฉพาะบัญชีที่ถูกปฏิเสธ/ยกเลิกคำขอ", () => {
+    expect(canRecover("REJECTED")).toBe(true);
+    expect(canRecover("CANCELLED")).toBe(true);
+  });
+
+  it("บัญชีที่ใช้งานได้/ปิด/รออนุมัติ ไม่ใช้ปุ่มกู้คืน", () => {
+    // ACTIVE/DEACTIVATED ใช้ปุ่มเปิด-ปิด · PENDING ใช้คิวอนุมัติปกติ
+    expect(canRecover("ACTIVE")).toBe(false);
+    expect(canRecover("DEACTIVATED")).toBe(false);
+    expect(canRecover("PENDING_APPROVAL")).toBe(false);
   });
 });
 

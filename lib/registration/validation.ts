@@ -15,6 +15,11 @@ import { z } from "zod";
 export const REQUESTABLE_ROLES = [
   UserRoleEnum.VOLUNTEER,
   UserRoleEnum.DATA_ENTRY,
+  // Owner Decision (2026-09-02): เปิดให้ "ผู้บริหาร" สมัครเองได้ตาม TOR (ผู้ใช้ 4 ประเภท:
+  // Admin สร้างเอง · คีย์ข้อมูล · ผู้บริหาร · อาสาสมัคร) — EXECUTIVE เป็นสิทธิ์อ่านอย่างเดียว
+  // (Dashboard/รายงาน/แผนที่/ข้อมูลสุขภาพ) แก้ข้อมูลไม่ได้ และยังต้องผ่าน ADMIN อนุมัติก่อน login
+  // บทบาทอำนาจสูงอื่น (OFFICER/COORDINATOR/VERIFIER/RESEARCHER/ADMIN) ยังสงวนให้แอดมินสร้างเอง
+  UserRoleEnum.EXECUTIVE,
 ] as const satisfies readonly UserRoleEnum[];
 
 export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
@@ -22,6 +27,7 @@ export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
 export const REQUESTABLE_ROLE_LABELS: Record<RequestableRole, string> = {
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
   [UserRoleEnum.DATA_ENTRY]: "เจ้าหน้าที่คีย์ข้อมูล",
+  [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร",
 };
 
 // ช่อง optional จากฟอร์ม: ค่าว่าง ("") ถือว่าไม่กรอก — แปลงเป็น undefined ก่อนตรวจ

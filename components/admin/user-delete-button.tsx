@@ -17,30 +17,28 @@ const ERRORS: Record<string, string> = {
 };
 
 /**
- * ปุ่ม "ลบบัญชี" — Soft Delete (Owner Decision 2026-08-07):
- * ปิดบัญชี + ถอดทุกบทบาท/สิทธิ์ + ลบคำขอ/เซสชัน แต่ **ไม่ลบแถว user** —
- * ประวัติการคีย์/ตรวจ (enteredBy/verifiedBy) ยังชี้ชื่อได้ ไม่ทำลาย Audit trail
+ * ปุ่ม "ลบบัญชี" — Hard Delete + Soft Fallback (Owner Decision 2026-09-02):
+ * ลบแถว user ออกจากฐานข้อมูลจริงเมื่อบัญชีไม่มีประวัติการทำงานผูก (เช่น ถูกปฏิเสธ/รออนุมัติ)
+ * แต่ถ้าบัญชีมีประวัติคีย์/ตรวจ ระบบจะ **ปิดใช้งานแทน** เพื่อรักษา Audit trail (BR-29)
  * Guard ฝั่ง server: ห้ามลบตัวเอง · ห้ามลบ Active ADMIN คนสุดท้าย
  */
 export function UserDeleteButton({
   userId,
   userName,
-  hasManageableStatus,
   isSelf,
 }: {
   userId: string;
   userName: string;
-  /** เฉพาะบัญชีที่ "เคยใช้งานได้" จึงมีปุ่มลบ (รออนุมัติใช้เส้นทางลบคำขอแทน) */
-  hasManageableStatus: boolean;
   isSelf: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [softened, setSoftened] = useState(false);
   const [open, setOpen] = useState(false);
 
   // Guard ฝั่ง UI เป็นแค่ความสะดวก — Guard จริงอยู่ที่ deleteUser() ฝั่ง server
-  if (isSelf || !hasManageableStatus) return null;
+  if (isSelf) return null;
 
   async function confirm() {
     if (busy) return;
@@ -50,6 +48,13 @@ export function UserDeleteButton({
     if (!result.ok) {
       setError(ERRORS[result.reason] ?? ERRORS.ERROR);
       setBusy(false);
+      return;
+    }
+    if (!result.hard) {
+      // มีประวัติการทำงาน → ระบบปิดใช้งานแทนการลบจริง แจ้งให้แอดมินทราบก่อนปิด modal
+      setSoftened(true);
+      setBusy(false);
+      router.refresh();
       return;
     }
     setOpen(false);
@@ -63,6 +68,7 @@ export function UserDeleteButton({
         type="button"
         onClick={() => {
           setError(null);
+          setSoftened(false);
           setOpen(true);
         }}
         className="btn btn-danger btn-sm"
@@ -81,14 +87,24 @@ export function UserDeleteButton({
           <p className="mt-0.5 text-sm font-medium text-slate-500">{userName}</p>
 
           <p className="mt-5 rounded-xl border-2 border-slate-200 bg-mist px-3.5 py-3 text-sm font-medium leading-relaxed text-slate-700">
-            ผู้ใช้จะเข้าสู่ระบบไม่ได้ทันที (ถูกตัด session) บทบาท สิทธิ์พื้นที่
-            และคำขอที่เคยยื่นจะถูกถอดออกทั้งหมด
+            บัญชีนี้จะถูก <span className="font-bold text-red-700">ลบออกจากฐานข้อมูลถาวร</span>{" "}
+            พร้อมบทบาท สิทธิ์พื้นที่ คำขอลงทะเบียน และเซสชันทั้งหมด — กู้คืนไม่ได้
             <br />
             <span className="text-slate-500">
-              ข้อมูลประวัติการคีย์/ตรวจยังคงอยู่และระบุชื่อนี้ได้ (ไม่ลบแถวทิ้ง)
-              — หากต้องการให้กลับมาใช้งานได้ ต้องสร้างบัญชีใหม่ให้
+              หากบัญชีนี้เคยคีย์หรือตรวจข้อมูลไว้ ระบบจะ “ปิดใช้งาน” แทนการลบจริง
+              โดยอัตโนมัติ เพื่อรักษาประวัติการทำงาน (Audit trail)
             </span>
           </p>
+
+          {softened && (
+            <p
+              role="status"
+              className="animate-pop mt-4 rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-700"
+            >
+              บัญชีนี้มีประวัติการทำงาน จึงถูก <span className="font-bold">ปิดใช้งาน</span>{" "}
+              แทนการลบออกจากฐานข้อมูล (ประวัติการคีย์/ตรวจยังคงอยู่)
+            </p>
+          )}
 
           {error && (
             <p
@@ -106,16 +122,18 @@ export function UserDeleteButton({
               disabled={busy}
               className="btn btn-ghost btn-md"
             >
-              ยกเลิก
+              {softened ? "ปิด" : "ยกเลิก"}
             </button>
-            <button
-              type="button"
-              onClick={() => void confirm()}
-              disabled={busy}
-              className="btn btn-danger btn-md"
-            >
-              {busy ? "กำลังลบ…" : "ยืนยันลบบัญชี"}
-            </button>
+            {!softened && (
+              <button
+                type="button"
+                onClick={() => void confirm()}
+                disabled={busy}
+                className="btn btn-danger btn-md"
+              >
+                {busy ? "กำลังลบ…" : "ยืนยันลบบัญชี"}
+              </button>
+            )}
           </div>
         </div>
       </Modal>

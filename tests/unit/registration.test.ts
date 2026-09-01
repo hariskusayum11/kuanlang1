@@ -32,13 +32,12 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     expect(parsed.organization).toBe("เทศบาลเมืองควนลัง");
   });
 
-  it("บทบาทนอก whitelist (เช่น ADMIN/VERIFIER) ถูกปฏิเสธ", () => {
+  it("บทบาทอำนาจสูงนอก whitelist (เช่น ADMIN/VERIFIER) ถูกปฏิเสธ", () => {
     for (const role of [
       UserRoleEnum.ADMIN,
       UserRoleEnum.VERIFIER,
       UserRoleEnum.OFFICER,
       UserRoleEnum.COORDINATOR,
-      UserRoleEnum.EXECUTIVE,
       UserRoleEnum.RESEARCHER,
     ]) {
       const result = registrationSchema.safeParse({
@@ -49,13 +48,27 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     }
   });
 
-  it("whitelist = VOLUNTEER, DATA_ENTRY เท่านั้น และมี label ไทยครบ", () => {
+  it("whitelist = VOLUNTEER, DATA_ENTRY, EXECUTIVE เท่านั้น และมี label ไทยครบ", () => {
+    // Owner Decision 2026-09-02: เพิ่ม EXECUTIVE (ผู้บริหาร) ให้สมัครเองได้ตาม TOR
     expect([...REQUESTABLE_ROLES].sort()).toEqual(
-      [UserRoleEnum.VOLUNTEER, UserRoleEnum.DATA_ENTRY].sort(),
+      [
+        UserRoleEnum.VOLUNTEER,
+        UserRoleEnum.DATA_ENTRY,
+        UserRoleEnum.EXECUTIVE,
+      ].sort(),
     );
     for (const role of REQUESTABLE_ROLES) {
       expect(REQUESTABLE_ROLE_LABELS[role]).toBeTruthy();
     }
+  });
+
+  it("EXECUTIVE สมัครเองได้ (Owner Decision 2026-09-02 — ตาม TOR ผู้ใช้ 4 ประเภท)", () => {
+    expect(
+      registrationSchema.safeParse({
+        ...VALID_INPUT,
+        requestedRole: UserRoleEnum.EXECUTIVE,
+      }).success,
+    ).toBe(true);
   });
 
   it("FIELD_SURVEYOR สมัครเองไม่ได้ (Owner Decision 2026-07-26 — ยังไม่มีโมดูลให้ใช้)", () => {

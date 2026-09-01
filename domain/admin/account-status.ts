@@ -55,6 +55,14 @@ export function canToggleActivation(status: AccountStatus): boolean {
   return status === "ACTIVE" || status === "DEACTIVATED";
 }
 
+/**
+ * บัญชีที่ "ถูกปฏิเสธ/ยกเลิกคำขอ" — ควรมีปุ่ม "กู้คืน (อนุมัติใหม่)" (Owner Decision 2026-09-02)
+ * ACTIVE/DEACTIVATED ใช้ปุ่มเปิด-ปิด (canToggleActivation) แทน · PENDING ใช้คิวอนุมัติปกติ
+ */
+export function canRecover(status: AccountStatus): boolean {
+  return status === "REJECTED" || status === "CANCELLED";
+}
+
 export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
   ACTIVE: "ใช้งานอยู่",
   PENDING_APPROVAL: "รออนุมัติ",

@@ -3,7 +3,12 @@
 // RBAC: ต้องมี user.manage (ADMIN) เท่านั้น — ตรวจฝั่ง server ทุกครั้ง
 // ทุกการเปลี่ยนบทบาทต้องมี Audit Log เก็บค่าก่อน/หลัง (CLAUDE.md)
 
-import { AuditAction, Prisma, UserRoleEnum } from "@prisma/client";
+import {
+  AuditAction,
+  Prisma,
+  RegistrationRequestStatus,
+  UserRoleEnum,
+} from "@prisma/client";
 import {
   canToggleActivation,
   deriveAccountStatus,
@@ -14,6 +19,7 @@ import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import { isLegacyRole } from "../authz/role-labels";
+import { REQUESTABLE_ROLES } from "../registration/validation";
 import type { AuthorizationContext } from "../authz/types";
 
 export interface AdminUserRow {
@@ -388,7 +394,7 @@ export async function setUserActive(
 }
 
 export type DeleteUserResult =
-  | { ok: true; deleted: boolean }
+  | { ok: true; deleted: boolean; hard: boolean }
   | {
       ok: false;
       reason:
@@ -399,16 +405,30 @@ export type DeleteUserResult =
         | "ERROR";
     };
 
+/** ลบทุก session ของบัญชี (best-effort ก่อนลบ user จริง — กัน session ค้าง) */
+async function purgeAuthAndScope(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  await tx.userCommunityScope.deleteMany({ where: { userId } });
+  await tx.registrationRequest.deleteMany({ where: { userId } });
+  await tx.session.deleteMany({ where: { userId } });
+}
+
 /**
- * ลบบัญชีผู้ใช้ (Soft Delete — Owner Decision 2026-08-07)
+ * ลบบัญชีผู้ใช้ (Hard Delete + Soft Fallback — Owner Decision 2026-09-02)
  *
- * "ลบ" ในที่นี้คือ **ระงับบัญชีโดยสิ้นเชิง** แต่ไม่ทำลายประวัติการทำงาน:
- *  - ปิดบัญชี (isActive=false) → login/session ถูกตัดทันทีในรอบ request ถัดไป
- *  - ถอดบทบาททุกบทบาท + ลบ Community Scope + ลบคำขอลงทะเบียน + ลบ session
- *  - **ไม่ Hard Delete user** — ประวัติการคีย์ (enteredBy/verifiedBy) ยังชี้ถึงชื่อนี้ได้
- *    ลดการทำลาย Audit trail/จำนวนสถิติ (BR-29: ห้าม Hard Delete เว้นแต่ PDPA)
+ * เจ้าของระบบเลือกให้ "ลบจริงออกจากฐานข้อมูล" — จึงพยายาม `user.delete()` ก่อน
+ * (Session/Account/UserRole/Scope/RegistrationRequest/VolunteerProfile ตั้ง onDelete:Cascade
+ * ไว้แล้ว จึงหลุดตามไปเอง). บัญชีที่ถูกปฏิเสธ/รออนุมัติ/ยกเลิก ไม่เคยมีข้อมูลการทำงานผูก
+ * จึงลบออกได้สะอาด
  *
- * กัน self-destruction: ห้ามลบตัวเอง (ล็อกตัวเองออก) + ห้ามลบ Active ADMIN คนสุดท้าย
+ * แต่ถ้าบัญชี **มีประวัติการทำงาน** (คีย์/ตรวจครัวเรือน, Audit Log ในฐานะผู้กระทำ, งานกู้ภัย ฯลฯ)
+ * FK เหล่านั้นเป็น Restrict → `user.delete()` จะโยน P2003 ระบบจึง **ถอยไปทำ Soft Delete แทน**
+ * โดยอัตโนมัติ (ปิดบัญชี + ถอด role + ล้าง scope/คำขอ/session) เพื่อไม่ทำลาย Audit trail
+ * (BR-29) — UI แจ้งให้แอดมินทราบว่าปิดใช้งานแทนเพราะมีประวัติ
+ *
+ * กัน self-destruction: ห้ามลบตัวเอง + ห้ามลบ Active ADMIN คนสุดท้าย
  * Invariant "ต้องมี ADMIN ≥ 1" serialize ด้วยล็อกเดียวกับ setUserActive/setUserRoles
  */
 export async function deleteUser(
@@ -420,32 +440,66 @@ export async function deleteUser(
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, isActive: true },
+    select: { id: true },
   });
   if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
 
+  // เซนติเนลแยก "ลูกค้าคนสุดท้าย" ออกจาก error อื่น เพื่อไม่ให้ถูกตีความเป็น FK fallback
+  class LastAdminError extends Error {}
+
+  // พยายาม Hard Delete ก่อน (ในทรานแซกชันเดียว — ถ้า FK ชน จะ rollback ทั้งก้อน)
   try {
-    const outcome = await prisma.$transaction(async (tx) => {
-      // serialize กับเส้นทางลด Active ADMIN (ถอด role / ปิดบัญชี / ลบ)
+    await prisma.$transaction(async (tx) => {
       await lockAdminInvariant(tx);
       const isTargetAdmin = await tx.userRole.count({
         where: { userId, role: UserRoleEnum.ADMIN, isActive: true },
       });
       if (isTargetAdmin > 0 && (await countOtherActiveAdmins(tx, userId)) === 0) {
-        return "LAST_ACTIVE_ADMIN" as const;
+        throw new LastAdminError();
       }
-
-      await tx.user.update({ where: { id: userId }, data: { isActive: false } });
-      await tx.userRole.updateMany({ where: { userId }, data: { isActive: false } });
-      await tx.userCommunityScope.deleteMany({ where: { userId } });
-      await tx.registrationRequest.deleteMany({ where: { userId } });
-      await tx.session.deleteMany({ where: { userId } });
-      return "OK" as const;
+      await purgeAuthAndScope(tx, userId);
+      await tx.user.delete({ where: { id: userId } });
     });
-    if (outcome === "LAST_ACTIVE_ADMIN") {
+  } catch (error) {
+    if (error instanceof LastAdminError) {
       return { ok: false, reason: "LAST_ACTIVE_ADMIN" };
     }
-  } catch {
+    // FK ชน (P2003) = บัญชีมีประวัติที่ลบทิ้งไม่ได้ → ถอยไป Soft Delete
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          await lockAdminInvariant(tx);
+          const isTargetAdmin = await tx.userRole.count({
+            where: { userId, role: UserRoleEnum.ADMIN, isActive: true },
+          });
+          if (
+            isTargetAdmin > 0 &&
+            (await countOtherActiveAdmins(tx, userId)) === 0
+          ) {
+            throw new LastAdminError();
+          }
+          await tx.user.update({ where: { id: userId }, data: { isActive: false } });
+          await tx.userRole.updateMany({ where: { userId }, data: { isActive: false } });
+          await purgeAuthAndScope(tx, userId);
+        });
+      } catch (softError) {
+        if (softError instanceof LastAdminError) {
+          return { ok: false, reason: "LAST_ACTIVE_ADMIN" };
+        }
+        return { ok: false, reason: "ERROR" };
+      }
+      await writeAuditLog({
+        userId: ctx.userId,
+        action: AuditAction.DELETE,
+        entityType: "User",
+        entityId: userId,
+        changes: { deleted: true, hard: false, reason: "user-soft-delete-has-history" },
+      });
+      return { ok: true, deleted: true, hard: false };
+    }
     return { ok: false, reason: "ERROR" };
   }
 
@@ -454,8 +508,102 @@ export async function deleteUser(
     action: AuditAction.DELETE,
     entityType: "User",
     entityId: userId,
-    changes: { deleted: true, reason: "user-soft-delete" },
+    changes: { deleted: true, hard: true, reason: "user-hard-delete" },
   });
 
-  return { ok: true, deleted: true };
+  return { ok: true, deleted: true, hard: true };
+}
+
+export type RecoverUserResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "NOT_RECOVERABLE"
+        | "INVALID_ROLE"
+        | "ERROR";
+    };
+
+/**
+ * กู้คืนบัญชีที่ถูกปฏิเสธ/ยกเลิกคำขอ (Owner Decision 2026-09-02)
+ *
+ * ใช้กับบัญชีที่ยัง inactive และมีคำขอสถานะ REJECTED/CANCELLED — ทำให้กลับมาใช้งานได้
+ * เหมือน "อนุมัติใหม่": ตั้งคำขอเป็น APPROVED + เปิดบัญชี + มอบบทบาทที่เคยขอ + มอบ community scope
+ *
+ * ป้องกันเชิงลึก: มอบได้เฉพาะบทบาทใน REQUESTABLE_ROLES (กัน role อำนาจสูงหลุดผ่านช่องนี้)
+ * ทั้งหมดอยู่ในทรานแซกชันเดียว — race-safe ด้วยเงื่อนไขสถานะบน updateMany
+ */
+export async function recoverUser(
+  ctx: AuthorizationContext,
+  userId: string,
+): Promise<RecoverUserResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+
+  const request = await prisma.registrationRequest.findUnique({
+    where: { userId },
+    select: { id: true, status: true, requestedRole: true, communityId: true },
+  });
+  if (!request) return { ok: false, reason: "USER_NOT_FOUND" };
+  if (
+    request.status !== RegistrationRequestStatus.REJECTED &&
+    request.status !== RegistrationRequestStatus.CANCELLED
+  ) {
+    return { ok: false, reason: "NOT_RECOVERABLE" };
+  }
+  if (!(REQUESTABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
+    return { ok: false, reason: "INVALID_ROLE" };
+  }
+
+  const decidedAt = new Date();
+  try {
+    const recovered = await prisma.$transaction(async (tx) => {
+      const updated = await tx.registrationRequest.updateMany({
+        where: {
+          userId,
+          status: {
+            in: [
+              RegistrationRequestStatus.REJECTED,
+              RegistrationRequestStatus.CANCELLED,
+            ],
+          },
+        },
+        data: {
+          status: RegistrationRequestStatus.APPROVED,
+          decidedById: ctx.userId,
+          decidedAt,
+          rejectReason: null,
+        },
+      });
+      if (updated.count !== 1) return false; // แพ้ race — สถานะเปลี่ยนไปแล้ว
+
+      await tx.user.update({ where: { id: userId }, data: { isActive: true } });
+      await tx.userRole.upsert({
+        where: { userId_role: { userId, role: request.requestedRole } },
+        create: { userId, role: request.requestedRole, assignedBy: ctx.userId },
+        update: { isActive: true, assignedBy: ctx.userId },
+      });
+      if (request.communityId) {
+        await tx.userCommunityScope.upsert({
+          where: { userId_communityId: { userId, communityId: request.communityId } },
+          create: { userId, communityId: request.communityId },
+          update: {},
+        });
+      }
+      return true;
+    });
+    if (!recovered) return { ok: false, reason: "NOT_RECOVERABLE" };
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.APPROVE,
+    entityType: "User",
+    entityId: userId,
+    changes: { status: { old: request.status, new: "APPROVED" }, reason: "recover-user" },
+  });
+  return { ok: true };
 }
