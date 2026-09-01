@@ -46,6 +46,25 @@ const TONE_DOT: Record<Tone, string> = {
   mint: "bg-emerald-400",
 };
 
+/* บทบาทที่ประชาชน/เจ้าหน้าที่สมัครเองได้ (ตรงกับ REQUESTABLE_ROLES — ผู้ดูแลระบบอนุมัติก่อน login) */
+const JOIN_ROLES: { title: string; desc: string; icon: string }[] = [
+  {
+    title: "อาสาสมัคร / ชาวบ้าน",
+    desc: "ดูภาพรวมพื้นที่ แผนที่ และข้อมูลเตรียมพร้อมตามสิทธิ์",
+    icon: "M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11zM12 11h.01",
+  },
+  {
+    title: "เจ้าหน้าที่คีย์ข้อมูล",
+    desc: "กรอกและแก้ไขแบบสอบถามครัวเรือนที่ตนเองรับผิดชอบ",
+    icon: "M4 7h16M4 12h16M4 17h10M18 15l2 2-4 4h-2v-2l4-4z",
+  },
+  {
+    title: "ผู้บริหาร",
+    desc: "ดู Dashboard รายงานสรุป และข้อมูลภาพรวมเพื่อการตัดสินใจ",
+    icon: "M4 19V9m5 10V5m5 14v-7m5 7V8",
+  },
+];
+
 const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }[] = [
   {
     title: "ก่อนน้ำมา",
@@ -109,12 +128,20 @@ export default async function PublicHomePage() {
               </p>
             </div>
           </div>
-          <Link href="/login" className="btn btn-secondary btn-sm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-              <path d="M15 3h4a1 1 0 011 1v16a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            เจ้าหน้าที่เข้าสู่ระบบ
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/register" className="btn btn-primary btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+                <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              สมัครใช้งาน
+            </Link>
+            <Link href="/login" className="btn btn-secondary btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
+                <path d="M15 3h4a1 1 0 011 1v16a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="hidden sm:inline">เข้าสู่ระบบ</span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -280,6 +307,62 @@ export default async function PublicHomePage() {
                 </ul>
               </article>
             ))}
+          </div>
+        </section>
+
+        {/* ร่วมเป็นเครือข่าย — ทางเข้าสมัครใช้งานระบบ (มาสคอตอยู่ได้: หน้า Public) */}
+        <section
+          aria-labelledby="join-title"
+          className="animate-slide-up relative mt-10 overflow-hidden rounded-3xl band-brand px-6 py-8 md:px-10 md:py-10"
+        >
+          <div className="relative z-10 flex flex-col gap-8 md:flex-row md:items-center md:gap-10">
+            <div className="min-w-0 flex-1">
+              <span className="badge bg-white/20 text-white">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                เปิดรับสมาชิกเครือข่าย
+              </span>
+              <h2 id="join-title" className="mt-3 text-2xl font-bold leading-snug text-white md:text-3xl">
+                ร่วมเป็นส่วนหนึ่งของเครือข่ายสองคลอง–ควนลัง
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-brand-50">
+                สมัครขอเข้าใช้งานระบบตามบทบาทของคุณ เมื่อผู้ดูแลระบบอนุมัติแล้ว
+                จึงเข้าใช้งานได้ — ช่วยกันเก็บและดูแลข้อมูลเพื่อเตรียมพร้อมรับมืออุทกภัย
+              </p>
+
+              <ul className="mt-5 grid gap-3 sm:grid-cols-3">
+                {JOIN_ROLES.map((r) => (
+                  <li key={r.title} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
+                        <path d={r.icon} strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    <p className="mt-2.5 text-sm font-bold text-white">{r.title}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-brand-100">{r.desc}</p>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link href="/register" className="btn btn-accent btn-lg">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
+                    <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  สมัครใช้งานระบบ
+                </Link>
+                <Link
+                  href="/login"
+                  className="btn btn-lg border-2 border-white/40 bg-white/10 text-white hover:bg-white/20"
+                >
+                  มีบัญชีอยู่แล้ว เข้าสู่ระบบ
+                </Link>
+              </div>
+            </div>
+            <div className="animate-drop-in hidden shrink-0 md:block">
+              <Mascot role="rescue" mood="happy" motion="float" size={132} decorative className="drop-shadow-lg" />
+            </div>
           </div>
         </section>
 
