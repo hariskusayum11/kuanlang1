@@ -110,7 +110,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
         organization: "ม.ทักษิณ",
       }),
     );
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, verificationEmailSent: true });
 
     const user = await prisma.user.findUnique({
       where: { email: EMAILS.applicant1 },
@@ -209,6 +209,16 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
       where: { userId: applicant.id },
     });
 
+    // ผู้สมัครใหม่ต้องยืนยันอีเมลก่อน แอดมินจึงอนุมัติได้
+    expect(await approveRegistration(adminCtx, request.id)).toEqual({
+      ok: false,
+      reason: "EMAIL_NOT_VERIFIED",
+    });
+    await prisma.user.update({
+      where: { id: applicant.id },
+      data: { emailVerified: true },
+    });
+
     const result = await approveRegistration(adminCtx, request.id);
     expect(result).toEqual({ ok: true });
 
@@ -269,7 +279,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
     const submitted = await submitRegistration(
       makeInput(EMAILS.applicant2, { requestedRole: UserRoleEnum.VOLUNTEER }),
     );
-    expect(submitted).toEqual({ ok: true });
+    expect(submitted).toEqual({ ok: true, verificationEmailSent: true });
 
     const applicant = await prisma.user.findUniqueOrThrow({
       where: { email: EMAILS.applicant2 },
@@ -342,12 +352,16 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
 
   it("race: สองแอดมินอนุมัติพร้อมกัน → สำเร็จคนเดียวเท่านั้น", async () => {
     const submitted = await submitRegistration(makeInput(EMAILS.race));
-    expect(submitted).toEqual({ ok: true });
+    expect(submitted).toEqual({ ok: true, verificationEmailSent: true });
     const applicant = await prisma.user.findUniqueOrThrow({
       where: { email: EMAILS.race },
     });
     const request = await prisma.registrationRequest.findUniqueOrThrow({
       where: { userId: applicant.id },
+    });
+    await prisma.user.update({
+      where: { id: applicant.id },
+      data: { emailVerified: true },
     });
 
     const [r1, r2] = await Promise.all([

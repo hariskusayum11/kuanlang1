@@ -5,6 +5,11 @@ import { nextCookies } from "better-auth/next-js";
 import { AuditAction } from "@prisma/client";
 import { prisma } from "./prisma";
 import { writeAuditLog } from "./audit/log";
+import {
+  passwordResetEmail,
+  sendSystemEmail,
+  verificationEmail,
+} from "./email/smtp";
 
 // Better Auth server instance — โครงสร้าง field ตรงกับ prisma/schema.prisma (Gate: auth-gate/)
 // RBAC ใช้ตาราง UserRole แยกต่างหาก — ไม่ใช้ admin plugin (ยังไม่ audit role flow)
@@ -20,6 +25,41 @@ export const auth = betterAuth({
     disableSignUp: false,
     // ห้าม auto-login หลังสมัคร — ผู้สมัครต้องรอการอนุมัติก่อนเสมอ
     autoSignIn: false,
+    sendResetPassword: async ({ user, url }) => {
+      const message = passwordResetEmail(user.name, url);
+      await sendSystemEmail({ to: user.email, ...message });
+    },
+    resetPasswordTokenExpiresIn: 60 * 30,
+    revokeSessionsOnPasswordReset: true,
+    onPasswordReset: async ({ user }) => {
+      await writeAuditLog({
+        userId: user.id,
+        action: AuditAction.UPDATE,
+        entityType: "UserCredential",
+        entityId: user.id,
+        reason: "password-reset",
+      });
+    },
+  },
+  emailVerification: {
+    // ส่งหลังสร้าง RegistrationRequest สำเร็จใน submitRegistration เพื่อไม่ให้เกิด orphan user
+    // หาก SMTP ขัดข้องระหว่าง Better Auth สร้างบัญชี
+    sendOnSignUp: false,
+    autoSignInAfterVerification: false,
+    expiresIn: 60 * 60 * 24,
+    sendVerificationEmail: async ({ user, url }) => {
+      const message = verificationEmail(user.name, url);
+      await sendSystemEmail({ to: user.email, ...message });
+    },
+    afterEmailVerification: async (user) => {
+      await writeAuditLog({
+        userId: user.id,
+        action: AuditAction.VERIFY,
+        entityType: "UserEmail",
+        entityId: user.id,
+        reason: "email-verification",
+      });
+    },
   },
   // นโยบาย Session (ระดับ global) — ระบบมีข้อมูลสุขภาพ จึงไม่ใช้ค่าเริ่มต้น 7 วัน
   // หมายเหตุ: Better Auth 1.6.x รองรับเฉพาะอายุ session ระดับ global เท่านั้น
@@ -52,6 +92,8 @@ export const auth = betterAuth({
     customRules: {
       "/sign-in/email": { window: 60, max: 10 }, // ได้ 10 ครั้ง/นาที ต่อ IP
       "/sign-up/email": { window: 3600, max: 10 }, // สมัครได้ 10 ครั้ง/ชม. ต่อ IP — กัน bot สแปมคำขอ
+      "/request-password-reset": { window: 900, max: 5 },
+      "/send-verification-email": { window: 3600, max: 5 },
     },
   },
   // Server Actions (เช่น autosave/ต่ออายุ lock ระหว่างกรอก) ต้องส่ง Set-Cookie

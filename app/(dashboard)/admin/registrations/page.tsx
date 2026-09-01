@@ -166,6 +166,9 @@ function PendingRow({ request: r }: { request: RegistrationRequestRow }) {
           </span>
           <span className="font-bold text-slate-900">{r.user.name}</span>
           <span className="badge badge-brand">{roleLabel(r.requestedRole)}</span>
+          <span className={`badge ${r.user.emailVerified ? "badge-success" : "badge-warning"}`}>
+            {r.user.emailVerified ? "ยืนยันอีเมลแล้ว" : "ยังไม่ยืนยันอีเมล"}
+          </span>
           {r.community && (
             <span className="badge badge-neutral">{r.community.nameTh}</span>
           )}

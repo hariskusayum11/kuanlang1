@@ -37,6 +37,7 @@ export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -68,6 +69,7 @@ export function RegisterForm() {
       setSubmitting(false);
       return;
     }
+    setVerificationEmailSent(result.verificationEmailSent);
     setSubmitted(true);
   }
 
@@ -80,10 +82,17 @@ export function RegisterForm() {
         <div>
           <h3 className="text-xl font-bold text-slate-900">ส่งคำขอลงทะเบียนแล้ว</h3>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
-            ผู้ดูแลระบบจะตรวจสอบและอนุมัติคำขอของคุณ
-            เมื่อได้รับการอนุมัติแล้ว คุณสามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ตั้งไว้ได้ทันที
+            {verificationEmailSent
+              ? "ระบบส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว กรุณายืนยันอีเมลก่อน จากนั้นรอผู้ดูแลระบบตรวจสอบและอนุมัติบัญชี"
+              : "สร้างคำขอสำเร็จ แต่ยังส่งอีเมลยืนยันไม่ได้ กรุณากดส่งลิงก์อีกครั้งด้านล่าง หรือติดต่อผู้ดูแลระบบ"}
           </p>
         </div>
+        <Link
+          href={`/verify-email?email=${encodeURIComponent(form.email)}`}
+          className="btn btn-secondary btn-lg w-full"
+        >
+          ไม่ได้รับอีเมล / ส่งลิงก์อีกครั้ง
+        </Link>
         <Link href="/login" className="btn btn-accent btn-lg w-full">
           ไปหน้าเข้าสู่ระบบ
         </Link>

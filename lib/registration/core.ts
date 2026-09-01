@@ -15,7 +15,7 @@ import type { AuthorizationContext } from "../authz/types";
 import { REQUESTABLE_ROLES, type RegistrationInput } from "./validation";
 
 export type SubmitRegistrationResult =
-  | { ok: true }
+  | { ok: true; verificationEmailSent: boolean }
   | { ok: false; reason: "EMAIL_TAKEN" | "INVALID_COMMUNITY" | "ERROR" };
 
 /**
@@ -48,7 +48,11 @@ export async function submitRegistration(
   let userId: string;
   try {
     const result = await auth.api.signUpEmail({
-      body: { email: input.email, password: input.password, name: fullName },
+      body: {
+        email: input.email,
+        password: input.password,
+        name: fullName,
+      },
     });
     userId = result.user.id;
   } catch {
@@ -84,7 +88,19 @@ export async function submitRegistration(
     entityType: "RegistrationRequest",
     entityId: userId,
   });
-  return { ok: true };
+
+  // สร้าง User + RegistrationRequest ให้สำเร็จก่อน แล้วค่อยส่งอีเมล
+  // SMTP ล่มต้องไม่ย้อนกลับไปทิ้งบัญชี orphan หรือทำให้คำขอหาย ผู้สมัครกดส่งซ้ำได้ภายหลัง
+  let verificationEmailSent = false;
+  try {
+    await auth.api.sendVerificationEmail({
+      body: { email: input.email, callbackURL: "/email-verified" },
+    });
+    verificationEmailSent = true;
+  } catch {
+    // ไม่เปิดเผยรายละเอียด SMTP ต่อหน้าสาธารณะ และไม่ลบคำขอที่สร้างสำเร็จแล้ว
+  }
+  return { ok: true, verificationEmailSent };
 }
 
 export interface RegistrationRequestRow {
@@ -96,7 +112,7 @@ export interface RegistrationRequestRow {
   rejectReason: string | null;
   createdAt: Date;
   decidedAt: Date | null;
-  user: { name: string; email: string; phone: string | null };
+  user: { name: string; email: string; emailVerified: boolean; phone: string | null };
   community: { id: string; nameTh: string } | null;
   decidedBy: { name: string } | null;
 }
@@ -110,7 +126,7 @@ const REQUEST_SELECT = {
   rejectReason: true,
   createdAt: true,
   decidedAt: true,
-  user: { select: { name: true, email: true, phone: true } },
+  user: { select: { name: true, email: true, emailVerified: true, phone: true } },
   community: { select: { id: true, nameTh: true } },
   decidedBy: { select: { name: true } },
 } as const;
@@ -153,7 +169,14 @@ export async function listRegistrationRequests(ctx: AuthorizationContext): Promi
 
 export type DecideRegistrationResult =
   | { ok: true }
-  | { ok: false; reason: "FORBIDDEN" | "NOT_FOUND_OR_DECIDED" | "INVALID_ROLE" };
+  | {
+      ok: false;
+      reason:
+        | "FORBIDDEN"
+        | "NOT_FOUND_OR_DECIDED"
+        | "INVALID_ROLE"
+        | "EMAIL_NOT_VERIFIED";
+    };
 
 /**
  * กลับคำขอที่ถูกปฏิเสธ/ยกเลิกมาเป็น "รอตรวจ" (PENDING) อีกครั้ง
@@ -297,7 +320,14 @@ export async function approveRegistration(
 
   const request = await prisma.registrationRequest.findUnique({
     where: { id: requestId },
-    select: { id: true, userId: true, requestedRole: true, communityId: true, status: true },
+    select: {
+      id: true,
+      userId: true,
+      requestedRole: true,
+      communityId: true,
+      status: true,
+      user: { select: { emailVerified: true } },
+    },
   });
   if (!request || request.status !== RegistrationRequestStatus.PENDING) {
     return { ok: false, reason: "NOT_FOUND_OR_DECIDED" };
@@ -305,6 +335,9 @@ export async function approveRegistration(
   // Defense-in-depth: ต่อให้ row ถูกเขียนด้วยช่องทางอื่น ก็ห้ามอนุมัติ role นอก whitelist
   if (!(REQUESTABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
     return { ok: false, reason: "INVALID_ROLE" };
+  }
+  if (!request.user.emailVerified) {
+    return { ok: false, reason: "EMAIL_NOT_VERIFIED" };
   }
 
   const decidedAt = new Date();

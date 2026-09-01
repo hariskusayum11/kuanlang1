@@ -70,6 +70,8 @@ mkdir -p ~/skl && cd ~/skl
 | `DATABASE_URL` | ใส่รหัสเดียวกับ `POSTGRES_PASSWORD` · host ต้องเป็น `db` ไม่ใช่ localhost |
 | `BETTER_AUTH_SECRET` | ค่าจากขั้นที่ 1 |
 | `BETTER_AUTH_URL` | `http://<VPS_IP>:3000` (ต้องตรงกับ URL ที่เปิดจริง) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | ค่าจากผู้ให้บริการอีเมล (`587` + `false` สำหรับ STARTTLS หรือ `465` + `true`) |
+| `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | บัญชี SMTP และชื่อผู้ส่งสำหรับยืนยันอีเมล/ตั้งรหัสผ่านใหม่ |
 | `DATA_ENCRYPTION_KEY` / `SEARCH_HASH_KEY` | ค่าจากขั้นที่ 1 |
 | `SEED_ON_START` | `true` (รอบแรก — seed ข้อมูลหลักให้อัตโนมัติ) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | ผู้ดูแลระบบคนแรก (รหัส ≥ 12 ตัว) |

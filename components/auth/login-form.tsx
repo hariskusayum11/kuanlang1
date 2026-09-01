@@ -71,9 +71,12 @@ export function LoginForm() {
         />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor="password" className="label">
-          รหัสผ่าน
-        </label>
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor="password" className="label">รหัสผ่าน</label>
+          <a href="/forgot-password" className="text-sm font-semibold text-brand-600 hover:underline">
+            ลืมรหัสผ่าน?
+          </a>
+        </div>
         <div className="relative">
           <input
             id="password"

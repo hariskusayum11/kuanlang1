@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { AuditAction, PrismaClient, SheetStatus } from "@prisma/client";
 import { auth } from "../../lib/auth";
+import { createEmailVerificationToken } from "better-auth/api";
 import { fetchDashboardCounts } from "../../lib/dashboard/stats";
 
 // Integration tests — Authentication Foundation (Better Auth + local Dev DB)
@@ -17,6 +18,7 @@ const prisma = new PrismaClient();
 const FIXTURE_EMAIL = "test-auth-user@test.invalid";
 const FIXTURE_INACTIVE_EMAIL = "test-auth-inactive@test.invalid";
 const FIXTURE_PASSWORD = "Test.Auth.Password.01";
+const RESET_PASSWORD = "Test.Auth.Password.02";
 
 async function cleanupFixtures() {
   // ลบเฉพาะ fixture emails — Session/Account ลบตาม cascade (onDelete: Cascade)
@@ -119,6 +121,48 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
     expect(loginAudit?.entityId).toBeTruthy(); // = session id ที่เพิ่งสร้าง
     // Audit เป็น append-only + ไม่มี PII — เก็บแค่ metadata อ้างอิง
     expect(loginAudit?.changes).toBeNull();
+  });
+
+  it("ยืนยันอีเมล → ตั้ง emailVerified และเขียน Audit VERIFY", async () => {
+    const token = await createEmailVerificationToken(
+      process.env.BETTER_AUTH_SECRET!,
+      FIXTURE_EMAIL,
+      undefined,
+      60,
+    );
+    await auth.api.verifyEmail({ query: { token } });
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: FIXTURE_EMAIL } });
+    expect(user.emailVerified).toBe(true);
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { userId: user.id, action: AuditAction.VERIFY, entityType: "UserEmail" },
+      }),
+    ).not.toBeNull();
+  });
+
+  it("ลืมรหัสผ่าน → token ใช้ครั้งเดียว เปลี่ยนรหัส และล้าง session เดิม", async () => {
+    await auth.api.requestPasswordReset({
+      body: { email: FIXTURE_EMAIL, redirectTo: "/reset-password" },
+    });
+    const verification = await prisma.verification.findFirstOrThrow({
+      where: { identifier: { startsWith: "reset-password:" } },
+      orderBy: { createdAt: "desc" },
+    });
+    const token = verification.identifier.slice("reset-password:".length);
+
+    await auth.api.resetPassword({ body: { newPassword: RESET_PASSWORD, token } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: FIXTURE_EMAIL } });
+    expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0);
+    await expect(
+      auth.api.signInEmail({ body: { email: FIXTURE_EMAIL, password: FIXTURE_PASSWORD } }),
+    ).rejects.toThrow();
+    expect(
+      (await auth.api.signInEmail({ body: { email: FIXTURE_EMAIL, password: RESET_PASSWORD } })).user.email,
+    ).toBe(FIXTURE_EMAIL);
+    await expect(
+      auth.api.resetPassword({ body: { newPassword: FIXTURE_PASSWORD, token } }),
+    ).rejects.toThrow();
   });
 
   it("ผู้ใช้ inactive → signInEmail ถูกบล็อกโดย databaseHook (ไม่สร้าง session)", async () => {
