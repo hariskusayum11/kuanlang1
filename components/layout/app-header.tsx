@@ -55,17 +55,23 @@ export function AppHeader({ items, userName, userEmail }: Props) {
           </svg>
         </Link>
         <div className="h-6 w-px bg-slate-200" />
-        <div className="hidden text-right sm:block">
-          <p className="text-sm font-bold leading-tight text-slate-800">{userName}</p>
-          <p className="text-xs text-slate-500">{userEmail}</p>
-        </div>
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-alert-100 text-xs font-bold text-alert-700"
-          title={userName}
-          aria-hidden="true"
+        <Link
+          href="/profile"
+          title="โปรไฟล์ของฉัน"
+          className="flex items-center gap-3 rounded-2xl px-1.5 py-1 transition-colors hover:bg-slate-100"
         >
-          {initials(userName)}
-        </div>
+          <div className="hidden text-right sm:block">
+            <p className="text-sm font-bold leading-tight text-slate-800">{userName}</p>
+            <p className="text-xs text-slate-500">{userEmail}</p>
+          </div>
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-alert-100 text-xs font-bold text-alert-700"
+            title={userName}
+            aria-hidden="true"
+          >
+            {initials(userName)}
+          </div>
+        </Link>
         <div className="h-6 w-px bg-slate-200" />
         <LogoutButton />
       </div>
