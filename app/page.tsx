@@ -5,7 +5,9 @@ import { LogoMark } from "@/components/brand/logo-mark";
 import {
   getPublicStats,
   getPublicEmergencyContacts,
+  getPublicMapData,
 } from "@/lib/public/stats";
+import { PublicMap } from "@/components/public/public-map";
 
 // Public Home — เปิดได้โดยไม่ login (CLAUDE.md: Public Portal mobile-first)
 // แสดงเฉพาะ aggregate + ข้อมูลราชการ — ไม่มี PII / พิกัดรายบ้าน / Sheet ID
@@ -102,10 +104,12 @@ const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }
 ];
 
 export default async function PublicHomePage() {
-  const [stats, contacts] = await Promise.all([
+  const [stats, contacts, mapData] = await Promise.all([
     getPublicStats(),
     getPublicEmergencyContacts(),
+    getPublicMapData(),
   ]);
+  const hasMapPoints = mapData.communities.length + mapData.sites.length > 0;
 
   const updatedAt = stats.generatedAt.toLocaleString("th-TH", {
     dateStyle: "medium",
@@ -366,16 +370,38 @@ export default async function PublicHomePage() {
           </div>
         </section>
 
-        {/* แผนที่ — ยังไม่เปิดใช้ (ไม่แสดงข้อมูลจำลอง) */}
-        <section className="card-mist mt-10 flex flex-col items-center gap-3 px-5 py-10 text-center">
-          <Mascot role="field" mood="sleep" tone="sun" motion="float" size={84} decorative />
-          <h2 className="text-base font-bold text-slate-800">
-            แผนที่จุดพักพิงและพื้นที่เสี่ยง
-          </h2>
-          <p className="max-w-md text-xs leading-relaxed text-slate-600">
-            จะเปิดให้ใช้งานเมื่อการสำรวจและการตรวจสอบข้อมูลพื้นที่แล้วเสร็จ —
-            แผนที่สาธารณะจะแสดงเฉพาะข้อมูลภาพรวมและจุดสาธารณะ ไม่มีตำแหน่งรายบ้าน
-          </p>
+        {/* แผนที่สาธารณะ — จุดศูนย์กลางชุมชน + จุดพักพิง (aggregate เท่านั้น ไม่มีรายบ้าน) */}
+        <section aria-labelledby="map-title" className="mt-10">
+          <SectionTitle id="map-title" tone="mint" title="แผนที่ชุมชนและจุดพักพิง" />
+          {hasMapPoints ? (
+            <div className="card mt-4 overflow-hidden p-3">
+              <PublicMap communities={mapData.communities} sites={mapData.sites} />
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-2 py-3 text-xs font-medium text-slate-600">
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full border-2 border-white bg-brand-600 shadow" />
+                  จุดศูนย์กลางชุมชน (โดยประมาณ) · {mapData.communities.length.toLocaleString("th-TH")} แห่ง
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full border-2 border-white bg-alert-500 shadow" />
+                  จุดพักพิง / จุดอพยพ · {mapData.sites.length.toLocaleString("th-TH")} จุด
+                </span>
+              </div>
+              <p className="px-2 pb-1 text-[11px] leading-relaxed text-slate-400">
+                แผนที่แสดงเฉพาะข้อมูลภาพรวมและจุดสาธารณะ — ไม่มีตำแหน่งบ้านหรือข้อมูลรายบุคคล
+              </p>
+            </div>
+          ) : (
+            <div className="card-mist mt-4 flex flex-col items-center gap-3 px-5 py-10 text-center">
+              <Mascot role="field" mood="sleep" tone="sun" motion="float" size={84} decorative />
+              <h3 className="text-base font-bold text-slate-800">
+                กำลังรวบรวมข้อมูลจุดพักพิงและพื้นที่เสี่ยง
+              </h3>
+              <p className="max-w-md text-xs leading-relaxed text-slate-600">
+                แผนที่สาธารณะจะแสดงจุดศูนย์กลางชุมชนและจุดอพยพเมื่อข้อมูลพร้อม —
+                จะแสดงเฉพาะข้อมูลภาพรวม ไม่มีตำแหน่งรายบ้าน
+              </p>
+            </div>
+          )}
         </section>
       </main>
 
@@ -405,6 +431,14 @@ function SectionTitle({ id, title, tone }: { id: string; title: string; tone: To
   );
 }
 
+const TONE_ACCENT: Record<Tone, string> = {
+  brand: "bg-brand-500",
+  ink: "bg-ink-800",
+  alert: "bg-alert-500",
+  sun: "bg-sun-400",
+  mint: "bg-emerald-400",
+};
+
 function PublicStat({
   label,
   value,
@@ -420,22 +454,24 @@ function PublicStat({
 }) {
   const isZero = value === 0;
   return (
-    <div className="card p-4">
-      <span className={`${TONE_CHIP[tone]} chip-md`}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+    <div className="card card-interactive relative overflow-hidden p-5">
+      {/* แถบสีบนสุดตามโทน — ทำให้การ์ดเด่นและอ่านหมวดได้เร็ว */}
+      <span className={`absolute inset-x-0 top-0 h-1.5 ${TONE_ACCENT[tone]}`} aria-hidden="true" />
+      <span className={`${TONE_CHIP[tone]} chip-lg`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-7 w-7">
           <path d={icon} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
-      <p className="mt-3 text-xs font-semibold leading-snug text-slate-500">{label}</p>
       <p
-        className={`mt-1 text-[28px] font-bold leading-none tabular-nums ${
+        className={`mt-4 text-[38px] font-bold leading-none tabular-nums ${
           isZero && zeroNote ? "text-slate-300" : TONE_VALUE[tone]
         }`}
       >
         {value.toLocaleString("th-TH")}
       </p>
+      <p className="mt-2 text-[13px] font-semibold leading-snug text-slate-600">{label}</p>
       {isZero && zeroNote && (
-        <p className="mt-1 text-[11px] text-slate-500">{zeroNote}</p>
+        <p className="mt-1 text-[11px] text-slate-400">{zeroNote}</p>
       )}
     </div>
   );

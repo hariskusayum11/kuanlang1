@@ -67,6 +67,67 @@ export interface PublicEmergencyContact {
   isNationwide: boolean;
 }
 
+export interface PublicMapCommunity {
+  id: string;
+  nameTh: string;
+  lat: number;
+  lng: number;
+}
+
+export interface PublicMapSite {
+  id: string;
+  name: string;
+  type: string | null;
+  lat: number;
+  lng: number;
+}
+
+export interface PublicMapData {
+  communities: PublicMapCommunity[];
+  sites: PublicMapSite[];
+}
+
+/**
+ * ข้อมูลแผนที่สาธารณะ — เฉพาะ aggregate/สถานที่สาธารณะเท่านั้น
+ *  - ชุมชน: จุดศูนย์กลางโดยประมาณ (centroid) ไม่ใช่พิกัดรายบ้าน
+ *  - จุดอพยพ/พักพิง: ชื่อ + ประเภท + พิกัด (ไม่คืนชื่อ/เบอร์ผู้ประสานงาน = ไม่มี PII)
+ */
+export async function getPublicMapData(): Promise<PublicMapData> {
+  const [communities, sites] = await Promise.all([
+    prisma.community.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        centroidLat: { not: null },
+        centroidLng: { not: null },
+      },
+      select: { id: true, nameTh: true, centroidLat: true, centroidLng: true },
+      orderBy: { code: "asc" },
+    }),
+    prisma.evacuationSite.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, type: true, latitude: true, longitude: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  return {
+    communities: communities.map((c) => ({
+      id: c.id,
+      nameTh: c.nameTh,
+      lat: Number(c.centroidLat),
+      lng: Number(c.centroidLng),
+    })),
+    sites: sites.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      lat: Number(s.latitude),
+      lng: Number(s.longitude),
+    })),
+  };
+}
+
 /** เบอร์ติดต่อฉุกเฉินราชการ (Master Data ที่เผยแพร่ได้ — ไม่ใช่ข้อมูลบุคคล) */
 export async function getPublicEmergencyContacts(): Promise<
   PublicEmergencyContact[]

@@ -301,6 +301,26 @@ async function main() {
     });
   }
 
+  // =========================================================================
+  // 12. เบอร์ติดต่อฉุกเฉินระดับชาติ (Master Data สาธารณะ — ไม่ใช่ข้อมูลบุคคล)
+  //     สายด่วนราชการที่ถูกต้องทั่วประเทศ — เทศบาล/ชุมชนเพิ่มเบอร์ท้องถิ่นเองภายหลังได้
+  //     category ต้องตรงกับ CATEGORY_LABEL ในหน้า public (POLICE/MEDICAL/DISASTER/MUNICIPALITY)
+  // =========================================================================
+  const emergencyContacts = [
+    { code: "POLICE_191", nameTh: "แจ้งเหตุด่วน เหตุร้าย (ตำรวจ)", phone: "191", category: "POLICE", sortOrder: 1 },
+    { code: "EMS_1669", nameTh: "เจ็บป่วยฉุกเฉิน (การแพทย์ฉุกเฉิน)", phone: "1669", category: "MEDICAL", sortOrder: 2 },
+    { code: "FIRE_199", nameTh: "แจ้งไฟไหม้ / กู้ภัย (ดับเพลิง)", phone: "199", category: "DISASTER", sortOrder: 3 },
+    { code: "PDMA_1784", nameTh: "สายด่วนสาธารณภัย (ปภ.)", phone: "1784", category: "DISASTER", sortOrder: 4 },
+    { code: "DISASTER_WARN_192", nameTh: "ศูนย์เตือนภัยพิบัติแห่งชาติ", phone: "192", category: "DISASTER", sortOrder: 5 },
+  ];
+  for (const ec of emergencyContacts) {
+    await prisma.emergencyContact.upsert({
+      where: { code: ec.code },
+      update: { nameTh: ec.nameTh, phone: ec.phone, category: ec.category, sortOrder: ec.sortOrder, isNationwide: true, isActive: true },
+      create: { code: ec.code, nameTh: ec.nameTh, phone: ec.phone, category: ec.category, sortOrder: ec.sortOrder, isNationwide: true },
+    });
+  }
+
   console.log("✅ Production Seed เสร็จสิ้น");
   console.log("   - จังหวัดสงขลา(90)/อำเภอหาดใหญ่(9011)/ตำบลหาดใหญ่(901101)/ตำบลควนลัง(901102)");
   console.log("   - ชุมชน 5 แห่ง: TK01/PM01/KS01(2 ตำบล)/PW01/NK01 — totalHouseholds=null");
