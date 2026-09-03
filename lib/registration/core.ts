@@ -97,8 +97,11 @@ export async function submitRegistration(
       body: { email: input.email, callbackURL: "/email-verified" },
     });
     verificationEmailSent = true;
-  } catch {
+  } catch (error) {
     // ไม่เปิดเผยรายละเอียด SMTP ต่อหน้าสาธารณะ และไม่ลบคำขอที่สร้างสำเร็จแล้ว
+    // แต่ log ฝั่งเซิร์ฟเวอร์เพื่อตรวจสาเหตุที่ส่งไม่ออก — สแกนอีเมลออกก่อน (กัน PII รั่วใน log)
+    const detail = (error instanceof Error ? error.message : String(error)).replace(/[\w.+-]+@[\w.-]+/g, "[email]");
+    console.error("[registration] verification email not sent:", detail);
   }
   return { ok: true, verificationEmailSent };
 }
