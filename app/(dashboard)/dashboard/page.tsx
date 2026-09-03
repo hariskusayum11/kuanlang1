@@ -14,6 +14,8 @@ import type { DashboardCounts } from "@/lib/dashboard/stats";
 import { fetchQuestionnaireAnalytics, type NamedCount } from "@/lib/dashboard/questionnaire-analytics";
 import { dateRangeError, type HouseholdAnalyticsFilters, type SurveyStatusFilter } from "@/lib/household/trusted-where";
 import { ThaiDateRangeFields } from "@/components/report/thai-date-range-filter";
+import { DetailBreakdownButton } from "@/components/report/detail-breakdown";
+import { prisma } from "@/lib/prisma";
 import { getSystemPreferences } from "@/lib/settings/core";
 import { floodDepthMeters } from "@/domain/flood/depth";
 import { TRIAGE_EXAMPLE } from "@/domain/triage";
@@ -95,12 +97,25 @@ export default async function DashboardPage({
     status,
   };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
-  const [counts, coverage, analytics] = await Promise.all([
+  // ปุ่ม "ดูรายละเอียด" ของ "อื่นๆ" (ข้อ 6) — เฉพาะประเภทที่ต้องระบุรายละเอียด + สิทธิ์สุขภาพ
+  const canViewDetail = hasPermission(ctx, PERMISSIONS.MEDICAL_DASHBOARD_VIEW);
+  const [counts, coverage, analytics, detailTypes] = await Promise.all([
     fetchScopedDashboardCounts(scope),
     fetchCommunityCoverage(scope),
     fetchQuestionnaireAnalytics(scope, filters),
+    canViewDetail
+      ? prisma.vulnerabilityType.findMany({ where: { requiresDetail: true }, select: { id: true } })
+      : Promise.resolve([]),
   ]);
   const cards = toStatCards(counts);
+  const detailTypeIds = new Set(detailTypes.map((t) => t.id));
+  const detailFilterParams = new URLSearchParams();
+  if (filters.communityId) detailFilterParams.set("community", filters.communityId);
+  if (filters.tambonId) detailFilterParams.set("tambon", filters.tambonId);
+  if (filters.dateFrom) detailFilterParams.set("from", filters.dateFrom);
+  if (filters.dateTo) detailFilterParams.set("to", filters.dateTo);
+  detailFilterParams.set("status", status);
+  const detailFilterQuery = detailFilterParams.toString();
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-7 animate-fade-in">
@@ -204,7 +219,16 @@ export default async function DashboardPage({
           </p>
           <div className="mt-4 border-t-2 border-slate-100 pt-4">
             <h4 className="mb-3 text-xs font-bold text-slate-700">ลักษณะความเปราะบางตามแบบสอบถาม</h4>
-            <BarList rows={analytics.vulnerability.types} tone="alert" empty="ยังไม่มีการระบุลักษณะความเปราะบาง" />
+            <BarList
+              rows={analytics.vulnerability.types}
+              tone="alert"
+              empty="ยังไม่มีการระบุลักษณะความเปราะบาง"
+              rowAction={
+                canViewDetail
+                  ? (row) => (detailTypeIds.has(row.key) ? <DetailBreakdownButton typeId={row.key} filterQuery={detailFilterQuery} /> : null)
+                  : undefined
+              }
+            />
             {analytics.vulnerability.unclassifiedPeople > 0 ? (
               <p className="mt-3 text-xs font-semibold text-sun-800">
                 ยังไม่ระบุประเภท {analytics.vulnerability.unclassifiedPeople.toLocaleString("th-TH")} คน
@@ -571,7 +595,7 @@ function AnalyticsPanel({ title, description, children }: { title: string; descr
   );
 }
 
-function BarList({ rows, tone, empty = "ยังไม่มีข้อมูล" }: { rows: NamedCount[]; tone: Tone; empty?: string }) {
+function BarList({ rows, tone, empty = "ยังไม่มีข้อมูล", rowAction }: { rows: NamedCount[]; tone: Tone; empty?: string; rowAction?: (row: NamedCount) => React.ReactNode }) {
   if (rows.length === 0 || rows.every((row) => row.count === 0)) {
     return <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">{empty}</p>;
   }
@@ -582,7 +606,10 @@ function BarList({ rows, tone, empty = "ยังไม่มีข้อมู�
         <div key={row.key}>
           <div className="mb-1 flex items-center justify-between gap-3 text-xs">
             <span className="min-w-0 break-words font-semibold leading-5 text-slate-600">{row.label}</span>
-            <span className="shrink-0 font-bold tabular-nums text-slate-800">{row.count.toLocaleString("th-TH")}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              {rowAction ? rowAction(row) : null}
+              <span className="font-bold tabular-nums text-slate-800">{row.count.toLocaleString("th-TH")}</span>
+            </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <div className={`h-full rounded-full ${BAR[tone]}`} style={{ width: `${Math.max(2, (row.count / max) * 100)}%` }} />
