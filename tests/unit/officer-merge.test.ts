@@ -42,6 +42,9 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
       ...ROLE_PERMISSIONS[UserRoleEnum.VERIFIER],
       PERMISSIONS.HOUSEHOLD_VIEW, // ดูข้อมูลครัวเรือนที่คีย์แล้ว (OFFICER เดิมมีอยู่)
       PERMISSIONS.MAP_VIEW, // ดูแผนที่ข้อมูลสำรวจเพื่อปฏิบัติงานในพื้นที่
+      // Owner Decision เฟส 1: ดู/ส่งออก Excel รายชื่อรายกลุ่ม (กลุ่มทั่วไป — ไม่ใช่ข้อมูลสุขภาพ)
+      // กลุ่มสุขภาพยังจำกัดที่ MEDICAL_REPORT_EXPORT (ADMIN/EXECUTIVE) เท่านั้น
+      PERMISSIONS.REPORT_SEGMENT_EXPORT,
     ]);
     expect([...officer].sort()).toEqual([...expected].sort());
   });

@@ -23,6 +23,8 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.MAP_VIEW,
     PERMISSIONS.VERIFICATION_VIEW,
     PERMISSIONS.REPORT_VIEW,
+    // ดูรายชื่อ + ส่งออก Excel รายกลุ่ม (กลุ่มทั่วไป) — กลุ่มสุขภาพยังจำกัดที่ EXECUTIVE/ADMIN
+    PERMISSIONS.REPORT_SEGMENT_EXPORT,
   ],
   [UserRoleEnum.COORDINATOR]: [
     PERMISSIONS.DASHBOARD_VIEW,

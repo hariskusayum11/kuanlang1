@@ -1,5 +1,6 @@
 import { PageHero, SectionTitle } from "@/components/layout/page-hero";
 import { ReportActions } from "@/components/report/report-actions";
+import { SegmentDrilldown } from "@/components/report/segment-drilldown";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { hasPermission } from "@/lib/authz/access";
@@ -44,6 +45,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   if (filters.dateTo) personalParams.set("to", filters.dateTo);
   const personalHref = `/reports/personal-export${personalParams.toString() ? `?${personalParams}` : ""}`;
   const triageTotal = Object.values(report.triage).reduce((sum, value) => sum + value, 0);
+
+  // Drill-down (ข้อ 3/7): กดตัวเลข → รายชื่อ → Excel เฉพาะกลุ่ม · เคารพตัวกรองเดียวกับรายงาน
+  // health → เฉพาะผู้มี MEDICAL_REPORT_EXPORT (ADMIN/ผู้บริหาร) · general → REPORT_SEGMENT_EXPORT (ADMIN/OFFICER)
+  const segmentQuery = exportParams.toString();
+  const canHealthSegment = hasPermission(ctx, PERMISSIONS.MEDICAL_REPORT_EXPORT);
+  const canGeneralSegment = hasPermission(ctx, PERMISSIONS.REPORT_SEGMENT_EXPORT);
+  const drill = (segmentId: string, health: boolean, node: React.ReactNode) =>
+    (health ? canHealthSegment : canGeneralSegment) ? (
+      <SegmentDrilldown segmentId={segmentId} filterQuery={segmentQuery}>
+        {node}
+      </SegmentDrilldown>
+    ) : (
+      node
+    );
 
   return (
     <div className="w-full space-y-7 animate-fade-in print:space-y-4">
@@ -92,22 +107,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       <section>
         <SectionTitle title="ภาพรวมที่ต้องใช้ตัดสินใจ" />
         <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-          <MetricCard label="ครัวเรือน" value={report.summary.households} unit="ครัวเรือน" tone="brand" />
+          {drill("households", false, <MetricCard label="ครัวเรือน" value={report.summary.households} unit="ครัวเรือน" tone="brand" />)}
           <MetricCard label="ประชากร" value={report.summary.people} unit="คน" tone="brand" />
-          <MetricCard label="กลุ่มเปราะบาง" value={report.summary.vulnerablePeople} unit="คน" tone="alert" />
-          <MetricCard label="กลุ่มวิกฤต" value={report.triage.P1} unit="คน" tone="alert" />
-          <MetricCard label="ต้องการความช่วยเหลือ" value={report.summary.assistancePeople} unit="คน" tone="sun" />
-          <MetricCard label="ไม่มีชุดยังชีพ" value={report.flood.withoutSurvivalKit} unit="ครัวเรือน" tone="sun" />
+          {drill("vulnerable-people", true, <MetricCard label="กลุ่มเปราะบาง" value={report.summary.vulnerablePeople} unit="คน" tone="alert" />)}
+          {drill("triage:P1", true, <MetricCard label="กลุ่มวิกฤต" value={report.triage.P1} unit="คน" tone="alert" />)}
+          {drill("assistance-households", false, <MetricCard label="ต้องการความช่วยเหลือ" value={report.summary.assistancePeople} unit="คน" tone="sun" />)}
+          {drill("without-kit", false, <MetricCard label="ไม่มีชุดยังชีพ" value={report.flood.withoutSurvivalKit} unit="ครัวเรือน" tone="sun" />)}
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ReportSection title="กลุ่มเปราะบางและระดับเร่งด่วน" tone="alert">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <TriageMetric label="วิกฤต" example={TRIAGE_EXAMPLE.P1} value={report.triage.P1} tone="text-red-700" />
-            <TriageMetric label="เร่งด่วน" example={TRIAGE_EXAMPLE.P2} value={report.triage.P2} tone="text-orange-700" />
-            <TriageMetric label="เฝ้าระวัง" example={TRIAGE_EXAMPLE.P3} value={report.triage.P3} tone="text-amber-700" />
-            <MiniMetric label="ยังไม่ประเมิน" value={report.triage.UNASSESSED} tone="text-slate-600" />
+            {drill("triage:P1", true, <TriageMetric label="วิกฤต" example={TRIAGE_EXAMPLE.P1} value={report.triage.P1} tone="text-red-700" />)}
+            {drill("triage:P2", true, <TriageMetric label="เร่งด่วน" example={TRIAGE_EXAMPLE.P2} value={report.triage.P2} tone="text-orange-700" />)}
+            {drill("triage:P3", true, <TriageMetric label="เฝ้าระวัง" example={TRIAGE_EXAMPLE.P3} value={report.triage.P3} tone="text-amber-700" />)}
+            {drill("triage:UNASSESSED", true, <MiniMetric label="ยังไม่ประเมิน" value={report.triage.UNASSESSED} tone="text-slate-600" />)}
           </div>
           <p className="mt-4 text-sm text-slate-500">
             พบกลุ่มเปราะบาง {format(report.summary.vulnerablePeople)} คน ใน {format(report.summary.vulnerableHouseholds)} ครัวเรือน
@@ -117,50 +132,81 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
         <ReportSection title="สถานการณ์น้ำท่วมและความพร้อม" tone="sun">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <MiniMetric label="เคยน้ำท่วม" value={report.flood.floodedHouseholds} unit="ครัวเรือน" />
+            {drill("flooded", false, <MiniMetric label="เคยน้ำท่วม" value={report.flood.floodedHouseholds} unit="ครัวเรือน" />)}
             <MiniMetric label="ระดับน้ำเฉลี่ย" value={floodDepthMeters(report.flood.averageDepthCm) ?? 0} unit="เมตร" />
             <MiniMetric label="ระดับน้ำสูงสุด" value={floodDepthMeters(report.flood.maximumDepthCm) ?? 0} unit="เมตร" />
             <MiniMetric label="ท่วมนานเฉลี่ย" value={round(report.flood.averageDurationDays)} unit="วัน" />
-            <MiniMetric label="ไม่มีชุดยังชีพ" value={report.flood.withoutSurvivalKit} unit="ครัวเรือน" />
-            <MiniMetric label="ไม่มีทรัพยากร" value={report.flood.withoutResources} unit="ครัวเรือน" />
+            {drill("without-kit", false, <MiniMetric label="ไม่มีชุดยังชีพ" value={report.flood.withoutSurvivalKit} unit="ครัวเรือน" />)}
+            {drill("without-resources", false, <MiniMetric label="ไม่มีทรัพยากร" value={report.flood.withoutResources} unit="ครัวเรือน" />)}
           </div>
         </ReportSection>
       </div>
 
-      <ReportSection title="ความต้องการความช่วยเหลือ" tone="alert">
-        <DataTable
-          empty="ยังไม่มีการระบุความต้องการในขอบเขตนี้"
-          headers={["ประเภทความช่วยเหลือ", "ครัวเรือน", "จำนวนคน"]}
-          rows={report.assistance.map((item) => [item.label, format(item.count), format(item.people ?? 0)])}
+      <ReportSection title="ลักษณะความเปราะบางตามแบบสอบถาม" tone="alert">
+        <ListGroup
+          title="แยกตามลักษณะ — กดเพื่อดูรายชื่อ (รวม “อื่นๆ” ว่าคืออะไร)"
+          items={report.vulnerability.types}
+          drillWrap={(item, node) => drill(`vuln:${item.key}`, true, node)}
         />
+        {report.vulnerability.unclassifiedPeople > 0 ? (
+          <p className="mt-3 text-xs font-semibold text-sun-800">
+            ยังไม่ระบุประเภท {format(report.vulnerability.unclassifiedPeople)} คน
+          </p>
+        ) : null}
+        <p className="mt-2 text-[11px] leading-5 text-slate-400">
+          หนึ่งคนเลือกได้มากกว่าหนึ่งประเภท ยอดส่วนนี้จึงอาจรวมเกินจำนวนบุคคล · แท่ง “อื่นๆ” กดเพื่อดูว่าคืออะไร
+        </p>
+      </ReportSection>
+
+      <ReportSection title="ความต้องการความช่วยเหลือ" tone="alert">
+        {report.assistance.length ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {report.assistance.map((item) => (
+              <div key={item.key}>
+                {drill(
+                  `assistance:${item.key}`,
+                  false,
+                  <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                    <span>{item.label}</span>
+                    <strong className="tabular-nums text-brand-700">
+                      {format(item.count)} ครัวเรือน · {format(item.people ?? 0)} คน
+                    </strong>
+                  </div>,
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-5 text-center text-sm text-slate-400">ยังไม่มีการระบุความต้องการในขอบเขตนี้</p>
+        )}
       </ReportSection>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ReportSection title="การอพยพและช่องทางสื่อสาร">
-          <ListGroup title="ยานพาหนะที่ใช้อพยพ" items={report.preparedness.vehicles} />
-          <ListGroup title="ช่องทางรับข่าวสาร" items={report.preparedness.alertChannels} />
+          <ListGroup title="ยานพาหนะที่ใช้อพยพ" items={report.preparedness.vehicles} drillWrap={(item, node) => drill(`vehicle:${item.key}`, false, node)} />
+          <ListGroup title="ช่องทางรับข่าวสาร" items={report.preparedness.alertChannels} drillWrap={(item, node) => drill(`alert:${item.key}`, false, node)} />
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <MiniMetric label="ใช้สมาร์ตโฟน" value={report.preparedness.smartphoneHouseholds} unit="ครัวเรือน" />
-            <MiniMetric label="สแกน QR ได้" value={report.preparedness.qrReadyHouseholds} unit="ครัวเรือน" />
+            {drill("smartphone", false, <MiniMetric label="ใช้สมาร์ตโฟน" value={report.preparedness.smartphoneHouseholds} unit="ครัวเรือน" />)}
+            {drill("qr-ready", false, <MiniMetric label="สแกน QR ได้" value={report.preparedness.qrReadyHouseholds} unit="ครัวเรือน" />)}
           </div>
         </ReportSection>
 
         <ReportSection title="การมีส่วนร่วมและความช่วยเหลือต่อเนื่อง" tone="mint">
           <div className="grid grid-cols-2 gap-3">
-            <MiniMetric label="สนใจเป็นอาสาสมัคร" value={report.participation.volunteerHouseholds} unit="ครัวเรือน" />
-            <MiniMetric label="ยินยอมเป็นจุดพักพิงเบื้องต้น" value={report.participation.potentialHostHouses} unit="ครัวเรือน" />
-            <MiniMetric label="ต้องการดูแลสุขภาพจิต" value={report.participation.mentalHealthSupport} unit="ครัวเรือน" />
-            <MiniMetric label="สนใจโครงการแก้ความยากจน" value={report.participation.povertyProgramInterest} unit="ครัวเรือน" />
+            {drill("volunteers", false, <MiniMetric label="สนใจเป็นอาสาสมัคร" value={report.participation.volunteerHouseholds} unit="ครัวเรือน" />)}
+            {drill("host-houses", false, <MiniMetric label="ยินยอมเป็นจุดพักพิงเบื้องต้น" value={report.participation.potentialHostHouses} unit="ครัวเรือน" />)}
+            {drill("mental-health", true, <MiniMetric label="ต้องการดูแลสุขภาพจิต" value={report.participation.mentalHealthSupport} unit="ครัวเรือน" />)}
+            {drill("poverty", false, <MiniMetric label="สนใจโครงการแก้ความยากจน" value={report.participation.povertyProgramInterest} unit="ครัวเรือน" />)}
           </div>
-          <ListGroup title="ทักษะของผู้สนใจเป็นอาสาสมัคร" items={report.participation.volunteerSkills} />
+          <ListGroup title="ทักษะของผู้สนใจเป็นอาสาสมัคร" items={report.participation.volunteerSkills} drillWrap={(item, node) => drill(`skill:${item.key}`, false, node)} />
         </ReportSection>
       </div>
 
       <ReportSection title="คุณภาพข้อมูลสำหรับติดตามแก้ไข" tone="sun">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <MiniMetric label="ไม่มีพิกัด" value={report.quality.missingCoordinates} unit="ใบ" />
-          <MiniMetric label="ข้อมูลไม่ครบ" value={report.quality.incomplete} unit="ใบ" />
-          <MiniMetric label="มีช่องอ่านไม่ออก" value={report.quality.illegible} unit="ใบ" />
+          {drill("missing-coords", false, <MiniMetric label="ไม่มีพิกัด" value={report.quality.missingCoordinates} unit="ใบ" />)}
+          {drill("incomplete", false, <MiniMetric label="ข้อมูลไม่ครบ" value={report.quality.incomplete} unit="ใบ" />)}
+          {drill("illegible", false, <MiniMetric label="มีช่องอ่านไม่ออก" value={report.quality.illegible} unit="ใบ" />)}
         </div>
         <p className="mt-3 text-xs text-slate-500">รายการคุณภาพข้อมูลยังนับอยู่ในยอดรวม แต่ควรแก้ไขก่อนนำไปใช้วางแผนรายพื้นที่หรือแสดงบนแผนที่</p>
       </ReportSection>
@@ -191,13 +237,28 @@ function TriageMetric({ label, example, value, tone }: { label: string; example:
   );
 }
 
-function ListGroup({ title, items }: { title: string; items: { key: string; label: string; count: number }[] }) {
-  return <div className="mt-4"><h4 className="mb-2 text-sm font-bold text-slate-700">{title}</h4>{items.length ? <div className="grid gap-2 sm:grid-cols-2">{items.map((item) => <div key={item.key} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.label}</span><strong className="tabular-nums text-brand-700">{format(item.count)}</strong></div>)}</div> : <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>}</div>;
-}
-
-function DataTable({ headers, rows, empty }: { headers: string[]; rows: string[][]; empty: string }) {
-  if (!rows.length) return <p className="py-5 text-center text-sm text-slate-400">{empty}</p>;
-  return <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b-2 border-slate-100 text-left text-xs text-slate-500">{headers.map((header, index) => <th key={header} className={`px-3 py-2 ${index ? "text-right" : ""}`}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row[0]} className="border-b border-slate-100">{row.map((cell, index) => <td key={`${row[0]}-${index}`} className={`px-3 py-2.5 ${index ? "text-right font-semibold tabular-nums" : ""}`}>{cell}</td>)}</tr>)}</tbody></table></div>;
+type ListItem = { key: string; label: string; count: number };
+function ListGroup({ title, items, drillWrap }: { title: string; items: ListItem[]; drillWrap?: (item: ListItem, node: React.ReactNode) => React.ReactNode }) {
+  return (
+    <div className="mt-4">
+      <h4 className="mb-2 text-sm font-bold text-slate-700">{title}</h4>
+      {items.length ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {items.map((item) => {
+            const node = (
+              <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <span>{item.label}</span>
+                <strong className="tabular-nums text-brand-700">{format(item.count)}</strong>
+              </div>
+            );
+            return <div key={item.key}>{drillWrap ? drillWrap(item, node) : node}</div>;
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>
+      )}
+    </div>
+  );
 }
 
 function FilterSelect({ label, name, value, options }: { label: string; name: string; value?: string; options: { id: string; label: string }[] }) {
