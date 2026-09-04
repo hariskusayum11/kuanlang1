@@ -24,6 +24,7 @@ import {
 import type { SegmentDescriptor } from "./segments";
 
 export interface HouseholdSegmentRow {
+  recordId?: string;
   seq: number;
   respondentName: string;
   respondentPhone: string;
@@ -38,6 +39,11 @@ export interface HouseholdSegmentRow {
   sheetNo: string;
   status: string;
   detail: string;
+  quickEdit?: {
+    hostHouse: boolean | null;
+    volunteerState: "INTERESTED" | "UNAVAILABLE" | "UNSPECIFIED";
+    volunteerSkillIds: string[];
+  };
 }
 
 export type SegmentRows =
@@ -83,6 +89,7 @@ async function fetchHouseholdRows(
     orderBy: [{ community: { code: "asc" } }, { houseNo: "asc" }],
     select: {
       id: true,
+      volunteerNotAvailable: true,
       houseNo: true,
       mooNo: true,
       soi: true,
@@ -99,6 +106,11 @@ async function fetchHouseholdRows(
       community: { select: { nameTh: true, code: true } },
       tambon: { select: { nameTh: true } },
       sheet: { select: { sheetNo: true, status: true } },
+      floodRiskProfile: { select: { canBeHostHouse: true } },
+      volunteerInterests: {
+        where: { isAvailable: true },
+        select: { volunteerTypeId: true },
+      },
     },
   });
 
@@ -129,6 +141,7 @@ async function fetchHouseholdRows(
 
   const safeDecrypt = makeSafeDecrypt(keyring);
   return households.map((h, index) => ({
+    recordId: h.id,
     seq: index + 1,
     respondentName: assembleRespondentName(
       h.respondentPrefix?.nameTh ?? h.respondentPrefixOther ?? "",
@@ -147,6 +160,15 @@ async function fetchHouseholdRows(
     sheetNo: h.sheet?.sheetNo ?? "",
     status: statusLabel(h.sheet?.status ?? ""),
     detail: detailByHousehold.get(h.id) ?? "",
+    quickEdit: {
+      hostHouse: h.floodRiskProfile?.canBeHostHouse ?? null,
+      volunteerState: h.volunteerNotAvailable === true
+        ? "UNAVAILABLE"
+        : h.volunteerInterests.length > 0
+          ? "INTERESTED"
+          : "UNSPECIFIED",
+      volunteerSkillIds: h.volunteerInterests.map((item) => item.volunteerTypeId),
+    },
   }));
 }
 
@@ -160,6 +182,7 @@ async function fetchPersonRows(
     where: { household: baseWhere(ctx, filters), isActive: true, ...(seg.personWhere ?? {}) },
     orderBy: [{ seq: "asc" }],
     select: {
+      id: true,
       seq: true,
       firstName: true,
       lastName: true,
@@ -202,6 +225,8 @@ async function fetchPersonRows(
     }
     const h = p.household;
     rows.push({
+      recordId: p.id,
+      triageCode: level,
       community: h.community?.nameTh ?? "(ไม่ระบุชุมชน)",
       communityCode: h.community?.code ?? "",
       seq: p.seq,

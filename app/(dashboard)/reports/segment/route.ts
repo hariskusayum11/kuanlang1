@@ -11,10 +11,19 @@ import { parseExecutiveReportFilters } from "@/lib/report/executive-summary";
 import { resolveSegment, permissionForSegment } from "@/lib/report/segments";
 import { resolveSegmentLabel } from "@/lib/report/segment-label";
 import { fetchSegmentRows } from "@/lib/report/segment-data";
+import { PERMISSIONS } from "@/lib/authz/permissions";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 const PREVIEW_LIMIT = 1000;
+
+function quickEditKind(segmentId: string): "triage" | "host-house" | "volunteer" | null {
+  if (segmentId.startsWith("triage:")) return "triage";
+  if (segmentId === "host-houses") return "host-house";
+  if (segmentId === "volunteers" || segmentId.startsWith("skill:")) return "volunteer";
+  return null;
+}
 
 export async function GET(request: Request): Promise<Response> {
   const ctx = await getAuthorizationContext();
@@ -40,6 +49,14 @@ export async function GET(request: Request): Promise<Response> {
     resolveSegmentLabel(seg),
   ]);
   const total = result.rows.length;
+  const editKind = hasPermission(ctx, PERMISSIONS.REPORT_QUICK_EDIT) ? quickEditKind(seg.id) : null;
+  const volunteerSkills = editKind === "volunteer"
+    ? await prisma.volunteerSkillType.findMany({
+        where: { isActive: true },
+        select: { id: true, nameTh: true },
+        orderBy: [{ sortOrder: "asc" }, { nameTh: "asc" }],
+      })
+    : [];
 
   await writeAuditLog({
     userId: ctx.userId,
@@ -61,5 +78,11 @@ export async function GET(request: Request): Promise<Response> {
     total,
     truncated: total > PREVIEW_LIMIT,
     rows: result.rows.slice(0, PREVIEW_LIMIT),
+    quickEdit: editKind
+      ? {
+          kind: editKind,
+          volunteerSkills: volunteerSkills.map((item) => ({ id: item.id, label: item.nameTh })),
+        }
+      : null,
   });
 }

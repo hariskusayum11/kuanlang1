@@ -13,6 +13,9 @@ export interface PersonVulnInput {
 
 /** หนึ่งแถว = หนึ่งคนในกลุ่มเปราะบาง (ค่าถอดรหัสแล้ว) */
 export interface VulnerableExportRow {
+  /** ใช้เฉพาะหน้ารายชื่อในระบบ ไม่ถูกเขียนเป็นคอลัมน์ใน Excel */
+  recordId?: string;
+  triageCode?: "P1" | "P2" | "P3" | null;
   community: string;
   communityCode: string;
   seq: number;

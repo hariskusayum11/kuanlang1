@@ -12,6 +12,7 @@ interface HouseholdPayload {
   total: number;
   truncated: boolean;
   rows: HouseholdSegmentRow[];
+  quickEdit: QuickEditConfig | null;
 }
 interface PersonPayload {
   kind: "person";
@@ -19,8 +20,14 @@ interface PersonPayload {
   total: number;
   truncated: boolean;
   rows: VulnerableExportRow[];
+  quickEdit: QuickEditConfig | null;
 }
 type Payload = HouseholdPayload | PersonPayload;
+
+interface QuickEditConfig {
+  kind: "triage" | "host-house" | "volunteer";
+  volunteerSkills: { id: string; label: string }[];
+}
 
 export function SegmentDrilldown({
   segmentId,
@@ -55,6 +62,9 @@ export function SegmentDrilldown({
 function DrilldownModal({ query, onClose }: { query: string; onClose: () => void }) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<HouseholdSegmentRow | VulnerableExportRow | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -78,7 +88,7 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [query, reloadToken]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -88,6 +98,10 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const visiblePersonRows = data?.kind === "person" ? filterRows(data.rows, search) : [];
+  const visibleHouseholdRows = data?.kind === "household" ? filterRows(data.rows, search) : [];
+  const visibleCount = data?.kind === "person" ? visiblePersonRows.length : visibleHouseholdRows.length;
 
   return (
     <div
@@ -131,10 +145,30 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
             </div>
           ) : data.total === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">ไม่มีรายชื่อในกลุ่มนี้ตามตัวกรองปัจจุบัน</p>
-          ) : data.kind === "person" ? (
-            <PersonTable rows={data.rows} />
           ) : (
-            <HouseholdTable rows={data.rows} />
+            <>
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <label className="block min-w-[240px] flex-1 text-sm font-semibold text-slate-600">
+                  ค้นหา
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className="input mt-1 w-full"
+                    placeholder="ชื่อ รหัสใบ บ้านเลขที่ หรือชุมชน"
+                  />
+                </label>
+                <span className="pb-2 text-xs text-slate-500">
+                  แสดง {visibleCount.toLocaleString("th-TH")} รายการ
+                </span>
+              </div>
+              {visibleCount === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">ไม่พบรายการที่ค้นหา</p>
+              ) : data.kind === "person" ? (
+                <PersonTable rows={visiblePersonRows} canEdit={Boolean(data.quickEdit)} onEdit={setEditing} />
+              ) : (
+                <HouseholdTable rows={visibleHouseholdRows} canEdit={Boolean(data.quickEdit)} onEdit={setEditing} />
+              )}
+            </>
           )}
         </div>
 
@@ -142,6 +176,17 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
           🔒 ข้อมูลส่วนบุคคล — การเปิดดูและการดาวน์โหลดถูกบันทึกไว้ใน Audit Log
         </div>
       </div>
+      {data?.quickEdit && editing ? (
+        <QuickEditDialog
+          config={data.quickEdit}
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setReloadToken((value) => value + 1);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -153,7 +198,7 @@ function Td({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
   return <td className={`px-3 py-2 align-top ${mono ? "tabular-nums" : ""}`}>{children || "-"}</td>;
 }
 
-function HouseholdTable({ rows }: { rows: HouseholdSegmentRow[] }) {
+function HouseholdTable({ rows, canEdit, onEdit }: { rows: HouseholdSegmentRow[]; canEdit: boolean; onEdit: (row: HouseholdSegmentRow) => void }) {
   const withDetail = rows.some((r) => r.detail);
   return (
     <div className="overflow-x-auto">
@@ -168,6 +213,7 @@ function HouseholdTable({ rows }: { rows: HouseholdSegmentRow[] }) {
             <Th>วันที่สำรวจ</Th>
             <Th>สถานะ</Th>
             {withDetail ? <Th>รายละเอียด (อื่นๆ)</Th> : null}
+            {canEdit ? <Th>จัดการ</Th> : null}
           </tr>
         </thead>
         <tbody>
@@ -181,6 +227,7 @@ function HouseholdTable({ rows }: { rows: HouseholdSegmentRow[] }) {
               <Td mono>{r.surveyedAt}</Td>
               <Td>{r.status}</Td>
               {withDetail ? <Td>{r.detail}</Td> : null}
+              {canEdit ? <Td><button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button></Td> : null}
             </tr>
           ))}
         </tbody>
@@ -189,7 +236,7 @@ function HouseholdTable({ rows }: { rows: HouseholdSegmentRow[] }) {
   );
 }
 
-function PersonTable({ rows }: { rows: VulnerableExportRow[] }) {
+function PersonTable({ rows, canEdit, onEdit }: { rows: VulnerableExportRow[]; canEdit: boolean; onEdit: (row: VulnerableExportRow) => void }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -202,6 +249,7 @@ function PersonTable({ rows }: { rows: VulnerableExportRow[] }) {
             <Th>ระดับเร่งด่วน</Th>
             <Th>ที่อยู่</Th>
             <Th>ชุมชน</Th>
+            {canEdit ? <Th>จัดการ</Th> : null}
           </tr>
         </thead>
         <tbody>
@@ -214,6 +262,7 @@ function PersonTable({ rows }: { rows: VulnerableExportRow[] }) {
               <Td>{r.triage}</Td>
               <Td>{personAddress(r)}</Td>
               <Td>{r.community}</Td>
+              {canEdit ? <Td><button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button></Td> : null}
             </tr>
           ))}
         </tbody>
@@ -243,4 +292,167 @@ function personAddress(r: VulnerableExportRow): string {
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function normalizeSearch(value: string): string {
+  return value.trim().toLocaleLowerCase("th-TH").replace(/\s+/g, " ");
+}
+
+function filterRows<T extends HouseholdSegmentRow | VulnerableExportRow>(rows: T[], search: string): T[] {
+  const needle = normalizeSearch(search);
+  if (!needle) return rows;
+  return rows.filter((row) => {
+    const values = "respondentName" in row
+      ? [row.respondentName, row.respondentPhone, row.sheetNo, row.houseNo, row.mooNo, row.soi, row.road, row.tambon, row.community, row.detail]
+      : [row.fullName, row.sheetNo, row.houseNo, row.mooNo, row.soi, row.road, row.tambon, row.community, row.diseases, row.triage];
+    return normalizeSearch(values.filter(Boolean).join(" ")).includes(needle);
+  });
+}
+
+function QuickEditDialog({
+  config,
+  row,
+  onClose,
+  onSaved,
+}: {
+  config: QuickEditConfig;
+  row: HouseholdSegmentRow | VulnerableExportRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const householdRow = "respondentName" in row ? row : null;
+  const personRow = "fullName" in row ? row : null;
+  const initialVolunteer = householdRow?.quickEdit?.volunteerState ?? "UNSPECIFIED";
+  const [triage, setTriage] = useState(personRow?.triageCode ?? "P3");
+  const [hostHouse, setHostHouse] = useState<"true" | "false" | "null">(
+    householdRow?.quickEdit?.hostHouse === true ? "true" : householdRow?.quickEdit?.hostHouse === false ? "false" : "null",
+  );
+  const [volunteerState, setVolunteerState] = useState(initialVolunteer);
+  const [skillIds, setSkillIds] = useState<string[]>(householdRow?.quickEdit?.volunteerSkillIds ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const recordId = row.recordId;
+  const title = personRow?.fullName ?? householdRow?.respondentName ?? "รายการนี้";
+
+  async function save() {
+    if (!recordId) {
+      setError("ไม่พบรหัสรายการ กรุณาปิดแล้วเปิดรายชื่อใหม่");
+      return;
+    }
+    const body = config.kind === "triage"
+      ? { kind: "triage", recordId, value: triage }
+      : config.kind === "host-house"
+        ? { kind: "host-house", recordId, value: hostHouse === "null" ? null : hostHouse === "true" }
+        : { kind: "volunteer", recordId, state: volunteerState, skillIds: volunteerState === "INTERESTED" ? skillIds : [] };
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/reports/quick-edit", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? "บันทึกข้อมูลไม่สำเร็จ");
+      }
+      onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "บันทึกข้อมูลไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleSkill(id: string) {
+    setSkillIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink-900/60 p-0 sm:items-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="แก้ไขข้อมูลจากรายงาน"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+        <h3 className="text-lg font-bold text-ink-900">แก้ไขข้อมูล</h3>
+        <p className="mt-1 text-sm text-slate-500">{title}</p>
+
+        <div className="mt-5">
+          {config.kind === "triage" ? (
+            <label className="block text-sm font-semibold text-slate-700">
+              ระดับความเร่งด่วน
+              <select value={triage ?? "P3"} onChange={(event) => setTriage(event.target.value as "P1" | "P2" | "P3")} className="input mt-1 w-full">
+                <option value="P1">วิกฤต</option>
+                <option value="P2">เร่งด่วน</option>
+                <option value="P3">เฝ้าระวัง</option>
+              </select>
+            </label>
+          ) : config.kind === "host-house" ? (
+            <label className="block text-sm font-semibold text-slate-700">
+              การยินยอมเป็นจุดพักพิงเบื้องต้น
+              <select value={hostHouse} onChange={(event) => setHostHouse(event.target.value as "true" | "false" | "null")} className="input mt-1 w-full">
+                <option value="true">ยินยอม</option>
+                <option value="false">ไม่ยินยอม</option>
+                <option value="null">ไม่ระบุ</option>
+              </select>
+            </label>
+          ) : (
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-slate-700">
+                ความสนใจเป็นอาสาสมัคร
+                <select
+                  value={volunteerState}
+                  onChange={(event) => {
+                    const value = event.target.value as typeof volunteerState;
+                    setVolunteerState(value);
+                    if (value !== "INTERESTED") setSkillIds([]);
+                  }}
+                  className="input mt-1 w-full"
+                >
+                  <option value="INTERESTED">สนใจ</option>
+                  <option value="UNAVAILABLE">ไม่สะดวก</option>
+                  <option value="UNSPECIFIED">ไม่ระบุ</option>
+                </select>
+              </label>
+              {volunteerState === "INTERESTED" ? (
+                <fieldset>
+                  <legend className="text-sm font-semibold text-slate-700">ทักษะอาสาสมัคร</legend>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {config.volunteerSkills.map((skill) => (
+                      <label key={skill.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <input type="checkbox" checked={skillIds.includes(skill.id)} onChange={() => toggleSkill(skill.id)} />
+                        <span>{skill.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {skillIds.length === 0 ? <p className="mt-2 text-xs font-semibold text-red-600">กรุณาเลือกอย่างน้อย 1 ทักษะ</p> : null}
+                </fieldset>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        {error ? <p role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>ยกเลิก</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={save}
+            disabled={saving || (config.kind === "volunteer" && volunteerState === "INTERESTED" && skillIds.length === 0)}
+          >
+            {saving ? "กำลังบันทึก…" : "บันทึก"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
