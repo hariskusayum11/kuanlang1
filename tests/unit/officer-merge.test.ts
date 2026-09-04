@@ -88,6 +88,20 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
   });
 });
 
+describe("สิทธิ์เปิดรายชื่อรายกลุ่มจากรายงาน", () => {
+  it("EXECUTIVE เปิดรายชื่อและส่งออกกลุ่มทั่วไปได้", () => {
+    expect(ROLE_PERMISSIONS[UserRoleEnum.EXECUTIVE]).toContain(
+      PERMISSIONS.REPORT_SEGMENT_EXPORT,
+    );
+  });
+
+  it("DATA_ENTRY ยังไม่ได้สิทธิ์ดูรายชื่อผู้อื่น", () => {
+    expect(ROLE_PERMISSIONS[UserRoleEnum.DATA_ENTRY]).not.toContain(
+      PERMISSIONS.REPORT_SEGMENT_EXPORT,
+    );
+  });
+});
+
 describe("บทบาทเดิมถูกเลิกใช้ในชั้นแอปพลิเคชัน", () => {
   it("5) COORDINATOR ไม่อยู่ในรายการที่มอบหมายได้", () => {
     expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.COORDINATOR);

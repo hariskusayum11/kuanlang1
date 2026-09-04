@@ -78,7 +78,7 @@ describe("permissionForSegment — แยกตามความอ่อนไ
     expect(permissionForSegment(seg)).toBe(PERMISSIONS.MEDICAL_REPORT_EXPORT);
   });
 
-  it("general → REPORT_SEGMENT_EXPORT (ADMIN/OFFICER)", () => {
+  it("general → REPORT_SEGMENT_EXPORT (ADMIN/OFFICER/EXECUTIVE)", () => {
     const seg = resolveSegment("flooded")!;
     expect(permissionForSegment(seg)).toBe(PERMISSIONS.REPORT_SEGMENT_EXPORT);
   });

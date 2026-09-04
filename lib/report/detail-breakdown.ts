@@ -4,6 +4,7 @@
 // ⚠️ ยังเป็นข้อมูลสุขภาพ (รายละเอียดโรค) — ตัวเรียกต้องบังคับ permission (MEDICAL_DASHBOARD_VIEW)
 //    + Audit READ · where ถูก AND กับ base (ตัวกรอง/ขอบเขตเดิม) อัตโนมัติ
 
+import { VehicleType } from "@prisma/client";
 import { prisma } from "../prisma";
 import { decryptText, type Keyring } from "../crypto/encryption";
 import {
@@ -18,7 +19,7 @@ export interface DetailItem {
 }
 export interface DetailBreakdown {
   items: DetailItem[];
-  totalPeople: number; // จำนวนคนที่เลือกประเภทนี้ทั้งหมด
+  totalRecords: number; // จำนวนคน/ครัวเรือนที่เลือกประเภทนี้ทั้งหมด
   withDetail: number; // ระบุข้อความรายละเอียด
   withoutDetail: number; // เลือกแต่ไม่ได้เขียนรายละเอียด
 }
@@ -43,7 +44,18 @@ export function groupDetails(rawDetails: (string | null)[]): DetailBreakdown {
   const items = [...map.entries()]
     .map(([text, count]) => ({ text, count }))
     .sort((a, b) => b.count - a.count || a.text.localeCompare(b.text, "th"));
-  return { items, totalPeople: rawDetails.length, withDetail, withoutDetail };
+  return { items, totalRecords: rawDetails.length, withDetail, withoutDetail };
+}
+
+function decryptDetails(rows: { detail: string | null }[], keyring: Keyring): (string | null)[] {
+  return rows.map((row) => {
+    if (!row.detail) return null;
+    try {
+      return decryptText(row.detail, keyring);
+    } catch {
+      return "(ถอดรหัสไม่ได้)";
+    }
+  });
 }
 
 /** ดึงรายละเอียด "อื่นๆ" ของลักษณะความเปราะบางหนึ่งประเภท แล้วสรุปเป็นรายข้อความ + จำนวน */
@@ -61,13 +73,34 @@ export async function fetchVulnerabilityDetailBreakdown(
     },
     select: { detail: true },
   });
-  const decrypted = rows.map((r) => {
-    if (!r.detail) return null;
-    try {
-      return decryptText(r.detail, keyring);
-    } catch {
-      return "(ถอดรหัสไม่ได้)";
-    }
+  return groupDetails(decryptDetails(rows, keyring));
+}
+
+/** ดึงรายละเอียดของประเภทความช่วยเหลือหนึ่งประเภท แล้วสรุปเป็นรายข้อความ + จำนวนครัวเรือน */
+export async function fetchAssistanceDetailBreakdown(
+  ctx: AuthorizationContext,
+  filters: HouseholdAnalyticsFilters,
+  needTypeId: string,
+  keyring: Keyring,
+): Promise<DetailBreakdown> {
+  const base = buildUsableHouseholdWhere(filters, ctx.isGlobalScope ? undefined : ctx.communityIds);
+  const rows = await prisma.assistanceNeed.findMany({
+    where: { needTypeId, household: base },
+    select: { detail: true },
   });
-  return groupDetails(decrypted);
+  return groupDetails(decryptDetails(rows, keyring));
+}
+
+/** ดึงรายละเอียดของยานพาหนะ “อื่นๆ” แล้วสรุปเป็นรายข้อความ + จำนวนครัวเรือน */
+export async function fetchVehicleDetailBreakdown(
+  ctx: AuthorizationContext,
+  filters: HouseholdAnalyticsFilters,
+  vehicleType: VehicleType,
+): Promise<DetailBreakdown> {
+  const base = buildUsableHouseholdWhere(filters, ctx.isGlobalScope ? undefined : ctx.communityIds);
+  const rows = await prisma.evacuationVehicle.findMany({
+    where: { vehicleType, household: base },
+    select: { detail: true },
+  });
+  return groupDetails(rows.map((row) => row.detail));
 }

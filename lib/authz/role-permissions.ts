@@ -14,6 +14,8 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.MEDICAL_MAP_VIEW,
     PERMISSIONS.MEDICAL_REPORT_EXPORT,
     PERMISSIONS.PERSONAL_REPORT_EXPORT,
+    // ผู้บริหารเปิดรายชื่อและส่งออกกลุ่มทั่วไปจากรายงานได้ด้วย
+    PERMISSIONS.REPORT_SEGMENT_EXPORT,
   ],
   [UserRoleEnum.OFFICER]: [
     PERMISSIONS.DASHBOARD_VIEW,

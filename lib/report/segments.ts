@@ -4,7 +4,7 @@
 // กติกา: where-fragment ทุกอันจะถูก AND กับ base where (trusted-where) เสมอ ที่ชั้น data
 //   จึงเคารพ ตัวกรอง (ชุมชน/ตำบล/วันที่/สถานะ) และขอบเขตข้อมูลเดิมโดยอัตโนมัติ
 // ความอ่อนไหว: health → ต้องมี MEDICAL_REPORT_EXPORT (ADMIN/ผู้บริหาร)
-//              general → ต้องมี REPORT_SEGMENT_EXPORT (ADMIN/OFFICER)  (Owner Decision เฟส 1)
+//              general → ต้องมี REPORT_SEGMENT_EXPORT (ADMIN/OFFICER/EXECUTIVE)
 
 import { Prisma, VehicleType } from "@prisma/client";
 import { PERMISSIONS, type Permission } from "../authz/permissions";

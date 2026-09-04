@@ -204,14 +204,14 @@ describe.skipIf(!isLocalDevDb)("Integration: Authentication Foundation (Better A
       prisma.household.count({
         where: {
           deletedAt: null,
-          sheet: { status: SheetStatus.ENTERED_1 },
+          sheet: { status: SheetStatus.VERIFIED },
           OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
         },
       }),
       prisma.household.count({
         where: {
           deletedAt: null,
-          sheet: { status: SheetStatus.VERIFIED },
+          sheet: { status: SheetStatus.ENTERED_1 },
           OR: [{ duplicateResolution: null }, { duplicateResolution: "NOT_DUPLICATE" }],
         },
       }),

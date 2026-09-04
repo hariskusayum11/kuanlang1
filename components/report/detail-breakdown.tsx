@@ -7,23 +7,26 @@ import type { DetailBreakdown } from "@/lib/report/detail-breakdown";
 
 interface Payload extends DetailBreakdown {
   label: string;
+  unit: string;
 }
 
 export function DetailBreakdownButton({
-  typeId,
+  kind,
+  id,
   filterQuery,
 }: {
-  typeId: string;
+  kind: "vulnerability" | "assistance" | "vehicle";
+  id: string;
   filterQuery: string;
 }) {
   const [open, setOpen] = useState(false);
-  const query = `type=${encodeURIComponent(typeId)}${filterQuery ? `&${filterQuery}` : ""}`;
+  const query = `kind=${kind}&id=${encodeURIComponent(id)}${filterQuery ? `&${filterQuery}` : ""}`;
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="shrink-0 rounded-md border border-brand-200 px-2 py-0.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400"
+        className="self-center shrink-0 whitespace-nowrap rounded-md border border-brand-200 px-2 py-1 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400"
       >
         ดูรายละเอียด
       </button>
@@ -79,7 +82,7 @@ function Modal({ query, onClose }: { query: string; onClose: () => void }) {
             <h2 className="text-lg font-bold text-ink-900">{data ? `รายละเอียด: ${data.label}` : "กำลังโหลด…"}</h2>
             <p className="mt-0.5 text-sm text-slate-500">
               {data
-                ? `ระบุรายละเอียด ${data.withDetail.toLocaleString("th-TH")} คน · ไม่ได้ระบุ ${data.withoutDetail.toLocaleString("th-TH")} คน`
+                ? `ระบุรายละเอียด ${data.withDetail.toLocaleString("th-TH")} ${data.unit} · ไม่ได้ระบุ ${data.withoutDetail.toLocaleString("th-TH")} ${data.unit}`
                 : " "}
             </p>
           </div>
@@ -113,7 +116,7 @@ function Modal({ query, onClose }: { query: string; onClose: () => void }) {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-3">
                       <span className="min-w-0 break-words text-sm text-slate-800">{item.text}</span>
-                      <strong className="shrink-0 text-sm tabular-nums text-brand-700">{item.count.toLocaleString("th-TH")} คน</strong>
+                      <strong className="shrink-0 text-sm tabular-nums text-brand-700">{item.count.toLocaleString("th-TH")} {data.unit}</strong>
                     </span>
                     <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-100">
                       <span className="block h-full rounded-full bg-alert-400" style={{ width: `${Math.max(3, (item.count / max) * 100)}%` }} />

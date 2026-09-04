@@ -225,7 +225,7 @@ export default async function DashboardPage({
               empty="ยังไม่มีการระบุลักษณะความเปราะบาง"
               rowAction={
                 canViewDetail
-                  ? (row) => (detailTypeIds.has(row.key) ? <DetailBreakdownButton typeId={row.key} filterQuery={detailFilterQuery} /> : null)
+                  ? (row) => (detailTypeIds.has(row.key) ? <DetailBreakdownButton kind="vulnerability" id={row.key} filterQuery={detailFilterQuery} /> : null)
                   : undefined
               }
             />

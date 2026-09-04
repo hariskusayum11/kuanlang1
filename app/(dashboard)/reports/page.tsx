@@ -1,5 +1,6 @@
 import { PageHero, SectionTitle } from "@/components/layout/page-hero";
 import { ReportActions } from "@/components/report/report-actions";
+import { DetailBreakdownButton } from "@/components/report/detail-breakdown";
 import { SegmentDrilldown } from "@/components/report/segment-drilldown";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
@@ -11,6 +12,7 @@ import {
 import { dateRangeError } from "@/lib/household/trusted-where";
 import { floodDepthMeters } from "@/domain/flood/depth";
 import { TRIAGE_EXAMPLE } from "@/domain/triage";
+import { prisma } from "@/lib/prisma";
 
 export const metadata = { title: "รายงานสำหรับผู้บริหาร" };
 export const dynamic = "force-dynamic";
@@ -47,10 +49,23 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const triageTotal = Object.values(report.triage).reduce((sum, value) => sum + value, 0);
 
   // Drill-down (ข้อ 3/7): กดตัวเลข → รายชื่อ → Excel เฉพาะกลุ่ม · เคารพตัวกรองเดียวกับรายงาน
-  // health → เฉพาะผู้มี MEDICAL_REPORT_EXPORT (ADMIN/ผู้บริหาร) · general → REPORT_SEGMENT_EXPORT (ADMIN/OFFICER)
+  // health → เฉพาะผู้มี MEDICAL_REPORT_EXPORT · general → REPORT_SEGMENT_EXPORT
   const segmentQuery = exportParams.toString();
   const canHealthSegment = hasPermission(ctx, PERMISSIONS.MEDICAL_REPORT_EXPORT);
   const canGeneralSegment = hasPermission(ctx, PERMISSIONS.REPORT_SEGMENT_EXPORT);
+  const [vulnerabilityDetailTypes, assistanceDetailTypes] = await Promise.all([
+    canHealthSegment
+      ? prisma.vulnerabilityType.findMany({ where: { requiresDetail: true }, select: { id: true } })
+      : Promise.resolve([]),
+    canGeneralSegment
+      ? prisma.assistanceNeedType.findMany({ where: { requiresDetail: true }, select: { id: true } })
+      : Promise.resolve([]),
+  ]);
+  const vulnerabilityDetailIds = new Set(vulnerabilityDetailTypes.map((item) => item.id));
+  const assistanceDetailIds = new Set(assistanceDetailTypes.map((item) => item.id));
+  const detail = (kind: "vulnerability" | "assistance" | "vehicle", id: string) => (
+    <DetailBreakdownButton kind={kind} id={id} filterQuery={segmentQuery} />
+  );
   const drill = (segmentId: string, health: boolean, node: React.ReactNode) =>
     (health ? canHealthSegment : canGeneralSegment) ? (
       <SegmentDrilldown segmentId={segmentId} filterQuery={segmentQuery}>
@@ -147,6 +162,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           title="แยกตามลักษณะ — กดเพื่อดูรายชื่อ (รวม “อื่นๆ” ว่าคืออะไร)"
           items={report.vulnerability.types}
           drillWrap={(item, node) => drill(`vuln:${item.key}`, true, node)}
+          detailAction={(item) => vulnerabilityDetailIds.has(item.key) ? detail("vulnerability", item.key) : null}
         />
         {report.vulnerability.unclassifiedPeople > 0 ? (
           <p className="mt-3 text-xs font-semibold text-sun-800">
@@ -162,17 +178,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         {report.assistance.length ? (
           <div className="grid gap-2 sm:grid-cols-2">
             {report.assistance.map((item) => (
-              <div key={item.key}>
-                {drill(
-                  `assistance:${item.key}`,
-                  false,
-                  <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                    <span>{item.label}</span>
-                    <strong className="tabular-nums text-brand-700">
-                      {format(item.count)} ครัวเรือน · {format(item.people ?? 0)} คน
-                    </strong>
-                  </div>,
-                )}
+              <div key={item.key} className="flex items-stretch gap-2">
+                <div className="min-w-0 flex-1">
+                  {drill(
+                    `assistance:${item.key}`,
+                    false,
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                      <span>{item.label}</span>
+                      <strong className="tabular-nums text-brand-700">
+                        {format(item.count)} ครัวเรือน · {format(item.people ?? 0)} คน
+                      </strong>
+                    </div>,
+                  )}
+                </div>
+                {assistanceDetailIds.has(item.key) ? detail("assistance", item.key) : null}
               </div>
             ))}
           </div>
@@ -183,7 +202,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ReportSection title="การอพยพและช่องทางสื่อสาร">
-          <ListGroup title="ยานพาหนะที่ใช้อพยพ" items={report.preparedness.vehicles} drillWrap={(item, node) => drill(`vehicle:${item.key}`, false, node)} />
+          <ListGroup
+            title="ยานพาหนะที่ใช้อพยพ"
+            items={report.preparedness.vehicles}
+            drillWrap={(item, node) => drill(`vehicle:${item.key}`, false, node)}
+            detailAction={(item) => canGeneralSegment && item.key === "OTHER" ? detail("vehicle", item.key) : null}
+          />
           <ListGroup title="ช่องทางรับข่าวสาร" items={report.preparedness.alertChannels} drillWrap={(item, node) => drill(`alert:${item.key}`, false, node)} />
           <div className="mt-4 grid grid-cols-2 gap-3">
             {drill("smartphone", false, <MiniMetric label="ใช้สมาร์ตโฟน" value={report.preparedness.smartphoneHouseholds} unit="ครัวเรือน" />)}
@@ -238,7 +262,17 @@ function TriageMetric({ label, example, value, tone }: { label: string; example:
 }
 
 type ListItem = { key: string; label: string; count: number };
-function ListGroup({ title, items, drillWrap }: { title: string; items: ListItem[]; drillWrap?: (item: ListItem, node: React.ReactNode) => React.ReactNode }) {
+function ListGroup({
+  title,
+  items,
+  drillWrap,
+  detailAction,
+}: {
+  title: string;
+  items: ListItem[];
+  drillWrap?: (item: ListItem, node: React.ReactNode) => React.ReactNode;
+  detailAction?: (item: ListItem) => React.ReactNode;
+}) {
   return (
     <div className="mt-4">
       <h4 className="mb-2 text-sm font-bold text-slate-700">{title}</h4>
@@ -251,7 +285,12 @@ function ListGroup({ title, items, drillWrap }: { title: string; items: ListItem
                 <strong className="tabular-nums text-brand-700">{format(item.count)}</strong>
               </div>
             );
-            return <div key={item.key}>{drillWrap ? drillWrap(item, node) : node}</div>;
+            return (
+              <div key={item.key} className="flex items-stretch gap-2">
+                <div className="min-w-0 flex-1">{drillWrap ? drillWrap(item, node) : node}</div>
+                {detailAction ? detailAction(item) : null}
+              </div>
+            );
           })}
         </div>
       ) : (
