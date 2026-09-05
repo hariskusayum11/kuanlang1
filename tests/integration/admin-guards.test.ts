@@ -9,7 +9,7 @@ import {
 import { loadContextOrThrow } from "../helpers/authz";
 import { ALL_PERMISSIONS, PERMISSIONS } from "../../lib/authz/permissions";
 import type { AuthorizationContext } from "../../lib/authz/types";
-import { encryptText } from "../../lib/crypto/encryption";
+import { decryptText, encryptText } from "../../lib/crypto/encryption";
 import { CURRENT_KEY_VERSION, getKeyring } from "../../lib/crypto/keys";
 import { setUserRoles } from "../../lib/admin/users";
 import { applyHouseholdEdits } from "../../lib/verification/edit";
@@ -52,6 +52,7 @@ async function cleanup() {
     const hids = households.map((h) => h.id);
     if (hids.length > 0) {
       await prisma.householdVersion.deleteMany({ where: { householdId: { in: hids } } });
+      await prisma.assistanceNeed.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.volunteerInterest.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.floodRiskProfile.deleteMany({ where: { householdId: { in: hids } } });
       await prisma.vulnerablePerson.deleteMany({ where: { householdId: { in: hids } } });
@@ -239,6 +240,7 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
 
     expect((await applyReportQuickEdit(ctxAdmin, { kind: "triage", recordId: vulnerablePersonId, value: "P2" })).ok).toBe(true);
     expect((await applyReportQuickEdit(ctxAdmin, { kind: "host-house", recordId: hhByAdmin, value: true })).ok).toBe(true);
+    expect((await applyReportQuickEdit(ctxAdmin, { kind: "survival-kit", recordId: hhByAdmin, value: false })).ok).toBe(true);
     expect((await applyReportQuickEdit(ctxAdmin, {
       kind: "volunteer",
       recordId: hhByAdmin,
@@ -255,8 +257,50 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     ]);
     expect(person.triageLevel).toBe("P2");
     expect(household.floodRiskProfile?.canBeHostHouse).toBe(true);
+    expect(household.floodRiskProfile?.hasSurvivalKit).toBe(false);
     expect(household.volunteerNotAvailable).toBe(false);
     expect(household.volunteerInterests.map((item) => item.volunteerTypeId)).toEqual([skill.id]);
+  });
+
+  it("ADMIN แก้รายละเอียดและยกเลิกความต้องการช่วยเหลือจากรายงานได้", async () => {
+    const type = await prisma.assistanceNeedType.findFirstOrThrow({
+      where: { isActive: true, requiresCount: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const keyring = getKeyring();
+    const need = await prisma.assistanceNeed.create({
+      data: {
+        householdId: hhByAdmin,
+        needTypeId: type.id,
+        personCount: 1,
+        detail: encryptText("ข้อมูลเดิม", keyring, CURRENT_KEY_VERSION),
+      },
+    });
+
+    expect((await applyReportQuickEdit(ctxAdmin, {
+      kind: "assistance",
+      recordId: hhByAdmin,
+      needId: need.id,
+      active: true,
+      typeId: type.id,
+      personCount: 3,
+      detail: "ข้อมูลตรวจสอบใหม่",
+    })).ok).toBe(true);
+    const updated = await prisma.assistanceNeed.findUniqueOrThrow({ where: { id: need.id } });
+    expect(updated.personCount).toBe(3);
+    expect(decryptText(updated.detail!, keyring)).toBe("ข้อมูลตรวจสอบใหม่");
+    expect((await prisma.household.findUniqueOrThrow({ where: { id: hhByAdmin } })).assistanceTotalPersonCount).toBe(3);
+
+    expect((await applyReportQuickEdit(ctxAdmin, {
+      kind: "assistance",
+      recordId: hhByAdmin,
+      needId: need.id,
+      active: false,
+      personCount: null,
+      detail: "",
+    })).ok).toBe(true);
+    expect(await prisma.assistanceNeed.findUnique({ where: { id: need.id } })).toBeNull();
+    expect((await prisma.household.findUniqueOrThrow({ where: { id: hhByAdmin } })).assistanceTotalPersonCount).toBeNull();
   });
 
   it("ผู้ไม่มี report.quick-edit แก้ค่าจากรายงานไม่ได้", async () => {
@@ -266,6 +310,29 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     );
     expect(result).toEqual({ ok: false, reason: "FORBIDDEN" });
     expect((await prisma.floodRiskProfile.findUnique({ where: { householdId: hhByAdmin } }))?.canBeHostHouse).toBe(true);
+  });
+
+  it("ADMIN ลดระดับใช้งานจริงต่ำกว่าคำแนะนำได้ และ Audit ยังเก็บคำแนะนำเดิม", async () => {
+    // ผู้ป่วยที่เกณฑ์แนะนำ P1 สามารถปรับเป็น P3 ตามข้อเท็จจริงในพื้นที่ได้
+    const p1Type = await prisma.vulnerabilityType.findFirst({ where: { basePriority: "P1" }, select: { id: true } });
+    if (!p1Type) return; // DB ไม่ได้ seed master P1 — ข้าม
+    const person = await prisma.vulnerablePerson.create({
+      data: { householdId: hhByAdmin, seq: 99, triageLevel: "P1" },
+    });
+    await prisma.personVulnerability.create({
+      data: { personId: person.id, vulnerabilityTypeId: p1Type.id },
+    });
+    try {
+      expect((await applyReportQuickEdit(ctxAdmin, { kind: "triage", recordId: person.id, value: "P3" })).ok).toBe(true);
+      expect((await prisma.vulnerablePerson.findUniqueOrThrow({ where: { id: person.id } })).triageLevel).toBe("P3");
+      const audit = await prisma.auditLog.findFirst({
+        where: { entityType: "VulnerablePerson", entityId: person.id, reason: "report-quick-edit:triage" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(audit?.changes).toMatchObject({ recommendedLevel: "P1", belowRecommendation: true });
+    } finally {
+      await prisma.vulnerablePerson.delete({ where: { id: person.id } }); // cascade ลบ personVulnerability
+    }
   });
 
   // --- 3) Guard ของการจัดการบัญชี ------------------------------------------

@@ -18,10 +18,12 @@ export const dynamic = "force-dynamic";
 
 const PREVIEW_LIMIT = 1000;
 
-function quickEditKind(segmentId: string): "triage" | "host-house" | "volunteer" | null {
+function quickEditKind(segmentId: string): "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance" | null {
   if (segmentId.startsWith("triage:")) return "triage";
   if (segmentId === "host-houses") return "host-house";
   if (segmentId === "volunteers" || segmentId.startsWith("skill:")) return "volunteer";
+  if (segmentId === "without-kit") return "survival-kit";
+  if (segmentId.startsWith("assistance:")) return "assistance";
   return null;
 }
 
@@ -57,6 +59,13 @@ export async function GET(request: Request): Promise<Response> {
         orderBy: [{ sortOrder: "asc" }, { nameTh: "asc" }],
       })
     : [];
+  const assistanceTypes = editKind === "assistance"
+    ? await prisma.assistanceNeedType.findMany({
+        where: { isActive: true },
+        select: { id: true, nameTh: true, requiresCount: true, requiresDetail: true },
+        orderBy: [{ sortOrder: "asc" }, { nameTh: "asc" }],
+      })
+    : [];
 
   await writeAuditLog({
     userId: ctx.userId,
@@ -82,6 +91,12 @@ export async function GET(request: Request): Promise<Response> {
       ? {
           kind: editKind,
           volunteerSkills: volunteerSkills.map((item) => ({ id: item.id, label: item.nameTh })),
+          assistanceTypes: assistanceTypes.map((item) => ({
+            id: item.id,
+            label: item.nameTh,
+            requiresCount: item.requiresCount,
+            requiresDetail: item.requiresDetail,
+          })),
         }
       : null,
   });

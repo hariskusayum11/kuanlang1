@@ -23,6 +23,37 @@ describe("report quick edit — validation และสิทธิ์", () => {
     expect(parseReportQuickEditInput({ kind: "host-house", recordId: "home-1", value: "true" })).toBeNull();
   });
 
+  it("ชุดยังชีพรับ true / false / null เท่านั้น", () => {
+    expect(parseReportQuickEditInput({ kind: "survival-kit", recordId: "home-1", value: false })).toEqual({
+      kind: "survival-kit",
+      recordId: "home-1",
+      value: false,
+    });
+    expect(parseReportQuickEditInput({ kind: "survival-kit", recordId: "home-1", value: "false" })).toBeNull();
+  });
+
+  it("ตรวจข้อมูลแก้ความช่วยเหลือแบบเข้มงวด", () => {
+    expect(parseReportQuickEditInput({
+      kind: "assistance",
+      recordId: "home-1",
+      needId: "need-1",
+      active: true,
+      typeId: "type-1",
+      personCount: 2,
+      detail: " ต้องใช้รถเข็น ",
+    })).toEqual({
+      kind: "assistance",
+      recordId: "home-1",
+      needId: "need-1",
+      active: true,
+      typeId: "type-1",
+      personCount: 2,
+      detail: "ต้องใช้รถเข็น",
+    });
+    expect(parseReportQuickEditInput({ kind: "assistance", recordId: "home-1", needId: "need-1", active: true, personCount: 1, detail: "" })).toBeNull();
+    expect(parseReportQuickEditInput({ kind: "assistance", recordId: "home-1", needId: "need-1", active: true, typeId: "type-1", personCount: -1, detail: "" })).toBeNull();
+  });
+
   it("สนใจอาสาสมัครต้องมีอย่างน้อยหนึ่งทักษะ และตัด id ซ้ำ", () => {
     expect(parseReportQuickEditInput({
       kind: "volunteer",

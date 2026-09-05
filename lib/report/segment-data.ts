@@ -12,7 +12,7 @@ import {
   type HouseholdAnalyticsFilters,
 } from "../household/trusted-where";
 import type { AuthorizationContext } from "../authz/types";
-import { effectiveTriage, triageLabel, type TriageCode } from "../../domain/triage";
+import { effectiveTriage, recommendedTriage, triageLabel, type TriageCode } from "../../domain/triage";
 import {
   assemblePersonName,
   formatAge,
@@ -41,8 +41,15 @@ export interface HouseholdSegmentRow {
   detail: string;
   quickEdit?: {
     hostHouse: boolean | null;
+    hasSurvivalKit: boolean | null;
     volunteerState: "INTERESTED" | "UNAVAILABLE" | "UNSPECIFIED";
     volunteerSkillIds: string[];
+    assistance: {
+      needId: string;
+      typeId: string;
+      personCount: number | null;
+      detail: string;
+    } | null;
   };
 }
 
@@ -106,7 +113,7 @@ async function fetchHouseholdRows(
       community: { select: { nameTh: true, code: true } },
       tambon: { select: { nameTh: true } },
       sheet: { select: { sheetNo: true, status: true } },
-      floodRiskProfile: { select: { canBeHostHouse: true } },
+      floodRiskProfile: { select: { canBeHostHouse: true, hasSurvivalKit: true } },
       volunteerInterests: {
         where: { isAvailable: true },
         select: { volunteerTypeId: true },
@@ -116,17 +123,24 @@ async function fetchHouseholdRows(
 
   // "อื่นๆ" รายละเอียด (ข้อ 6) — ดึงแยกให้ type สะอาด แล้ว map เข้า household
   const detailByHousehold = new Map<string, string>();
+  const assistanceByHousehold = new Map<string, { needId: string; typeId: string; personCount: number | null; detail: string }>();
   if (seg.detail && households.length) {
     const ids = households.map((h) => h.id);
     const safeDecrypt = makeSafeDecrypt(keyring);
     if (seg.detail.relation === "assistance") {
       const needs = await prisma.assistanceNeed.findMany({
         where: { householdId: { in: ids }, needTypeId: seg.detail.typeValue },
-        select: { householdId: true, detail: true },
+        select: { id: true, householdId: true, needTypeId: true, personCount: true, detail: true },
       });
       for (const n of needs) {
         const text = safeDecrypt(n.detail);
         if (text) detailByHousehold.set(n.householdId, text);
+        assistanceByHousehold.set(n.householdId, {
+          needId: n.id,
+          typeId: n.needTypeId,
+          personCount: n.personCount,
+          detail: text,
+        });
       }
     } else if (seg.detail.relation === "vehicle") {
       const vehicles = await prisma.evacuationVehicle.findMany({
@@ -162,12 +176,14 @@ async function fetchHouseholdRows(
     detail: detailByHousehold.get(h.id) ?? "",
     quickEdit: {
       hostHouse: h.floodRiskProfile?.canBeHostHouse ?? null,
+      hasSurvivalKit: h.floodRiskProfile?.hasSurvivalKit ?? null,
       volunteerState: h.volunteerNotAvailable === true
         ? "UNAVAILABLE"
         : h.volunteerInterests.length > 0
           ? "INTERESTED"
           : "UNSPECIFIED",
       volunteerSkillIds: h.volunteerInterests.map((item) => item.volunteerTypeId),
+      assistance: assistanceByHousehold.get(h.id) ?? null,
     },
   }));
 }
@@ -215,10 +231,14 @@ async function fetchPersonRows(
   const safeDecrypt = makeSafeDecrypt(keyring);
   const rows: VulnerableExportRow[] = [];
   for (const p of persons) {
-    const level = effectiveTriage(
-      p.triageLevel as TriageCode | null,
-      p.vulnerabilities.map((v) => v.vulnerabilityType.basePriority as TriageCode),
-    );
+    const priorities = p.vulnerabilities.map((v) => v.vulnerabilityType.basePriority as TriageCode);
+    const level = effectiveTriage(p.triageLevel as TriageCode | null, priorities);
+    const recommended = recommendedTriage(priorities);
+    const recommendationReasons = recommended
+      ? p.vulnerabilities
+          .filter((item) => item.vulnerabilityType.basePriority === recommended)
+          .map((item) => item.vulnerabilityType.nameTh)
+      : [];
     if (seg.triage) {
       const want = seg.triage === "UNASSESSED" ? null : seg.triage;
       if (level !== want) continue;
@@ -227,6 +247,8 @@ async function fetchPersonRows(
     rows.push({
       recordId: p.id,
       triageCode: level,
+      triageRecommended: recommended,
+      triageRecommendationReasons: recommendationReasons,
       community: h.community?.nameTh ?? "(ไม่ระบุชุมชน)",
       communityCode: h.community?.code ?? "",
       seq: p.seq,

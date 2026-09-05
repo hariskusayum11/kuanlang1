@@ -3,8 +3,10 @@
 // ปุ่มเปิด "รายชื่อของกลุ่มนี้" (Drill-down) — กดตัวเลข → เด้ง modal รายชื่อ + ปุ่มโหลด Excel
 // ข้อมูลส่วนบุคคล: โหลดผ่าน /reports/segment (ตรวจ RBAC + Audit ฝั่ง server เสมอ)
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { HouseholdSegmentRow } from "@/lib/report/segment-data";
 import type { VulnerableExportRow } from "@/lib/report/vulnerable-export";
+import { isTriageBelowRecommendation, TRIAGE_LABEL } from "@/domain/triage";
 
 interface HouseholdPayload {
   kind: "household";
@@ -25,8 +27,9 @@ interface PersonPayload {
 type Payload = HouseholdPayload | PersonPayload;
 
 interface QuickEditConfig {
-  kind: "triage" | "host-house" | "volunteer";
+  kind: "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance";
   volunteerSkills: { id: string; label: string }[];
+  assistanceTypes: { id: string; label: string; requiresCount: boolean; requiresDetail: boolean }[];
 }
 
 export function SegmentDrilldown({
@@ -66,6 +69,7 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
   const [editing, setEditing] = useState<HouseholdSegmentRow | VulnerableExportRow | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +188,8 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
           onSaved={() => {
             setEditing(null);
             setReloadToken((value) => value + 1);
+            // อัปเดตตัวเลขบนหน้ารายงานที่อยู่หลัง modal ทันที (server component คำนวณใหม่)
+            router.refresh();
           }}
         />
       ) : null}
@@ -309,6 +315,8 @@ function filterRows<T extends HouseholdSegmentRow | VulnerableExportRow>(rows: T
   });
 }
 
+const TRIAGE_OPTIONS = [["P1", "วิกฤต"], ["P2", "เร่งด่วน"], ["P3", "เฝ้าระวัง"]] as const;
+
 function QuickEditDialog({
   config,
   row,
@@ -322,18 +330,29 @@ function QuickEditDialog({
 }) {
   const householdRow = "respondentName" in row ? row : null;
   const personRow = "fullName" in row ? row : null;
+  const triageRecommended = personRow?.triageRecommended ?? null;
+  const recommendationReasons = personRow?.triageRecommendationReasons ?? [];
   const initialVolunteer = householdRow?.quickEdit?.volunteerState ?? "UNSPECIFIED";
   const [triage, setTriage] = useState(personRow?.triageCode ?? "P3");
   const [hostHouse, setHostHouse] = useState<"true" | "false" | "null">(
     householdRow?.quickEdit?.hostHouse === true ? "true" : householdRow?.quickEdit?.hostHouse === false ? "false" : "null",
   );
+  const [survivalKit, setSurvivalKit] = useState<"true" | "false" | "null">(
+    householdRow?.quickEdit?.hasSurvivalKit === true ? "true" : householdRow?.quickEdit?.hasSurvivalKit === false ? "false" : "null",
+  );
   const [volunteerState, setVolunteerState] = useState(initialVolunteer);
   const [skillIds, setSkillIds] = useState<string[]>(householdRow?.quickEdit?.volunteerSkillIds ?? []);
+  const initialAssistance = householdRow?.quickEdit?.assistance ?? null;
+  const [assistanceActive, setAssistanceActive] = useState(Boolean(initialAssistance));
+  const [assistanceTypeId, setAssistanceTypeId] = useState(initialAssistance?.typeId ?? config.assistanceTypes[0]?.id ?? "");
+  const [assistanceCount, setAssistanceCount] = useState(initialAssistance?.personCount?.toString() ?? "");
+  const [assistanceDetail, setAssistanceDetail] = useState(initialAssistance?.detail ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recordId = row.recordId;
   const title = personRow?.fullName ?? householdRow?.respondentName ?? "รายการนี้";
+  const selectedAssistanceType = config.assistanceTypes.find((item) => item.id === assistanceTypeId);
 
   async function save() {
     if (!recordId) {
@@ -344,7 +363,19 @@ function QuickEditDialog({
       ? { kind: "triage", recordId, value: triage }
       : config.kind === "host-house"
         ? { kind: "host-house", recordId, value: hostHouse === "null" ? null : hostHouse === "true" }
-        : { kind: "volunteer", recordId, state: volunteerState, skillIds: volunteerState === "INTERESTED" ? skillIds : [] };
+        : config.kind === "survival-kit"
+          ? { kind: "survival-kit", recordId, value: survivalKit === "null" ? null : survivalKit === "true" }
+          : config.kind === "assistance"
+            ? {
+                kind: "assistance",
+                recordId,
+                needId: initialAssistance?.needId,
+                active: assistanceActive,
+                typeId: assistanceTypeId,
+                personCount: selectedAssistanceType?.requiresCount && assistanceCount !== "" ? Number(assistanceCount) : null,
+                detail: assistanceDetail,
+              }
+            : { kind: "volunteer", recordId, state: volunteerState, skillIds: volunteerState === "INTERESTED" ? skillIds : [] };
     setSaving(true);
     setError(null);
     try {
@@ -389,10 +420,21 @@ function QuickEditDialog({
             <label className="block text-sm font-semibold text-slate-700">
               ระดับความเร่งด่วน
               <select value={triage ?? "P3"} onChange={(event) => setTriage(event.target.value as "P1" | "P2" | "P3")} className="input mt-1 w-full">
-                <option value="P1">วิกฤต</option>
-                <option value="P2">เร่งด่วน</option>
-                <option value="P3">เฝ้าระวัง</option>
+                {TRIAGE_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
+              {triageRecommended ? (
+                <span className="mt-2 block rounded-lg bg-slate-50 px-3 py-2 text-xs font-normal leading-5 text-slate-600">
+                  ระบบแนะนำ: <strong>{TRIAGE_LABEL[triageRecommended]}</strong>
+                  {recommendationReasons.length ? ` จากลักษณะ: ${recommendationReasons.join(", ")}` : ""}
+                </span>
+              ) : null}
+              {triageRecommended && isTriageBelowRecommendation(triage as "P1" | "P2" | "P3", triageRecommended) ? (
+                <span className="mt-2 block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-normal leading-5 text-amber-800">
+                  ระดับที่เลือกต่ำกว่าคำแนะนำของระบบ แต่ยังบันทึกได้เมื่อข้อมูลจากพื้นที่ยืนยันว่ามีความพร้อมเพียงพอ
+                </span>
+              ) : null}
             </label>
           ) : config.kind === "host-house" ? (
             <label className="block text-sm font-semibold text-slate-700">
@@ -403,6 +445,49 @@ function QuickEditDialog({
                 <option value="null">ไม่ระบุ</option>
               </select>
             </label>
+          ) : config.kind === "survival-kit" ? (
+            <label className="block text-sm font-semibold text-slate-700">
+              การมีชุดยังชีพ
+              <select value={survivalKit} onChange={(event) => setSurvivalKit(event.target.value as "true" | "false" | "null")} className="input mt-1 w-full">
+                <option value="true">มี</option>
+                <option value="false">ไม่มี</option>
+                <option value="null">ไม่ระบุ</option>
+              </select>
+            </label>
+          ) : config.kind === "assistance" ? (
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-slate-700">
+                สถานะความต้องการ
+                <select value={assistanceActive ? "active" : "cancelled"} onChange={(event) => setAssistanceActive(event.target.value === "active")} className="input mt-1 w-full">
+                  <option value="active">ยังต้องการความช่วยเหลือ</option>
+                  <option value="cancelled">ยกเลิกรายการนี้</option>
+                </select>
+              </label>
+              {assistanceActive ? (
+                <>
+                  <label className="block text-sm font-semibold text-slate-700">
+                    ประเภทความช่วยเหลือ
+                    <select value={assistanceTypeId} onChange={(event) => setAssistanceTypeId(event.target.value)} className="input mt-1 w-full">
+                      {config.assistanceTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+                    </select>
+                  </label>
+                  {selectedAssistanceType?.requiresCount ? (
+                    <label className="block text-sm font-semibold text-slate-700">
+                      จำนวนคน
+                      <input type="number" min={1} max={5000} step={1} value={assistanceCount} onChange={(event) => setAssistanceCount(event.target.value)} className="input mt-1 w-full" />
+                    </label>
+                  ) : null}
+                  <label className="block text-sm font-semibold text-slate-700">
+                    รายละเอียด{selectedAssistanceType?.requiresDetail ? " (จำเป็น)" : " (ถ้ามี)"}
+                    <textarea maxLength={1000} rows={3} value={assistanceDetail} onChange={(event) => setAssistanceDetail(event.target.value)} className="input mt-1 w-full" />
+                  </label>
+                </>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  เมื่อบันทึก รายการนี้จะถูกนำออกจากความต้องการของครัวเรือน แต่ใบแบบสอบถามจะไม่ถูกลบ
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-slate-700">
@@ -447,7 +532,13 @@ function QuickEditDialog({
             type="button"
             className="btn btn-primary"
             onClick={save}
-            disabled={saving || (config.kind === "volunteer" && volunteerState === "INTERESTED" && skillIds.length === 0)}
+            disabled={saving
+              || (config.kind === "volunteer" && volunteerState === "INTERESTED" && skillIds.length === 0)
+              || (config.kind === "assistance" && assistanceActive && (
+                !assistanceTypeId
+                || (selectedAssistanceType?.requiresCount && (!assistanceCount || Number(assistanceCount) < 1))
+                || (selectedAssistanceType?.requiresDetail && !assistanceDetail.trim())
+              ))}
           >
             {saving ? "กำลังบันทึก…" : "บันทึก"}
           </button>
