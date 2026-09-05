@@ -25,12 +25,27 @@ export function highestTriage(levels: Array<TriageCode | null | undefined>): Tri
   return selected;
 }
 
-/** ใช้ค่าที่เคยคำนวณร่วมกับเกณฑ์ปัจจุบัน เพื่อให้ข้อมูลเก่าแสดงผลได้ทันที */
+/** ระดับที่เกณฑ์แนะนำจากลักษณะความเปราะบาง โดยยังไม่รวมค่าที่ผู้ดูแลปรับตามพื้นที่ */
+export function recommendedTriage(
+  basePriorities: Array<TriageCode | null | undefined>,
+): TriageCode | null {
+  return highestTriage(basePriorities);
+}
+
+/** ค่าที่บันทึกไว้เป็นระดับใช้งานจริง; ถ้ายังไม่มีจึงคำนวณจากเกณฑ์เป็นค่าเริ่มต้น */
 export function effectiveTriage(
   stored: TriageCode | null | undefined,
   basePriorities: Array<TriageCode | null | undefined>,
 ): TriageCode | null {
-  return highestTriage([stored, ...basePriorities]);
+  return stored ?? recommendedTriage(basePriorities);
+}
+
+/** true เมื่อระดับใช้งานจริงต่ำกว่าระดับที่เกณฑ์แนะนำ */
+export function isTriageBelowRecommendation(
+  selected: TriageCode,
+  recommended: TriageCode | null | undefined,
+): boolean {
+  return Boolean(recommended && PRIORITY[selected] < PRIORITY[recommended]);
 }
 
 export function triageLabel(level: TriageCode | null | undefined): string {
