@@ -335,6 +335,20 @@ describe.skipIf(!isLocalDevDb)("Integration: Guard ของ ADMIN (Full System 
     }
   });
 
+  it("ADMIN แก้ระดับน้ำจากรายงานได้ และ ซม.รวม (derived) ถูกคำนวณใหม่ให้ตรงกันเสมอ", async () => {
+    expect((await applyReportQuickEdit(ctxAdmin, { kind: "flood-depth", recordId: hhByAdmin, meters: 1, cm: 25 })).ok).toBe(true);
+    const saved = await prisma.floodRiskProfile.findUnique({ where: { householdId: hhByAdmin } });
+    expect(saved?.floodDepthMetersRaw).toBe(1);
+    expect(saved?.floodDepthCmRaw).toBe(25);
+    expect(saved?.maxFloodDepthCm).toBe(125); // 1*100 + 25
+
+    // ล้างค่าเป็น "ไม่ระบุ" ได้ และ derived ต้องกลับเป็น null ไม่ใช่ค้างค่าเดิม
+    expect((await applyReportQuickEdit(ctxAdmin, { kind: "flood-depth", recordId: hhByAdmin, meters: null, cm: null })).ok).toBe(true);
+    const cleared = await prisma.floodRiskProfile.findUnique({ where: { householdId: hhByAdmin } });
+    expect(cleared?.floodDepthMetersRaw).toBeNull();
+    expect(cleared?.maxFloodDepthCm).toBeNull();
+  });
+
   // --- 3) Guard ของการจัดการบัญชี ------------------------------------------
 
   it("7) ADMIN ถอดสิทธิ์ ADMIN ของตัวเองไม่ได้ → SELF_ADMIN_REMOVAL", async () => {

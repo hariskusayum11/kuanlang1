@@ -15,6 +15,8 @@ export interface PersonVulnInput {
 export interface VulnerableExportRow {
   /** ใช้เฉพาะหน้ารายชื่อในระบบ ไม่ถูกเขียนเป็นคอลัมน์ใน Excel */
   recordId?: string;
+  /** ใบแบบสอบถามของคนนี้ — ใช้ทำลิงก์ "เปิดใบแบบสอบถาม" (ไม่ลง Excel) */
+  householdId?: string;
   triageCode?: "P1" | "P2" | "P3" | null;
   /** ระดับที่เกณฑ์แนะนำและเหตุผล — แสดงประกอบในหน้ารายชื่อ ไม่ลง Excel */
   triageRecommended?: "P1" | "P2" | "P3" | null;

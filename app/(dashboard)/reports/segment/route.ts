@@ -18,12 +18,13 @@ export const dynamic = "force-dynamic";
 
 const PREVIEW_LIMIT = 1000;
 
-function quickEditKind(segmentId: string): "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance" | null {
+function quickEditKind(segmentId: string): "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance" | "flood-depth" | null {
   if (segmentId.startsWith("triage:")) return "triage";
   if (segmentId === "host-houses") return "host-house";
   if (segmentId === "volunteers" || segmentId.startsWith("skill:")) return "volunteer";
   if (segmentId === "without-kit") return "survival-kit";
   if (segmentId.startsWith("assistance:")) return "assistance";
+  if (segmentId === "flooded") return "flood-depth";
   return null;
 }
 
@@ -87,6 +88,8 @@ export async function GET(request: Request): Promise<Response> {
     total,
     truncated: total > PREVIEW_LIMIT,
     rows: result.rows.slice(0, PREVIEW_LIMIT),
+    // ปุ่ม "เปิดใบแบบสอบถาม" — ใช้หน้าตรวจสอบเดิม จึงต้องมีสิทธิ์เข้าหน้านั้นจริง
+    canOpenSheet: hasPermission(ctx, PERMISSIONS.VERIFICATION_VIEW),
     quickEdit: editKind
       ? {
           kind: editKind,

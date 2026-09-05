@@ -42,6 +42,8 @@ export interface HouseholdSegmentRow {
   quickEdit?: {
     hostHouse: boolean | null;
     hasSurvivalKit: boolean | null;
+    /** ระดับน้ำท่วมสูงสุดตามกระดาษ — ช่อง "เมตร" และ "เซนติเมตร" แยกกัน */
+    floodDepth: { meters: number | null; cm: number | null };
     volunteerState: "INTERESTED" | "UNAVAILABLE" | "UNSPECIFIED";
     volunteerSkillIds: string[];
     assistance: {
@@ -113,7 +115,14 @@ async function fetchHouseholdRows(
       community: { select: { nameTh: true, code: true } },
       tambon: { select: { nameTh: true } },
       sheet: { select: { sheetNo: true, status: true } },
-      floodRiskProfile: { select: { canBeHostHouse: true, hasSurvivalKit: true } },
+      floodRiskProfile: {
+        select: {
+          canBeHostHouse: true,
+          hasSurvivalKit: true,
+          floodDepthMetersRaw: true,
+          floodDepthCmRaw: true,
+        },
+      },
       volunteerInterests: {
         where: { isAvailable: true },
         select: { volunteerTypeId: true },
@@ -177,6 +186,10 @@ async function fetchHouseholdRows(
     quickEdit: {
       hostHouse: h.floodRiskProfile?.canBeHostHouse ?? null,
       hasSurvivalKit: h.floodRiskProfile?.hasSurvivalKit ?? null,
+      floodDepth: {
+        meters: h.floodRiskProfile?.floodDepthMetersRaw ?? null,
+        cm: h.floodRiskProfile?.floodDepthCmRaw ?? null,
+      },
       volunteerState: h.volunteerNotAvailable === true
         ? "UNAVAILABLE"
         : h.volunteerInterests.length > 0
@@ -213,6 +226,7 @@ async function fetchPersonRows(
       },
       household: {
         select: {
+          id: true,
           houseNo: true,
           mooNo: true,
           soi: true,
@@ -246,6 +260,7 @@ async function fetchPersonRows(
     const h = p.household;
     rows.push({
       recordId: p.id,
+      householdId: h.id,
       triageCode: level,
       triageRecommended: recommended,
       triageRecommendationReasons: recommendationReasons,

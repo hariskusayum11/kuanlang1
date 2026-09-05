@@ -1,4 +1,5 @@
 import { AuditAction, TriageLevel } from "@prisma/client";
+import { calculateFloodDepthCm } from "../../domain/flood/depth";
 import { isTriageBelowRecommendation, recommendedTriage, type TriageCode } from "../../domain/triage";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -15,6 +16,7 @@ export type ReportQuickEditInput =
   | { kind: "host-house"; recordId: string; value: boolean | null }
   | { kind: "survival-kit"; recordId: string; value: boolean | null }
   | { kind: "assistance"; recordId: string; needId: string; active: boolean; typeId?: string; personCount: number | null; detail: string }
+  | { kind: "flood-depth"; recordId: string; meters: number | null; cm: number | null }
   | { kind: "volunteer"; recordId: string; state: VolunteerState; skillIds: string[] };
 
 export type ReportQuickEditResult =
@@ -54,6 +56,17 @@ export function parseReportQuickEditInput(value: unknown): ReportQuickEditInput 
     if (personCount === undefined) return null;
     if (typeof raw.detail !== "string" || raw.detail.length > 1000) return null;
     return { kind: "assistance", recordId, needId: raw.needId.trim(), active: raw.active, typeId, personCount, detail: raw.detail.trim() };
+  }
+  if (raw.kind === "flood-depth") {
+    // ช่วงตามแบบสอบถาม (lib/entry/steps.ts): เมตร 0-10 · เซนติเมตร 0-99
+    const part = (v: unknown, max: number): number | null | undefined => {
+      if (v === null || v === undefined || v === "") return null;
+      return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= max ? v : undefined;
+    };
+    const meters = part(raw.meters, 10);
+    const cm = part(raw.cm, 99);
+    if (meters === undefined || cm === undefined) return null;
+    return { kind: "flood-depth", recordId, meters, cm };
   }
   if (raw.kind === "volunteer") {
     if (!VOLUNTEER_STATES.has(raw.state as VolunteerState) || !Array.isArray(raw.skillIds)) return null;
@@ -121,7 +134,15 @@ export async function applyReportQuickEdit(
     select: {
       id: true,
       volunteerNotAvailable: true,
-      floodRiskProfile: { select: { canBeHostHouse: true, hasSurvivalKit: true } },
+      floodRiskProfile: {
+        select: {
+          canBeHostHouse: true,
+          hasSurvivalKit: true,
+          floodDepthMetersRaw: true,
+          floodDepthCmRaw: true,
+          maxFloodDepthCm: true,
+        },
+      },
       volunteerInterests: { where: { isAvailable: true }, select: { volunteerTypeId: true } },
     },
   });
@@ -157,6 +178,34 @@ export async function applyReportQuickEdit(
       entityId: household.id,
       reason: "report-quick-edit:survival-kit",
       changes: { hasSurvivalKit: { old: household.floodRiskProfile?.hasSurvivalKit ?? null, new: input.value } },
+    });
+    return { ok: true };
+  }
+
+  if (input.kind === "flood-depth") {
+    // เก็บค่าดิบตามช่องกระดาษ (เมตร/ซม.) แล้วคำนวณ ซม.รวมใหม่ให้ตรงกันเสมอ
+    const maxFloodDepthCm = calculateFloodDepthCm(input.meters, input.cm);
+    await prisma.floodRiskProfile.upsert({
+      where: { householdId: household.id },
+      update: { floodDepthMetersRaw: input.meters, floodDepthCmRaw: input.cm, maxFloodDepthCm },
+      create: {
+        householdId: household.id,
+        floodDepthMetersRaw: input.meters,
+        floodDepthCmRaw: input.cm,
+        maxFloodDepthCm,
+      },
+    });
+    await writeAuditLog({
+      userId: ctx.userId,
+      action: AuditAction.UPDATE,
+      entityType: "Household",
+      entityId: household.id,
+      reason: "report-quick-edit:flood-depth",
+      changes: {
+        floodDepthMetersRaw: { old: household.floodRiskProfile?.floodDepthMetersRaw ?? null, new: input.meters },
+        floodDepthCmRaw: { old: household.floodRiskProfile?.floodDepthCmRaw ?? null, new: input.cm },
+        maxFloodDepthCm: { old: household.floodRiskProfile?.maxFloodDepthCm ?? null, new: maxFloodDepthCm },
+      },
     });
     return { ok: true };
   }

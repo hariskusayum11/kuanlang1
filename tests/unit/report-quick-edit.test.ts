@@ -69,6 +69,28 @@ describe("report quick edit — validation และสิทธิ์", () => {
     expect(parseReportQuickEditInput({ kind: "volunteer", recordId: "home-1", state: "INTERESTED", skillIds: [] })).toBeNull();
   });
 
+  it("ระดับน้ำ: เว้นว่างได้ (= ไม่ระบุ) และรับเฉพาะจำนวนเต็มในช่วงตามกระดาษ", () => {
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: 1, cm: 50 })).toEqual({
+      kind: "flood-depth",
+      recordId: "home-1",
+      meters: 1,
+      cm: 50,
+    });
+    // เว้นว่างทั้งคู่ = ล้างค่าเป็นไม่ระบุ
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: null, cm: null })).toEqual({
+      kind: "flood-depth",
+      recordId: "home-1",
+      meters: null,
+      cm: null,
+    });
+    // เกินช่วงของช่องบนกระดาษ (เมตร 0-10 · ซม. 0-99) และค่าที่ไม่ใช่จำนวนเต็ม ต้องถูกปฏิเสธ
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: 11, cm: 0 })).toBeNull();
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: 0, cm: 100 })).toBeNull();
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: -1, cm: 0 })).toBeNull();
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: 1.5, cm: 0 })).toBeNull();
+    expect(parseReportQuickEditInput({ kind: "flood-depth", recordId: "home-1", meters: "1", cm: 0 })).toBeNull();
+  });
+
   it("สิทธิ์แก้ด่วนเป็นของ ADMIN เท่านั้น", () => {
     expect(ROLE_PERMISSIONS[UserRoleEnum.ADMIN]).toContain(PERMISSIONS.REPORT_QUICK_EDIT);
     for (const role of [UserRoleEnum.EXECUTIVE, UserRoleEnum.OFFICER, UserRoleEnum.DATA_ENTRY]) {

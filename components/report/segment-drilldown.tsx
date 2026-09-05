@@ -15,6 +15,7 @@ interface HouseholdPayload {
   truncated: boolean;
   rows: HouseholdSegmentRow[];
   quickEdit: QuickEditConfig | null;
+  canOpenSheet: boolean;
 }
 interface PersonPayload {
   kind: "person";
@@ -23,11 +24,12 @@ interface PersonPayload {
   truncated: boolean;
   rows: VulnerableExportRow[];
   quickEdit: QuickEditConfig | null;
+  canOpenSheet: boolean;
 }
 type Payload = HouseholdPayload | PersonPayload;
 
 interface QuickEditConfig {
-  kind: "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance";
+  kind: "triage" | "host-house" | "volunteer" | "survival-kit" | "assistance" | "flood-depth";
   volunteerSkills: { id: string; label: string }[];
   assistanceTypes: { id: string; label: string; requiresCount: boolean; requiresDetail: boolean }[];
 }
@@ -168,9 +170,9 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
               {visibleCount === 0 ? (
                 <p className="py-10 text-center text-sm text-slate-400">ไม่พบรายการที่ค้นหา</p>
               ) : data.kind === "person" ? (
-                <PersonTable rows={visiblePersonRows} canEdit={Boolean(data.quickEdit)} onEdit={setEditing} />
+                <PersonTable rows={visiblePersonRows} canEdit={Boolean(data.quickEdit)} canOpenSheet={data.canOpenSheet} onEdit={setEditing} />
               ) : (
-                <HouseholdTable rows={visibleHouseholdRows} canEdit={Boolean(data.quickEdit)} onEdit={setEditing} />
+                <HouseholdTable rows={visibleHouseholdRows} canEdit={Boolean(data.quickEdit)} canOpenSheet={data.canOpenSheet} onEdit={setEditing} />
               )}
             </>
           )}
@@ -197,6 +199,31 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
   );
 }
 
+/** ช่องตัวเลขระดับน้ำ: ว่างได้ (= ไม่ระบุ) ถ้ากรอกต้องเป็นจำนวนเต็ม 0..max */
+function inRange(value: string, max: number): boolean {
+  if (value === "") return true;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= max;
+}
+
+/**
+ * ทางออกสำหรับข้อมูลที่แก้แบบสั้นไม่ได้ (เชื่อมโยงหลายส่วน) — ส่งไปหน้าตรวจสอบเดิม
+ * เจตนา: ไม่สร้างระบบแก้ข้อมูลซ้ำสองชุด · เปิดแท็บใหม่เพื่อไม่ให้เสียรายชื่อที่กรองไว้
+ */
+function OpenSheetLink({ householdId }: { householdId: string }) {
+  return (
+    <a
+      className="btn btn-ghost btn-sm whitespace-nowrap"
+      href={`/verification/${householdId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="เปิดใบแบบสอบถามเพื่อแก้ไขข้อมูลส่วนอื่น"
+    >
+      เปิดใบ ↗
+    </a>
+  );
+}
+
 function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
   return <th className={`whitespace-nowrap px-3 py-2 ${right ? "text-right" : "text-left"}`}>{children}</th>;
 }
@@ -204,7 +231,7 @@ function Td({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
   return <td className={`px-3 py-2 align-top ${mono ? "tabular-nums" : ""}`}>{children || "-"}</td>;
 }
 
-function HouseholdTable({ rows, canEdit, onEdit }: { rows: HouseholdSegmentRow[]; canEdit: boolean; onEdit: (row: HouseholdSegmentRow) => void }) {
+function HouseholdTable({ rows, canEdit, canOpenSheet, onEdit }: { rows: HouseholdSegmentRow[]; canEdit: boolean; canOpenSheet: boolean; onEdit: (row: HouseholdSegmentRow) => void }) {
   const withDetail = rows.some((r) => r.detail);
   return (
     <div className="overflow-x-auto">
@@ -219,7 +246,7 @@ function HouseholdTable({ rows, canEdit, onEdit }: { rows: HouseholdSegmentRow[]
             <Th>วันที่สำรวจ</Th>
             <Th>สถานะ</Th>
             {withDetail ? <Th>รายละเอียด (อื่นๆ)</Th> : null}
-            {canEdit ? <Th>จัดการ</Th> : null}
+            {canEdit || canOpenSheet ? <Th>จัดการ</Th> : null}
           </tr>
         </thead>
         <tbody>
@@ -233,7 +260,14 @@ function HouseholdTable({ rows, canEdit, onEdit }: { rows: HouseholdSegmentRow[]
               <Td mono>{r.surveyedAt}</Td>
               <Td>{r.status}</Td>
               {withDetail ? <Td>{r.detail}</Td> : null}
-              {canEdit ? <Td><button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button></Td> : null}
+              {canEdit || canOpenSheet ? (
+                <Td>
+                  <span className="flex gap-2">
+                    {canEdit ? <button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button> : null}
+                    {canOpenSheet && r.recordId ? <OpenSheetLink householdId={r.recordId} /> : null}
+                  </span>
+                </Td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -242,7 +276,7 @@ function HouseholdTable({ rows, canEdit, onEdit }: { rows: HouseholdSegmentRow[]
   );
 }
 
-function PersonTable({ rows, canEdit, onEdit }: { rows: VulnerableExportRow[]; canEdit: boolean; onEdit: (row: VulnerableExportRow) => void }) {
+function PersonTable({ rows, canEdit, canOpenSheet, onEdit }: { rows: VulnerableExportRow[]; canEdit: boolean; canOpenSheet: boolean; onEdit: (row: VulnerableExportRow) => void }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -255,7 +289,7 @@ function PersonTable({ rows, canEdit, onEdit }: { rows: VulnerableExportRow[]; c
             <Th>ระดับเร่งด่วน</Th>
             <Th>ที่อยู่</Th>
             <Th>ชุมชน</Th>
-            {canEdit ? <Th>จัดการ</Th> : null}
+            {canEdit || canOpenSheet ? <Th>จัดการ</Th> : null}
           </tr>
         </thead>
         <tbody>
@@ -268,7 +302,14 @@ function PersonTable({ rows, canEdit, onEdit }: { rows: VulnerableExportRow[]; c
               <Td>{r.triage}</Td>
               <Td>{personAddress(r)}</Td>
               <Td>{r.community}</Td>
-              {canEdit ? <Td><button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button></Td> : null}
+              {canEdit || canOpenSheet ? (
+                <Td>
+                  <span className="flex gap-2">
+                    {canEdit ? <button type="button" className="btn btn-secondary btn-sm whitespace-nowrap" onClick={() => onEdit(r)}>แก้ไข</button> : null}
+                    {canOpenSheet && r.householdId ? <OpenSheetLink householdId={r.householdId} /> : null}
+                  </span>
+                </Td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -347,6 +388,8 @@ function QuickEditDialog({
   const [assistanceTypeId, setAssistanceTypeId] = useState(initialAssistance?.typeId ?? config.assistanceTypes[0]?.id ?? "");
   const [assistanceCount, setAssistanceCount] = useState(initialAssistance?.personCount?.toString() ?? "");
   const [assistanceDetail, setAssistanceDetail] = useState(initialAssistance?.detail ?? "");
+  const [floodMeters, setFloodMeters] = useState(householdRow?.quickEdit?.floodDepth?.meters?.toString() ?? "");
+  const [floodCm, setFloodCm] = useState(householdRow?.quickEdit?.floodDepth?.cm?.toString() ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -375,7 +418,14 @@ function QuickEditDialog({
                 personCount: selectedAssistanceType?.requiresCount && assistanceCount !== "" ? Number(assistanceCount) : null,
                 detail: assistanceDetail,
               }
-            : { kind: "volunteer", recordId, state: volunteerState, skillIds: volunteerState === "INTERESTED" ? skillIds : [] };
+            : config.kind === "flood-depth"
+              ? {
+                  kind: "flood-depth",
+                  recordId,
+                  meters: floodMeters === "" ? null : Number(floodMeters),
+                  cm: floodCm === "" ? null : Number(floodCm),
+                }
+              : { kind: "volunteer", recordId, state: volunteerState, skillIds: volunteerState === "INTERESTED" ? skillIds : [] };
     setSaving(true);
     setError(null);
     try {
@@ -488,6 +538,43 @@ function QuickEditDialog({
                 </p>
               )}
             </div>
+          ) : config.kind === "flood-depth" ? (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-700">ระดับน้ำท่วมสูงสุด (ตามที่เขียนบนกระดาษ)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-semibold text-slate-700">
+                  เมตร
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={10}
+                    step={1}
+                    value={floodMeters}
+                    onChange={(event) => setFloodMeters(event.target.value)}
+                    className="input mt-1 w-full"
+                    placeholder="เว้นว่าง = ไม่ระบุ"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  เซนติเมตร
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={99}
+                    step={1}
+                    value={floodCm}
+                    onChange={(event) => setFloodCm(event.target.value)}
+                    className="input mt-1 w-full"
+                    placeholder="เว้นว่าง = ไม่ระบุ"
+                  />
+                </label>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">
+                กรอกตามช่องบนกระดาษ — เมตร 0–10 · เซนติเมตร 0–99 · ระบบจะคำนวณเซนติเมตรรวมให้เอง
+              </p>
+            </div>
           ) : (
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-slate-700">
@@ -538,7 +625,8 @@ function QuickEditDialog({
                 !assistanceTypeId
                 || (selectedAssistanceType?.requiresCount && (!assistanceCount || Number(assistanceCount) < 1))
                 || (selectedAssistanceType?.requiresDetail && !assistanceDetail.trim())
-              ))}
+              ))
+              || (config.kind === "flood-depth" && (!inRange(floodMeters, 10) || !inRange(floodCm, 99)))}
           >
             {saving ? "กำลังบันทึก…" : "บันทึก"}
           </button>
