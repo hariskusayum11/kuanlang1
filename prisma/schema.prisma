@@ -265,6 +265,12 @@ model User {
   isActive      Boolean   @default(true)
   lastLoginAt   DateTime?
 
+  /// true = รหัสผ่านปัจจุบันเป็นรหัสชั่วคราวที่ ADMIN ตั้งให้ (lib/admin/user-password.ts)
+  /// ผู้ใช้ต้องเปลี่ยนรหัสก่อนใช้งานหน้าอื่น — บังคับที่ app/(dashboard)/layout.tsx ฝั่ง server
+  /// จำเป็นเมื่อระบบอีเมลถูกปิด (EMAIL_ENABLED=false) เพราะไม่มีลิงก์รีเซ็ตให้ผู้ใช้ทำเอง
+  /// รหัสชั่วคราวเดินทางผ่านช่องทางนอกระบบ (โทรศัพท์/ไลน์) จึงต้องถูกเปลี่ยนทันทีที่ใช้
+  mustChangePassword Boolean @default(false)
+
   /// Global Community Scope ระดับ "บัญชี" (Owner Decision 2026-07-26)
   /// true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope ทีละแห่ง
   /// ใช้แทนการยก Role ทั้งใบให้เป็น global (เช่น OFFICER บางคนต้องตรวจทุกชุมชน

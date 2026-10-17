@@ -11,6 +11,7 @@ import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
+import { isEmailEnabled } from "../config/email";
 import type { AuthorizationContext } from "../authz/types";
 import { REQUESTABLE_ROLES, type RegistrationInput } from "./validation";
 
@@ -91,17 +92,20 @@ export async function submitRegistration(
 
   // สร้าง User + RegistrationRequest ให้สำเร็จก่อน แล้วค่อยส่งอีเมล
   // SMTP ล่มต้องไม่ย้อนกลับไปทิ้งบัญชี orphan หรือทำให้คำขอหาย ผู้สมัครกดส่งซ้ำได้ภายหลัง
+  // ปิดระบบอีเมลไว้ → ข้ามทั้งก้อน คำขอยังถูกสร้างครบ ADMIN อนุมัติได้ตามปกติ
   let verificationEmailSent = false;
-  try {
-    await auth.api.sendVerificationEmail({
-      body: { email: input.email, callbackURL: "/email-verified" },
-    });
-    verificationEmailSent = true;
-  } catch (error) {
-    // ไม่เปิดเผยรายละเอียด SMTP ต่อหน้าสาธารณะ และไม่ลบคำขอที่สร้างสำเร็จแล้ว
-    // แต่ log ฝั่งเซิร์ฟเวอร์เพื่อตรวจสาเหตุที่ส่งไม่ออก — สแกนอีเมลออกก่อน (กัน PII รั่วใน log)
-    const detail = (error instanceof Error ? error.message : String(error)).replace(/[\w.+-]+@[\w.-]+/g, "[email]");
-    console.error("[registration] verification email not sent:", detail);
+  if (isEmailEnabled()) {
+    try {
+      await auth.api.sendVerificationEmail({
+        body: { email: input.email, callbackURL: "/email-verified" },
+      });
+      verificationEmailSent = true;
+    } catch (error) {
+      // ไม่เปิดเผยรายละเอียด SMTP ต่อหน้าสาธารณะ และไม่ลบคำขอที่สร้างสำเร็จแล้ว
+      // แต่ log ฝั่งเซิร์ฟเวอร์เพื่อตรวจสาเหตุที่ส่งไม่ออก — สแกนอีเมลออกก่อน (กัน PII รั่วใน log)
+      const detail = (error instanceof Error ? error.message : String(error)).replace(/[\w.+-]+@[\w.-]+/g, "[email]");
+      console.error("[registration] verification email not sent:", detail);
+    }
   }
   return { ok: true, verificationEmailSent };
 }
@@ -339,7 +343,10 @@ export async function approveRegistration(
   if (!(REQUESTABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
     return { ok: false, reason: "INVALID_ROLE" };
   }
-  if (!request.user.emailVerified) {
+  // ด่านยืนยันอีเมลมีผลเฉพาะตอนที่ระบบอีเมลเปิดใช้งาน
+  // ปิดอยู่ = ไม่มีทางให้ผู้สมัครยืนยันได้เลย ถ้ายังบังคับจะอนุมัติใครไม่ได้ทั้งระบบ
+  // ด่านกันคนนอกตัวจริงคือ ADMIN อนุมัติ (บัญชีเกิดมา isActive=false เสมอ) ซึ่งยังอยู่ครบ
+  if (isEmailEnabled() && !request.user.emailVerified) {
     return { ok: false, reason: "EMAIL_NOT_VERIFIED" };
   }
 

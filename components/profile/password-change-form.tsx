@@ -6,15 +6,24 @@ import { changeMyPasswordAction, type ProfileFormState } from "@/lib/profile/act
 
 const INITIAL: ProfileFormState = { ok: false };
 
-export function PasswordChangeForm() {
+export function PasswordChangeForm({
+  /** ใช้ในหน้ากั้น "ต้องเปลี่ยนรหัสผ่านก่อน" — สำเร็จแล้วต้องโหลดหน้าใหม่
+   *  เพราะธง mustChangePassword ถูกอ่านใน layout ฝั่ง server การ refresh ปกติ
+   *  ไม่รับประกันว่าหน้ากั้นจะหายไป ผู้ใช้จึงอาจค้างอยู่หน้าเดิมทั้งที่เปลี่ยนสำเร็จแล้ว */
+  redirectOnSuccess,
+}: {
+  redirectOnSuccess?: string;
+} = {}) {
   const [state, action, pending] = useActionState(changeMyPasswordAction, INITIAL);
   const [shown, setShown] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   // ล้างช่องรหัสผ่านหลังเปลี่ยนสำเร็จ — ไม่ค้างค่ารหัสไว้ในฟอร์ม (state ใหม่ทุกครั้งที่ submit)
   useEffect(() => {
-    if (state.saved) formRef.current?.reset();
-  }, [state]);
+    if (!state.saved) return;
+    formRef.current?.reset();
+    if (redirectOnSuccess) window.location.assign(redirectOnSuccess);
+  }, [state, redirectOnSuccess]);
 
   return (
     <form ref={formRef} action={action} className="space-y-5">

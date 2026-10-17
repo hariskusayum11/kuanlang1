@@ -19,7 +19,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:dev": "tsx prisma/seed.dev.ts",
-    "admin:create": "tsx scripts/create-admin.ts"
+    "admin:create": "tsx scripts/create-admin.ts",
+    "password:reset": "tsx scripts/reset-user-password.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getActiveSessionUser } from "@/lib/auth-session";
 import { APP_NAME } from "@/lib/app-config";
 import { RegisterForm } from "@/components/auth/register-form";
+import { isEmailEnabled } from "@/lib/config/email";
 import { Mascot } from "@/components/brand/mascot";
 
 export const metadata = { title: "ลงทะเบียนใช้งาน" };
@@ -86,7 +87,7 @@ export default async function RegisterPage() {
                 สำหรับอาสาสมัครและเจ้าหน้าที่คีย์ข้อมูลในโครงการ
               </p>
             </div>
-            <RegisterForm />
+            <RegisterForm emailEnabled={isEmailEnabled()} />
           </div>
         </div>
 

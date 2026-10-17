@@ -7,6 +7,7 @@ import { auth } from "../auth";
 import { getAuthorizationContext } from "../authz/context";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
+import { clearMustChangePassword } from "../admin/user-password";
 import { passwordChangeSchema, profileInfoSchema } from "./schema";
 
 // รูปแบบ state สำหรับ useActionState — คืน error/ok กลับไปแสดง inline ที่ฟอร์ม
@@ -104,6 +105,10 @@ export async function changeMyPasswordAction(
     return { ok: false, error: "รหัสผ่านปัจจุบันไม่ถูกต้อง" };
   }
 
+  // เปลี่ยนรหัสเองสำเร็จ = หมดเงื่อนไขของรหัสชั่วคราวที่ ADMIN ตั้งให้
+  // ต้องล้างธงที่นี่ มิฉะนั้นผู้ใช้จะถูกเด้งกลับมาหน้านี้ซ้ำไม่รู้จบ
+  await clearMustChangePassword(ctx.userId);
+
   await writeAuditLog({
     userId: ctx.userId,
     action: AuditAction.UPDATE,
@@ -112,5 +117,7 @@ export async function changeMyPasswordAction(
     reason: "password-self-change",
   });
 
+  // layout อ่านธงนี้ทุก request — ต้องให้หน้าเรนเดอร์ใหม่ ไม่งั้นแถบเตือนยังค้าง
+  revalidatePath("/profile");
   return { ok: true, saved: true };
 }

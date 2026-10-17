@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
+import { PasswordChangeGate } from "@/components/layout/password-change-gate";
+import { prisma } from "@/lib/prisma";
 import { getAuthorizationContext } from "@/lib/authz/context";
 import { visibleNavItems } from "@/lib/navigation";
 import { countWaitingVerification } from "@/lib/verification/queue";
@@ -17,9 +19,14 @@ export default async function DashboardLayout({
 }) {
   const ctx = await getAuthorizationContext();
   if (!ctx) redirect("/login");
-  const [waitingVerification, pendingRegistrations] = await Promise.all([
+  const [waitingVerification, pendingRegistrations, account] = await Promise.all([
     countWaitingVerification(ctx),
     countPendingRegistrationRequests(ctx),
+    // ธงบังคับเปลี่ยนรหัส — อ่านสดทุก request เพราะต้องมีผลทันทีที่ ADMIN ตั้งรหัสชั่วคราวให้
+    prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { mustChangePassword: true },
+    }),
   ]);
 
   const navItems = visibleNavItems(ctx.permissions).map(
@@ -44,7 +51,11 @@ export default async function DashboardLayout({
       <AppSidebar items={navItems} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader items={navItems} userName={ctx.name} userEmail={ctx.email} />
-        <main className="flex-1 px-5 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="flex-1 px-5 py-6 md:px-8 md:py-8">
+          {/* รหัสชั่วคราวที่ผู้อื่นรู้ค่า ห้ามใช้เปิดข้อมูลอ่อนไหวได้ — กั้นทุกหน้าไว้ก่อน
+              บังคับฝั่ง server เท่านั้น ไม่พึ่งการซ่อนปุ่มใน UI */}
+          {account?.mustChangePassword ? <PasswordChangeGate /> : children}
+        </main>
       </div>
     </div>
   );

@@ -7,6 +7,10 @@ import { UserRoleEnum } from "@prisma/client";
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
+  resetUserPassword,
+  type ResetUserPasswordResult,
+} from "./user-password";
+import {
   deleteUser,
   recoverUser,
   setUserActive,
@@ -103,6 +107,26 @@ export async function deleteUserAction(
   if (!parsed.success) return { ok: false, reason: "INVALID" };
 
   return deleteUser(ctx, parsed.data.userId);
+}
+
+export type ResetUserPasswordActionResult =
+  | ResetUserPasswordResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/**
+ * ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ตรวจ RBAC ฝั่ง server ใน core
+ * คืนรหัสกลับไปแสดงบนหน้าจอครั้งเดียว: ห้ามนำค่านี้ไป log หรือเก็บที่ใด
+ */
+export async function resetUserPasswordAction(
+  input: unknown,
+): Promise<ResetUserPasswordActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = userIdSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return resetUserPassword(ctx, parsed.data.userId);
 }
 
 export type RecoverUserActionResult =

@@ -5,6 +5,7 @@ import {
   type RegistrationRequestRow,
 } from "@/lib/registration/core";
 import { REQUESTABLE_ROLE_LABELS } from "@/lib/registration/validation";
+import { isEmailEnabled } from "@/lib/config/email";
 import { RegistrationDecideButtons } from "@/components/admin/registration-queue";
 import { RegistrationDecidedActions } from "@/components/admin/registration-decided-actions";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
@@ -36,6 +37,9 @@ export default async function RegistrationsPage() {
   const data = await listRegistrationRequests(ctx);
   const pending = data?.pending ?? [];
   const decided = data?.decided ?? [];
+  // ปิดระบบอีเมล = ผู้สมัครยืนยันอีเมลไม่ได้เลย ป้าย "ยังไม่ยืนยันอีเมล" จะกลายเป็น
+  // คำเตือนที่ไม่มีใครทำอะไรได้ และสื่อผิดว่าอนุมัติไม่ได้ (ซึ่งอนุมัติได้)
+  const emailEnabled = isEmailEnabled();
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
@@ -74,7 +78,7 @@ export default async function RegistrationsPage() {
         ) : (
           <div className="divide-y-2 divide-slate-50">
             {pending.map((r) => (
-              <PendingRow key={r.id} request={r} />
+              <PendingRow key={r.id} request={r} emailEnabled={emailEnabled} />
             ))}
           </div>
         )}
@@ -153,7 +157,13 @@ export default async function RegistrationsPage() {
   );
 }
 
-function PendingRow({ request: r }: { request: RegistrationRequestRow }) {
+function PendingRow({
+  request: r,
+  emailEnabled,
+}: {
+  request: RegistrationRequestRow;
+  emailEnabled: boolean;
+}) {
   return (
     <div className="flex flex-col gap-4 px-6 py-4 transition-colors hover:bg-sun-50/50 lg:flex-row lg:items-start lg:justify-between">
       <div className="min-w-0 space-y-1.5">
@@ -166,9 +176,11 @@ function PendingRow({ request: r }: { request: RegistrationRequestRow }) {
           </span>
           <span className="font-bold text-slate-900">{r.user.name}</span>
           <span className="badge badge-brand">{roleLabel(r.requestedRole)}</span>
-          <span className={`badge ${r.user.emailVerified ? "badge-success" : "badge-warning"}`}>
-            {r.user.emailVerified ? "ยืนยันอีเมลแล้ว" : "ยังไม่ยืนยันอีเมล"}
-          </span>
+          {emailEnabled && (
+            <span className={`badge ${r.user.emailVerified ? "badge-success" : "badge-warning"}`}>
+              {r.user.emailVerified ? "ยืนยันอีเมลแล้ว" : "ยังไม่ยืนยันอีเมล"}
+            </span>
+          )}
           {r.community && (
             <span className="badge badge-neutral">{r.community.nameTh}</span>
           )}

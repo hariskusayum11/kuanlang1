@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActiveSessionUser } from "@/lib/auth-session";
 import { APP_NAME, APP_DESCRIPTION_TH } from "@/lib/app-config";
+import { isEmailEnabled } from "@/lib/config/email";
 import { LoginForm } from "@/components/auth/login-form";
 import { Mascot } from "@/components/brand/mascot";
 
@@ -86,7 +87,7 @@ export default async function LoginPage() {
                 กรอกอีเมลและรหัสผ่านของเจ้าหน้าที่
               </p>
             </div>
-            <LoginForm />
+            <LoginForm emailEnabled={isEmailEnabled()} />
             <p className="mt-5 text-center text-sm text-slate-500">
               ยังไม่มีบัญชี?{" "}
               <a href="/register" className="font-semibold text-brand-600 hover:underline">

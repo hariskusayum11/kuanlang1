@@ -18,6 +18,8 @@ import { UserRoleEditor } from "@/components/admin/user-role-editor";
 import { UserActivationToggle } from "@/components/admin/user-activation-toggle";
 import { UserRecoverButton } from "@/components/admin/user-recover-button";
 import { UserDeleteButton } from "@/components/admin/user-delete-button";
+import { UserPasswordResetButton } from "@/components/admin/user-password-reset-button";
+import { hasPermission } from "@/lib/authz/access";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ผู้ใช้และบทบาท" };
@@ -28,6 +30,9 @@ export default async function AdminUsersPage() {
   const ctx = await requirePermission(PERMISSIONS.USER_MANAGE);
   const users = await listUsers(ctx);
   const activeCount = users.filter((u) => u.isActive).length;
+  // การเข้าถึง credential ของผู้อื่นเป็นสิทธิ์แยกจาก user.manage — ซ่อนปุ่มถ้าไม่มี
+  // (การซ่อนเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
+  const canResetPassword = hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
@@ -129,6 +134,13 @@ export default async function AdminUsersPage() {
                           roleHints={ROLE_HINTS}
                           isSelf={isSelf}
                         />
+                        {canResetPassword && u.accountStatus === "ACTIVE" && (
+                          <UserPasswordResetButton
+                            userId={u.id}
+                            userName={u.name}
+                            isSelf={isSelf}
+                          />
+                        )}
                         {canToggleActivation(u.accountStatus) && (
                           <UserActivationToggle
                             userId={u.id}

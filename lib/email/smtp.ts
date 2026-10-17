@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { isEmailEnabled } from "../config/email";
 
 export interface SystemEmail {
   to: string;
@@ -35,6 +36,14 @@ function smtpSecure(): boolean {
  */
 export async function sendSystemEmail(message: SystemEmail): Promise<void> {
   if (process.env.NODE_ENV === "test") return;
+
+  // ปิดระบบอีเมลไว้ (EMAIL_ENABLED=false) — ไม่เรียก SMTP และไม่โยน error
+  // เส้นทางที่เรียกใช้งานถูกปิดที่ต้นทางอยู่แล้ว ตรงนี้เป็นด่านสุดท้ายกันเรียกหลุด
+  // log ไม่ใส่ผู้รับ/หัวเรื่อง เพราะเป็น PII ตามกฎ privacy
+  if (!isEmailEnabled()) {
+    console.warn("[email] ปิดการส่งอีเมลไว้ (EMAIL_ENABLED=false) — ข้ามการส่ง");
+    return;
+  }
 
   const user = requiredEnv("SMTP_USER");
   const transporter = nodemailer.createTransport({

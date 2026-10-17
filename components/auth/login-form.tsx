@@ -6,7 +6,12 @@ import { loginSchema } from "@/lib/validations/auth";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 import { PasswordToggle } from "@/components/auth/password-toggle";
 
-export function LoginForm() {
+export function LoginForm({
+  /** ระบบอีเมลเปิดอยู่หรือไม่ (lib/config/email.ts) — ปิดอยู่ = ไม่มีเส้นทางรีเซ็ตรหัสด้วยตนเอง */
+  emailEnabled = true,
+}: {
+  emailEnabled?: boolean;
+} = {}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -73,9 +78,17 @@ export function LoginForm() {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-3">
           <label htmlFor="password" className="label">รหัสผ่าน</label>
-          <a href="/forgot-password" className="text-sm font-semibold text-brand-600 hover:underline">
-            ลืมรหัสผ่าน?
-          </a>
+          {/* ปิดระบบอีเมล = ส่งลิงก์ตั้งรหัสใหม่ไม่ได้ จึงต้องไม่พาผู้ใช้ไปหน้าที่ทำอะไรไม่ได้
+              เส้นทางที่ใช้จริงคือ ADMIN ตั้งรหัสชั่วคราวให้ (lib/admin/user-password.ts) */}
+          {emailEnabled ? (
+            <a href="/forgot-password" className="text-sm font-semibold text-brand-600 hover:underline">
+              ลืมรหัสผ่าน?
+            </a>
+          ) : (
+            <span className="text-xs font-medium text-slate-400">
+              ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบ
+            </span>
+          )}
         </div>
         <div className="relative">
           <input

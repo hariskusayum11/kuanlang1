@@ -1,5 +1,5 @@
 # SKL-FRIS — Production/Test deploy (VPS)
-# ใช้บน VPS: วางไฟล์นี้ + .env.production (คัดจาก .env.production.example) ในโฟลเดอร์เดียวกัน
+# ใช้บน VPS: วางไฟล์นี้ + .env.production ในโฟลเดอร์เดียวกัน
 # แล้วรัน:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 #
 # db ไม่ publish port ออก host — เข้าถึงได้เฉพาะผ่าน network ภายในของ compose (app -> db)
@@ -34,7 +34,13 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      # ใช้สร้างลิงก์ในอีเมล (ยืนยันอีเมล/ตั้งรหัสผ่านใหม่)
+      # ไม่ตั้งค่า = ใช้โดเมนจริง กันลิงก์ในเมลชี้ localhost
+      # ถ้าเข้าใช้งานผ่าน IP:3000 ต้อง override ให้ตรงกับ URL ที่เปิดจริง
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://khuanlangmodel.com}
+      # เปิด/ปิดระบบอีเมลทั้งระบบ (Owner Decision 2026-10-17)
+      # ไม่ตั้งค่า = เปิด — ต้องประกาศ false ชัดเจนจึงจะปิด (ดู .env.production.example)
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-true}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -43,8 +49,9 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY}
       SEARCH_HASH_KEY: ${SEARCH_HASH_KEY}
-      # ตั้ง true เฉพาะรอบแรก (หรือคงไว้ได้ — seed เป็น idempotent) เพื่อ seed ข้อมูลหลัก
-      SEED_ON_START: ${SEED_ON_START:-false}
+      # seed ข้อมูลหลัก (ตำบล/ชุมชน/ตัวเลือกในแบบสอบถาม/เบอร์ฉุกเฉิน)
+      # ค่าเริ่มต้น true เพราะ seed เป็น upsert รันซ้ำปลอดภัย
+      SEED_ON_START: ${SEED_ON_START:-true}
     ports:
       - "3000:3000"
 

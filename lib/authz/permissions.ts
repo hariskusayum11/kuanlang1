@@ -19,6 +19,10 @@ export const PERMISSIONS = {
   REPORT_QUICK_EDIT: "report.quick-edit",
   SETTINGS_VIEW: "settings.view",
   USER_MANAGE: "user.manage",
+  // ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS
+  // แยกจาก USER_MANAGE โดยตั้งใจ: การจัดการบทบาท/เปิด-ปิดบัญชี กับการเข้าถึง
+  // credential ของผู้อื่น เป็นคนละระดับความเสี่ยง และอาจต้องแยกมอบสิทธิ์ในอนาคต
+  USER_PASSWORD_RESET: "user.password-reset",
   REGISTRATION_MANAGE: "registration.manage",
 } as const;
 

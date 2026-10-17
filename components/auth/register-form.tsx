@@ -21,7 +21,13 @@ const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
 // ไม่ถามชุมชนตอนสมัครแล้ว (Owner Decision 2026-08-03 #R7-B: Community Scope ถูกยกเลิก
 // ทั้งระบบ — ทุกบัญชีเห็นทุกชุมชน) การถามชุมชนที่นี่จะสื่อผิดว่ายังจำกัดสิทธิ์ตามชุมชน
 // ช่อง "หน่วยงาน/สังกัด" (อิสระ) ครอบคลุมข้อมูลสังกัดที่แอดมินอยากรู้อยู่แล้ว
-export function RegisterForm() {
+export function RegisterForm({
+  /** ระบบอีเมลเปิดอยู่หรือไม่ (lib/config/email.ts)
+   *  ปิดอยู่ = ไม่มีลิงก์ยืนยันส่งออกไป ต้องไม่บอกผู้สมัครให้ไปรอเมลที่ไม่มีวันมาถึง */
+  emailEnabled = true,
+}: {
+  emailEnabled?: boolean;
+} = {}) {
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -82,17 +88,22 @@ export function RegisterForm() {
         <div>
           <h3 className="text-xl font-bold text-slate-900">ส่งคำขอลงทะเบียนแล้ว</h3>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
-            {verificationEmailSent
-              ? "ระบบส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว กรุณายืนยันอีเมลก่อน จากนั้นรอผู้ดูแลระบบตรวจสอบและอนุมัติบัญชี"
-              : "สร้างคำขอสำเร็จ แต่ยังส่งอีเมลยืนยันไม่ได้ กรุณากดส่งลิงก์อีกครั้งด้านล่าง หรือติดต่อผู้ดูแลระบบ"}
+            {!emailEnabled
+              ? "คำขอของคุณถูกบันทึกแล้ว ผู้ดูแลระบบจะตรวจสอบและติดต่อกลับเพื่อเปิดใช้งานบัญชีให้ — ขณะนี้ระบบยังไม่ส่งอีเมลยืนยัน"
+              : verificationEmailSent
+                ? "ระบบส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว กรุณายืนยันอีเมลก่อน จากนั้นรอผู้ดูแลระบบตรวจสอบและอนุมัติบัญชี"
+                : "สร้างคำขอสำเร็จ แต่ยังส่งอีเมลยืนยันไม่ได้ กรุณากดส่งลิงก์อีกครั้งด้านล่าง หรือติดต่อผู้ดูแลระบบ"}
           </p>
         </div>
-        <Link
-          href={`/verify-email?email=${encodeURIComponent(form.email)}`}
-          className="btn btn-secondary btn-lg w-full"
-        >
-          ไม่ได้รับอีเมล / ส่งลิงก์อีกครั้ง
-        </Link>
+        {/* ปิดระบบอีเมล = ปุ่มส่งลิงก์ซ้ำไม่มีความหมาย ซ่อนไว้ไม่ให้ผู้สมัครกดวนเปล่า ๆ */}
+        {emailEnabled && (
+          <Link
+            href={`/verify-email?email=${encodeURIComponent(form.email)}`}
+            className="btn btn-secondary btn-lg w-full"
+          >
+            ไม่ได้รับอีเมล / ส่งลิงก์อีกครั้ง
+          </Link>
+        )}
         <Link href="/login" className="btn btn-accent btn-lg w-full">
           ไปหน้าเข้าสู่ระบบ
         </Link>
