@@ -18,6 +18,7 @@ function ctx(overrides: Partial<AuthorizationContext> = {}): AuthorizationContex
     roles: [UserRoleEnum.COORDINATOR],
     permissions: [PERMISSIONS.REPORT_VIEW],
     isGlobalScope: true,
+    isProtectedAccount: false,
     communityIds: [],
     ...overrides,
   };

@@ -27,7 +27,11 @@ export async function loadAuthorizationForUser(user: {
     // ต้องมีผลทันที ไม่ต้องรอผู้ใช้ logout
     prisma.user.findUnique({
       where: { id: user.id },
-      select: { isActive: true, hasGlobalCommunityScope: true },
+      select: {
+        isActive: true,
+        hasGlobalCommunityScope: true,
+        isProtectedAccount: true,
+      },
     }),
     prisma.userRole.findMany({
       where: { userId: user.id, isActive: true },
@@ -55,5 +59,6 @@ export async function loadAuthorizationForUser(user: {
     permissions,
     isGlobalScope,
     communityIds: scopes.map((s) => s.communityId),
+    isProtectedAccount: account.isProtectedAccount,
   };
 }

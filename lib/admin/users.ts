@@ -14,6 +14,12 @@ import {
   deriveAccountStatus,
   type AccountStatus,
 } from "../../domain/admin/account-status";
+import {
+  canManageProtectedFlag,
+  isBlockedByProtectedAccount,
+  isLastProtectedAccount,
+  type ProtectedAction,
+} from "../../domain/admin/protected-account";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
@@ -33,11 +39,56 @@ export interface AdminUserRow {
   communityNames: string[];
   /** true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope (ธงระดับบัญชี) */
   hasGlobalCommunityScope: boolean;
+  /** true = บัญชีคุ้มครอง — ADMIN รายอื่นลบ/ปิด/ถอดบทบาท/ตั้งรหัสผ่านให้ไม่ได้ */
+  isProtectedAccount: boolean;
   lastLoginAt: Date | null;
 }
 
 function canManage(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.USER_MANAGE);
+}
+
+/**
+ * ด่าน "บัญชีคุ้มครอง" — จุดเดียวที่ทุกการกระทำทำลายล้างต้องเรียก
+ *
+ * รวมไว้ที่เดียวโดยตั้งใจ: ความเสี่ยงที่สูงที่สุดของกลไกนี้คือการเพิ่มฟีเจอร์ใหม่
+ * ในอนาคตแล้วลืมใส่ guard — ถ้ากระจายเงื่อนไขไปตามแต่ละฟังก์ชัน จะไม่มีที่ให้ตรวจ
+ * ว่าครบหรือไม่ เทสต์ `tests/integration/protected-account.test.ts` ไล่ทุกค่าใน
+ * `PROTECTED_ACTIONS` ว่าถูกปฏิเสธจริง
+ *
+ * คืน true = ถูกบล็อก (และเขียน Audit REJECT ให้แล้ว — ต้องรู้ว่ามีคนพยายาม)
+ */
+async function blockedByProtectedAccount(
+  ctx: AuthorizationContext,
+  targetUserId: string,
+  action: ProtectedAction,
+): Promise<boolean> {
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { isProtectedAccount: true },
+  });
+  // ไม่พบผู้ใช้ → ปล่อยให้ caller รายงาน USER_NOT_FOUND ตามเดิม
+  if (!target) return false;
+
+  const blocked = isBlockedByProtectedAccount({
+    // อ่านจาก context ของผู้ทำคำขอ ซึ่ง loadAuthorizationForUser อ่านสดจาก DB ทุก request
+    actorIsProtected: ctx.isProtectedAccount,
+    targetIsProtected: target.isProtectedAccount,
+    isSelf: targetUserId === ctx.userId,
+  });
+  if (!blocked) return false;
+
+  // บันทึกความพยายามที่ถูกปฏิเสธ — ระบบไม่ log การถูกปฏิเสธทั่วไป
+  // แต่จุดนี้คุ้มที่จะรู้ว่ามีใครพยายามแตะบัญชีคุ้มครองเมื่อไร
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.REJECT,
+    entityType: "User",
+    entityId: targetUserId,
+    changes: { blocked: action },
+    reason: "protected-account-blocked",
+  });
+  return true;
 }
 
 /**
@@ -47,6 +98,14 @@ function canManage(ctx: AuthorizationContext): boolean {
  * สองเส้นทาง (ถอด Role / ปิดบัญชี) จะไม่ serialize กัน แล้วช่องโหว่กลับมาเหมือนเดิม
  */
 const ADMIN_INVARIANT_LOCK_KEY = 728_451_001;
+
+/**
+ * Key ของ advisory lock ที่ป้องกัน invariant "ต้องมีบัญชีคุ้มครอง ≥ 1"
+ *
+ * แยกจาก ADMIN_INVARIANT_LOCK_KEY เพราะเป็นคนละ invariant — ถ้าใช้ key เดียวกัน
+ * การเปลี่ยนบทบาท/ปิดบัญชีจะถูก serialize กับการตั้งธงคุ้มครองโดยไม่จำเป็น
+ */
+const PROTECTED_INVARIANT_LOCK_KEY = 728_451_002;
 
 /**
  * จองสิทธิ์แต่ผู้เดียวในการเปลี่ยนแปลงที่กระทบจำนวน Active ADMIN
@@ -94,6 +153,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       isActive: true,
       lastLoginAt: true,
       hasGlobalCommunityScope: true,
+      isProtectedAccount: true,
       userRoles: { where: { isActive: true }, select: { role: true } },
       // 1 คำขอต่อบัญชี (RegistrationRequest.userId เป็น @unique)
       registrationRequest: { select: { status: true } },
@@ -113,6 +173,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
     ),
     lastLoginAt: u.lastLoginAt,
     hasGlobalCommunityScope: u.hasGlobalCommunityScope,
+    isProtectedAccount: u.isProtectedAccount,
     roles: u.userRoles.map((r) => r.role),
     communityNames: u.communityScopes.map((s) => s.community.nameTh),
   }));
@@ -129,6 +190,7 @@ export type SetRolesResult =
         | "LEGACY_ROLE_NOT_ASSIGNABLE"
         | "SELF_ADMIN_REMOVAL"
         | "LAST_ADMIN"
+        | "PROTECTED_ACCOUNT"
         | "ERROR";
     };
 
@@ -151,6 +213,9 @@ export async function setUserRoles(
   roles: UserRoleEnum[],
 ): Promise<SetRolesResult> {
   if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (await blockedByProtectedAccount(ctx, userId, "set-roles")) {
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
+  }
 
   const valid = Object.values(UserRoleEnum);
   if (roles.some((r) => !valid.includes(r))) {
@@ -234,7 +299,12 @@ export type SetGlobalScopeResult =
   | { ok: true; hasGlobalCommunityScope: boolean }
   | {
       ok: false;
-      reason: "NOT_ALLOWED" | "USER_NOT_FOUND" | "SELF_SCOPE_CHANGE" | "ERROR";
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "SELF_SCOPE_CHANGE"
+        | "PROTECTED_ACCOUNT"
+        | "ERROR";
     };
 
 /**
@@ -253,6 +323,9 @@ export async function setUserGlobalScope(
 ): Promise<SetGlobalScopeResult> {
   if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
   if (userId === ctx.userId) return { ok: false, reason: "SELF_SCOPE_CHANGE" };
+  if (await blockedByProtectedAccount(ctx, userId, "set-global-scope")) {
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
+  }
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
@@ -299,6 +372,7 @@ export type SetActiveResult =
         | "SELF_DEACTIVATION"
         | "LAST_ACTIVE_ADMIN"
         | "NOT_TOGGLEABLE"
+        | "PROTECTED_ACCOUNT"
         | "ERROR";
     };
 
@@ -325,6 +399,9 @@ export async function setUserActive(
   if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
   if (userId === ctx.userId && !isActive) {
     return { ok: false, reason: "SELF_DEACTIVATION" };
+  }
+  if (await blockedByProtectedAccount(ctx, userId, "set-active")) {
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
   }
 
   const target = await prisma.user.findUnique({
@@ -402,6 +479,7 @@ export type DeleteUserResult =
         | "USER_NOT_FOUND"
         | "SELF_DELETION"
         | "LAST_ACTIVE_ADMIN"
+        | "PROTECTED_ACCOUNT"
         | "ERROR";
     };
 
@@ -437,6 +515,9 @@ export async function deleteUser(
 ): Promise<DeleteUserResult> {
   if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
   if (userId === ctx.userId) return { ok: false, reason: "SELF_DELETION" };
+  if (await blockedByProtectedAccount(ctx, userId, "delete-user")) {
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
+  }
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
@@ -512,6 +593,97 @@ export async function deleteUser(
   });
 
   return { ok: true, deleted: true, hard: true };
+}
+
+export type SetProtectedAccountResult =
+  | { ok: true; isProtectedAccount: boolean; changed: boolean }
+  | {
+      ok: false;
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "LAST_PROTECTED_ACCOUNT"
+        | "ERROR";
+    };
+
+/**
+ * ตั้ง/ถอดธง "บัญชีคุ้มครอง" ให้ผู้ใช้ (Owner Decision 2026-10-17)
+ *
+ * ข้อกำหนดด้านความปลอดภัย:
+ *  - **เฉพาะบัญชีคุ้มครองเท่านั้น**ที่ทำได้ — มิฉะนั้น ADMIN ธรรมดาจะแต่งตั้งตัวเอง
+ *    แล้วเดินผ่านกฎคุ้มครองทั้งหมดได้ในคลิกเดียว (`user.manage` อย่างเดียวไม่พอ)
+ *  - ถอดบัญชีคุ้มครองคนสุดท้ายไม่ได้ — เหลือศูนย์เมื่อใดจะตั้งกลับจากในระบบไม่ได้อีก
+ *    ต้องไปรัน `scripts/set-protected-account.ts` บนเซิร์ฟเวอร์
+ *  - ตรวจ invariant **ภายใน transaction** ใต้ advisory lock (เหตุผลเดียวกับ
+ *    lockAdminInvariant — การนับแล้วค่อยเขียนภายใต้ READ COMMITTED กัน write skew ไม่ได้)
+ *  - Audit Log ค่าก่อน/หลังทุกครั้ง
+ */
+export async function setProtectedAccount(
+  ctx: AuthorizationContext,
+  userId: string,
+  isProtectedAccount: boolean,
+): Promise<SetProtectedAccountResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (!canManageProtectedFlag(ctx.isProtectedAccount)) {
+    return { ok: false, reason: "NOT_ALLOWED" };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isProtectedAccount: true },
+  });
+  if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+
+  // ไม่มีอะไรเปลี่ยน → ไม่เขียน Audit Log ซ้ำโดยไม่จำเป็น
+  if (target.isProtectedAccount === isProtectedAccount) {
+    return { ok: true, isProtectedAccount, changed: false };
+  }
+
+  try {
+    const outcome = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PROTECTED_INVARIANT_LOCK_KEY}::bigint)`;
+      if (!isProtectedAccount) {
+        const otherProtectedCount = await tx.user.count({
+          where: { isProtectedAccount: true, id: { not: userId } },
+        });
+        if (isLastProtectedAccount({ otherProtectedCount, nextValue: false })) {
+          return "LAST" as const;
+        }
+      }
+      // อัปเดตแบบมีเงื่อนไขค่าเดิม — กันเขียนทับเมื่อมีคนตั้งค่าเดียวกันไปแล้ว
+      const updated = await tx.user.updateMany({
+        where: { id: userId, isProtectedAccount: !isProtectedAccount },
+        data: { isProtectedAccount },
+      });
+      if (updated.count !== 1) return "RACE" as const;
+      return "OK" as const;
+    });
+
+    if (outcome === "LAST") {
+      return { ok: false, reason: "LAST_PROTECTED_ACCOUNT" };
+    }
+    // แพ้ race = มีคนตั้งค่าเดียวกันไปแล้ว ผลลัพธ์สุดท้ายตรงกับที่ขอ
+    if (outcome === "RACE") {
+      return { ok: true, isProtectedAccount, changed: false };
+    }
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "User",
+    entityId: userId,
+    changes: {
+      field: "isProtectedAccount",
+      before: !isProtectedAccount,
+      after: isProtectedAccount,
+    },
+    reason: isProtectedAccount ? "protected-account-granted" : "protected-account-revoked",
+  });
+
+  return { ok: true, isProtectedAccount, changed: true };
 }
 
 export type RecoverUserResult =

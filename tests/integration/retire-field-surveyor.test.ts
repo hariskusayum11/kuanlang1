@@ -324,6 +324,9 @@ describe.skipIf(!isLocalDevDb)("Integration: เลิกใช้บทบา�
     const u = await prisma.user.findUniqueOrThrow({ where: { id: ids.surveyorOnly } });
     const ctx = await loadAuthorizationForUser(u);
     expect(ctx).not.toBeNull();
+    // รายการนี้ล็อกไว้เพื่อให้รู้ตัวเมื่อมีใครเติมฟิลด์เข้า Authorization Context
+    // (ประเด็นของเทสต์นี้คือ "ต้องไม่มีอะไรที่มาจากผู้สำรวจ")
+    // isProtectedAccount เพิ่มเมื่อ 2026-10-17 — เป็นความคุ้มกันของบัญชี ไม่เกี่ยวกับผู้สำรวจ
     expect(Object.keys(ctx!)).toEqual([
       "userId",
       "name",
@@ -332,6 +335,7 @@ describe.skipIf(!isLocalDevDb)("Integration: เลิกใช้บทบา�
       "permissions",
       "isGlobalScope",
       "communityIds",
+      "isProtectedAccount",
     ]);
   });
 });

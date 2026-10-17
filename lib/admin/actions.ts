@@ -13,6 +13,7 @@ import {
 import {
   deleteUser,
   recoverUser,
+  setProtectedAccount,
   setUserActive,
   setUserGlobalScope,
   setUserRoles,
@@ -20,6 +21,7 @@ import {
   type RecoverUserResult,
   type SetActiveResult,
   type SetGlobalScopeResult,
+  type SetProtectedAccountResult,
   type SetRolesResult,
 } from "./users";
 
@@ -91,6 +93,28 @@ export async function setUserActiveAction(
 }
 
 const userIdSchema = z.object({ userId: z.string().min(1).max(64) });
+
+const setProtectedSchema = z.object({
+  userId: z.string().min(1).max(64),
+  isProtectedAccount: z.boolean(),
+});
+
+export type SetProtectedAccountActionResult =
+  | SetProtectedAccountResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** ตั้ง/ถอดธงบัญชีคุ้มครอง — เฉพาะบัญชีคุ้มครองเท่านั้น (ตรวจฝั่ง server ใน core) */
+export async function setProtectedAccountAction(
+  input: unknown,
+): Promise<SetProtectedAccountActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = setProtectedSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return setProtectedAccount(ctx, parsed.data.userId, parsed.data.isProtectedAccount);
+}
 
 export type DeleteUserActionResult =
   | DeleteUserResult

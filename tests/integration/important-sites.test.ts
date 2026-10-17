@@ -37,6 +37,7 @@ describe.skipIf(!isLocalDevDb)("Integration: important map sites", () => {
       roles: [UserRoleEnum.ADMIN],
       permissions: buildAuthorization([UserRoleEnum.ADMIN]).permissions,
       isGlobalScope: true,
+      isProtectedAccount: false,
       communityIds: [],
     };
   });

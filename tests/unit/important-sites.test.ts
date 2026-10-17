@@ -12,6 +12,7 @@ function context(role: UserRoleEnum): AuthorizationContext {
     roles: [role],
     permissions: buildAuthorization([role]).permissions,
     isGlobalScope: true,
+    isProtectedAccount: false,
     communityIds: [],
   };
 }

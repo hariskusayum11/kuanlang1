@@ -23,6 +23,7 @@ function ctxWith(
     roles,
     permissions,
     isGlobalScope: scope.isGlobalScope ?? false,
+    isProtectedAccount: false,
     communityIds: scope.communityIds ?? [],
   };
 }

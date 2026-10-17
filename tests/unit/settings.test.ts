@@ -12,6 +12,7 @@ const ctx: AuthorizationContext = {
   roles: [UserRoleEnum.ADMIN],
   permissions,
   isGlobalScope: true,
+  isProtectedAccount: false,
   communityIds: [],
 };
 

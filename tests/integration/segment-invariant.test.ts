@@ -17,6 +17,7 @@ const ctx: AuthorizationContext = {
   roles: [UserRoleEnum.ADMIN],
   permissions: [],
   isGlobalScope: true,
+  isProtectedAccount: false,
   communityIds: [],
 };
 const filters = { status: "VERIFIED" as const };

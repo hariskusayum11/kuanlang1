@@ -6,6 +6,8 @@ import { resetUserPasswordAction } from "@/lib/admin/actions";
 import { Modal } from "@/components/ui/modal";
 
 const ERRORS: Record<string, string> = {
+  PROTECTED_ACCOUNT:
+    "บัญชีนี้เป็นบัญชีคุ้มครอง — ผู้ดูแลระบบทั่วไปแก้ไขไม่ได้ ต้องให้บัญชีคุ้มครองด้วยกันเป็นผู้ดำเนินการ",
   NOT_ALLOWED: "ไม่มีสิทธิ์ตั้งรหัสผ่านให้ผู้ใช้รายอื่น",
   USER_NOT_FOUND: "ไม่พบผู้ใช้รายนี้",
   SELF_RESET:

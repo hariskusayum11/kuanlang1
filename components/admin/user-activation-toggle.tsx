@@ -7,6 +7,8 @@ import { Modal } from "@/components/ui/modal";
 import type { AccountStatus } from "@/domain/admin/account-status";
 
 const ERRORS: Record<string, string> = {
+  PROTECTED_ACCOUNT:
+    "บัญชีนี้เป็นบัญชีคุ้มครอง — ผู้ดูแลระบบทั่วไปแก้ไขไม่ได้ ต้องให้บัญชีคุ้มครองด้วยกันเป็นผู้ดำเนินการ",
   NOT_ALLOWED: "ไม่มีสิทธิ์จัดการบัญชีผู้ใช้",
   USER_NOT_FOUND: "ไม่พบผู้ใช้รายนี้",
   SELF_DEACTIVATION:

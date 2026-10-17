@@ -22,12 +22,21 @@ import {
   TEMP_PASSWORD_RANDOM_BYTES,
   buildTempPassword,
 } from "../../domain/admin/temp-password";
+import {
+  isBlockedByProtectedAccount,
+  type ProtectedAction,
+} from "../../domain/admin/protected-account";
 
 export type ResetUserPasswordResult =
   | { ok: true; tempPassword: string }
   | {
       ok: false;
-      reason: "NOT_ALLOWED" | "USER_NOT_FOUND" | "SELF_RESET" | "ERROR";
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "SELF_RESET"
+        | "PROTECTED_ACCOUNT"
+        | "ERROR";
     };
 
 /**
@@ -49,9 +58,29 @@ export async function resetUserPassword(
 
   const target = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true },
+    select: { id: true, isProtectedAccount: true },
   });
   if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+
+  // บัญชีคุ้มครอง: ADMIN รายอื่นตั้งรหัสให้ไม่ได้ — มิฉะนั้นจะ "เข้าระบบในชื่อเจ้าของบัญชี"
+  // ได้ทันที ซึ่งอันตรายกว่าการลบบัญชีเสียอีก เพราะ Audit Log จะบันทึกว่าเป็นเจ้าตัวที่ทำ
+  if (
+    isBlockedByProtectedAccount({
+      actorIsProtected: ctx.isProtectedAccount,
+      targetIsProtected: target.isProtectedAccount,
+      isSelf: false, // ถูกตัดด้วย SELF_RESET ไปแล้วด้านบน
+    })
+  ) {
+    await writeAuditLog({
+      userId: ctx.userId,
+      action: AuditAction.REJECT,
+      entityType: "User",
+      entityId: userId,
+      changes: { blocked: "reset-password" satisfies ProtectedAction },
+      reason: "protected-account-blocked",
+    });
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
+  }
 
   const tempPassword = buildTempPassword(randomBytes(TEMP_PASSWORD_RANDOM_BYTES));
 

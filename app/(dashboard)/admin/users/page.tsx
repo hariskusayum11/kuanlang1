@@ -19,6 +19,7 @@ import { UserActivationToggle } from "@/components/admin/user-activation-toggle"
 import { UserRecoverButton } from "@/components/admin/user-recover-button";
 import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { UserPasswordResetButton } from "@/components/admin/user-password-reset-button";
+import { ProtectedAccountToggle } from "@/components/admin/protected-account-toggle";
 import { hasPermission } from "@/lib/authz/access";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
@@ -33,6 +34,10 @@ export default async function AdminUsersPage() {
   // การเข้าถึง credential ของผู้อื่นเป็นสิทธิ์แยกจาก user.manage — ซ่อนปุ่มถ้าไม่มี
   // (การซ่อนเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
   const canResetPassword = hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET);
+  // แถวที่ผู้ดูคนนี้แตะไม่ได้: เป็นบัญชีคุ้มครอง และผู้ดูไม่ใช่บัญชีคุ้มครอง
+  // (บัญชีของตัวเองไม่นับ — กฎ SELF_* จัดการแยกและยังต้องถอดธงตัวเองได้)
+  const locked = (u: { id: string; isProtectedAccount: boolean }) =>
+    u.isProtectedAccount && !ctx.isProtectedAccount && u.id !== ctx.userId;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
@@ -86,9 +91,17 @@ export default async function AdminUsersPage() {
                   return (
                     <tr key={u.id} className="transition-colors hover:bg-brand-50/50">
                       <td className="py-3 pl-6 pr-4">
-                        <p className="flex items-center gap-2 font-semibold text-slate-900">
+                        <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
                           {u.name}
                           {isSelf && <span className="badge badge-brand">คุณ</span>}
+                          {u.isProtectedAccount && (
+                            <span
+                              className="badge badge-neutral"
+                              title="ผู้ดูแลระบบคนอื่นลบ ปิด ถอดบทบาท หรือตั้งรหัสผ่านให้บัญชีนี้ไม่ได้"
+                            >
+                              บัญชีคุ้มครอง
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-slate-500">{u.email}</p>
                       </td>
@@ -122,7 +135,15 @@ export default async function AdminUsersPage() {
                           : "—"}
                       </td>
                       <td className="py-3 pr-6">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                        {locked(u) ? (
+                          // บัญชีคุ้มครองที่ผู้ดูนี้แตะไม่ได้ — ไม่แสดงปุ่มที่กดแล้วถูกปฏิเสธแน่นอน
+                          // (ด่านจริงอยู่ฝั่ง server ทุกตัว การซ่อนเป็นเพียงความสะดวก)
+                          <span className="text-[11px] font-medium text-slate-400">
+                            บัญชีคุ้มครอง — แก้ไขไม่ได้
+                          </span>
+                        ) : (
+                        <>
                         <UserRoleEditor
                           userId={u.id}
                           userName={u.name}
@@ -157,6 +178,17 @@ export default async function AdminUsersPage() {
                           userName={u.name}
                           isSelf={isSelf}
                         />
+                        </>
+                        )}
+                        {/* ตั้ง/ถอดการคุ้มครอง — เฉพาะบัญชีคุ้มครองเท่านั้นที่ทำได้
+                            จึงแสดงแยกจากกลุ่มข้างบน และแสดงแม้แถวนั้นจะถูกล็อก */}
+                        {ctx.isProtectedAccount && !isSelf && (
+                          <ProtectedAccountToggle
+                            userId={u.id}
+                            userName={u.name}
+                            isProtectedAccount={u.isProtectedAccount}
+                          />
+                        )}
                         </div>
                       </td>
                     </tr>
