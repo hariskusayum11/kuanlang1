@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type { HouseholdLayerPoint, VolunteerMapSkill } from "@/lib/geo/household-layer-map";
 import type { ImportantSitePoint } from "@/lib/geo/important-sites";
+import type { BaseMapKey, HouseholdLayerKey } from "@/lib/geo/map-view-state";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
 
@@ -35,17 +36,52 @@ function saveMapView(map: import("leaflet").Map): void {
   }
 }
 
-type LayerKey = "vulnerable" | "volunteer" | "host";
-const LAYERS: { key: LayerKey; label: string; shortLabel: string; color: string; iconPath: string }[] = [
-  { key: "vulnerable", label: "กลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M12 21s-7-4.35-7-10a4 4 0 017-2.65A4 4 0 0119 11c0 5.65-7 10-7 10z" },
-  { key: "volunteer", label: "ผู้สนใจเป็นอาสาสมัคร", shortLabel: "อาสาสมัคร", color: "#2563eb", iconPath: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-1a7 7 0 0114 0v1M18 8V3M15.5 5.5h5" },
-  { key: "host", label: "บ้านที่ยินยอมเป็นจุดพักพิงเบื้องต้น", shortLabel: "จุดพักพิง", color: "#059669", iconPath: "M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6" },
+/**
+ * แผนที่พื้นฐาน
+ * ดาวเทียมใช้ Esri World Imagery — เงื่อนไขของ Esri กำหนดให้แสดง "Powered by Esri"
+ * และแหล่งภาพในแถบ attribution เสมอ (ห้ามซ่อน attribution control)
+ * ต้องตรวจเงื่อนไขการใช้งาน (ปริมาณ/การใช้ในหน่วยงาน) ก่อนเปิดใช้จริงในวงกว้าง
+ */
+const BASE_MAPS: Record<BaseMapKey, { url: string; attribution: string; maxNativeZoom: number }> = {
+  street: {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    maxNativeZoom: 19,
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> · Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxNativeZoom: 18,
+  },
+};
+
+type MarkerLayerKey = Exclude<HouseholdLayerKey, "heat">;
+
+/*
+ * สีของหมุดอยู่ใน HTML ที่ Leaflet สร้างเอง (divIcon) จึงใช้คลาส Tailwind ไม่ได้
+ * แผงชั้นข้อมูลและคำอธิบายสัญลักษณ์อ่านค่าจากชุดนี้ชุดเดียว เพื่อให้สีตรงกับหมุดเสมอ
+ */
+export const HOUSEHOLD_LAYERS: { key: MarkerLayerKey; label: string; shortLabel: string; color: string; iconPath: string }[] = [
+  { key: "vulnerable", label: "มีกลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M12 21s-7-4.35-7-10a4 4 0 017-2.65A4 4 0 0119 11c0 5.65-7 10-7 10z" },
+  { key: "volunteer", label: "สนใจเป็นอาสาสมัคร", shortLabel: "อาสาสมัคร", color: "#2563eb", iconPath: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-1a7 7 0 0114 0v1M18 8V3M15.5 5.5h5" },
+  { key: "host", label: "บ้านพักพิงเบื้องต้น", shortLabel: "จุดพักพิง", color: "#059669", iconPath: "M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6" },
 ];
 
-function belongs(point: HouseholdLayerPoint, layer: LayerKey, volunteerSkill = ""): boolean {
+export const HEATMAP_ICON_PATH = "M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M2 20c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M12 3s-4 4.5-4 7a4 4 0 008 0c0-2.5-4-7-4-7z";
+
+/** ระดับสีฮีตแมป — ใช้ทั้งวาด canvas และคำอธิบายสัญลักษณ์ */
+export const FLOOD_DEPTH_SCALE: { minCm: number; rgb: string; label: string }[] = [
+  { minCm: 150, rgb: "185,28,28", label: "1.50 ม. ขึ้นไป" },
+  { minCm: 80, rgb: "234,88,12", label: "0.80–1.49 ม." },
+  { minCm: 30, rgb: "245,158,11", label: "0.30–0.79 ม." },
+  { minCm: 0, rgb: "250,204,21", label: "ต่ำกว่า 0.30 ม." },
+];
+
+export function belongsToLayer(point: HouseholdLayerPoint, layer: HouseholdLayerKey, volunteerSkill = ""): boolean {
   if (layer === "vulnerable") return point.vulnerableCount > 0;
   if (layer === "volunteer") return point.volunteerSkills.length > 0 && (!volunteerSkill || point.volunteerSkills.some((skill) => skill.code === volunteerSkill));
-  return point.potentialHostHouse;
+  if (layer === "host") return point.potentialHostHouse;
+  return (point.floodDepthCm ?? 0) > 0;
 }
 
 function escapeHtml(value: string): string {
@@ -86,7 +122,7 @@ function popup(point: HouseholdLayerPoint): string {
     details.push(popupRow("ระดับน้ำสูงสุด", `${(point.floodDepthCm / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })} เมตร`));
   }
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`;
-  return `<div style="font-family:system-ui;min-width:270px;max-width:340px;line-height:1.45">
+  return `<div style="font-family:system-ui;min-width:250px;max-width:320px;line-height:1.45">
     <div style="padding-bottom:8px;border-bottom:2px solid #dbeafe">
       <div style="font-size:15px;font-weight:800;color:#0f172a">${escapeHtml(pointAddress(point))}</div>
       <div style="margin-top:3px;font-size:12px;color:#64748b">${escapeHtml(point.communityName)} · รหัสใบ ${escapeHtml(point.sheetNo)}${point.surveyNo ? ` · ลำดับ ${escapeHtml(point.surveyNo)}` : ""}</div>
@@ -94,11 +130,6 @@ function popup(point: HouseholdLayerPoint): string {
     <div>${details.join("") || `<p style="margin:10px 0;color:#64748b">ไม่มีข้อมูลกลุ่มที่เลือกเพิ่มเติม</p>`}</div>
     <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:10px;padding:8px 12px;border-radius:8px;background:#2563eb;color:white;text-align:center;text-decoration:none;font-size:12px;font-weight:700">เปิดเส้นทางใน Google Maps ↗</a>
   </div>`;
-}
-
-function markerLayers(point: HouseholdLayerPoint, active: Record<LayerKey, boolean>, volunteerSkill: string) {
-  return LAYERS
-    .filter((layer) => active[layer.key] && belongs(point, layer.key, volunteerSkill));
 }
 
 type SkillStyle = { label: string; color: string; iconPath: string };
@@ -113,7 +144,7 @@ const SKILL_STYLE: Record<string, SkillStyle> = {
   CONSTRUCTION: { label: "ช่างก่อสร้าง", color: "#0891b2", iconPath: "M14 5l5 5M12 7l5 5M3 21l7-7m7-9l2-2 2 2-2 2M5 19l-2 2" },
 };
 
-function skillStyle(skill: VolunteerMapSkill): SkillStyle {
+export function skillStyle(skill: VolunteerMapSkill): SkillStyle {
   return SKILL_STYLE[skill.code] ?? { label: skill.label, color: "#2563eb", iconPath: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-1a7 7 0 0114 0v1" };
 }
 
@@ -125,7 +156,7 @@ function visibleSkills(points: HouseholdLayerPoint[], selectedCode: string): Vol
   return [...byCode.values()];
 }
 
-function markerHtml(layers: typeof LAYERS, skills: VolunteerMapSkill[], count: number): string {
+function markerHtml(layers: typeof HOUSEHOLD_LAYERS, skills: VolunteerMapSkill[], count: number): string {
   const nonVolunteerLayers = layers.filter((layer) => layer.key !== "volunteer");
   return `<div style="position:relative;display:flex;gap:2px;width:max-content;padding:3px;border-radius:16px;background:white;box-shadow:0 2px 9px rgba(15,23,42,.45)">
     ${nonVolunteerLayers.map((layer) => `<span title="${layer.label}" style="display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:${layer.color};color:white">
@@ -138,24 +169,28 @@ function markerHtml(layers: typeof LAYERS, skills: VolunteerMapSkill[], count: n
 
 function groupedPopup(points: HouseholdLayerPoint[]): string {
   if (points.length === 1) return popup(points[0]);
-  return `<div style="font-family:system-ui;min-width:290px;max-height:380px;overflow:auto;line-height:1.5">
+  return `<div style="font-family:system-ui;min-width:270px;max-height:380px;overflow:auto;line-height:1.5">
     <div style="position:sticky;top:0;z-index:1;padding:8px;background:white;border-bottom:2px solid #cbd5e1;font-weight:800">พิกัดนี้มี ${points.length.toLocaleString("th-TH")} ครัวเรือน</div>
     ${points.map((point, index) => `<div style="margin-top:10px;padding:8px;border:1px solid #e2e8f0;border-radius:10px"><div style="margin-bottom:6px;color:#2563eb;font-size:12px;font-weight:800">ครัวเรือนที่ ${index + 1}</div>${popup(point)}</div>`).join("")}
   </div>`;
 }
 
-const SITE_STYLE = {
-  SCHOOL: { label: "โรงเรียน", color: "#7c3aed", symbol: "🏫" },
-  TEMPLE_OR_MOSQUE: { label: "วัด / มัสยิด", color: "#d97706", symbol: "🛕" },
-  COMMUNITY_CENTER: { label: "ศูนย์ชุมชน / ศูนย์อพยพ", color: "#0891b2", symbol: "ⓔ" },
-  MUNICIPAL_AREA: { label: "อาคารเทศบาล", color: "#475569", symbol: "🏢" },
-  RELATIVE_HOME: { label: "บ้านพักพิง", color: "#059669", symbol: "⌂" },
-  OTHER: { label: "จุดสำคัญ", color: "#334155", symbol: "★" },
-} as const;
+/** สี/สัญลักษณ์ของจุดสำคัญ แยกตามประเภท (ป้ายชื่อมาจาก IMPORTANT_SITE_TYPES ฝั่ง server) */
+export const SITE_STYLE: Record<string, { color: string; symbol: string }> = {
+  SCHOOL: { color: "#7c3aed", symbol: "🏫" },
+  TEMPLE_OR_MOSQUE: { color: "#d97706", symbol: "🛕" },
+  COMMUNITY_CENTER: { color: "#0891b2", symbol: "ⓔ" },
+  MUNICIPAL_AREA: { color: "#475569", symbol: "🏢" },
+  RELATIVE_HOME: { color: "#059669", symbol: "⌂" },
+  OTHER: { color: "#334155", symbol: "★" },
+};
 
-function sitePopup(site: ImportantSitePoint): string {
-  const style = site.type ? SITE_STYLE[site.type] : SITE_STYLE.OTHER;
-  return `<div style="font-family:system-ui;min-width:220px;line-height:1.6"><b>${escapeHtml(site.name)}</b><br/>${style.label} · ${escapeHtml(site.communityName)}${site.address ? `<br/>${escapeHtml(site.address)}` : ""}${site.capacity != null ? `<br/>รองรับได้ ${site.capacity.toLocaleString("th-TH")} คน` : ""}</div>`;
+export function siteTypeKey(site: Pick<ImportantSitePoint, "type">): string {
+  return site.type ?? "OTHER";
+}
+
+function sitePopup(site: ImportantSitePoint, typeLabel: string): string {
+  return `<div style="font-family:system-ui;min-width:220px;line-height:1.6"><b>${escapeHtml(site.name)}</b><br/>${escapeHtml(typeLabel)} · ${escapeHtml(site.communityName)}${site.address ? `<br/>${escapeHtml(site.address)}` : ""}${site.capacity != null ? `<br/>รองรับได้ ${site.capacity.toLocaleString("th-TH")} คน` : ""}</div>`;
 }
 
 function volunteerTooltip(points: HouseholdLayerPoint[], fallback: string): string {
@@ -188,7 +223,7 @@ function addFloodHeatmap(L: typeof import("leaflet"), map: import("leaflet").Map
     for (const point of heatPoints) {
       const pixel = map.latLngToContainerPoint([point.lat, point.lng]);
       const depth = point.floodDepthCm ?? 0;
-      const color = depth >= 150 ? "185,28,28" : depth >= 80 ? "234,88,12" : depth >= 30 ? "245,158,11" : "250,204,21";
+      const color = (FLOOD_DEPTH_SCALE.find((step) => depth >= step.minCm) ?? FLOOD_DEPTH_SCALE[FLOOD_DEPTH_SCALE.length - 1]).rgb;
       const alpha = Math.min(0.72, 0.24 + depth / 450);
       const gradient = context.createRadialGradient(pixel.x, pixel.y, 0, pixel.x, pixel.y, radius);
       gradient.addColorStop(0, `rgba(${color},${alpha})`);
@@ -206,120 +241,201 @@ function addFloodHeatmap(L: typeof import("leaflet"), map: import("leaflet").Map
   };
 }
 
-export function HouseholdLayerMap({ points, sites, availableVolunteerSkills, center, defaultZoom = 14 }: { points: HouseholdLayerPoint[]; sites: ImportantSitePoint[]; availableVolunteerSkills: VolunteerMapSkill[]; center: { lat: number; lng: number }; defaultZoom?: number }) {
+type LeafletHandle = { L: typeof import("leaflet"); map: import("leaflet").Map };
+
+/**
+ * แผนที่ Leaflet แบบ "ควบคุมจากภายนอก" — สร้างแผนที่ครั้งเดียว แล้วสลับชั้นข้อมูลในที่
+ * (เดิมสร้างแผนที่ใหม่ทั้งก้อนทุกครั้งที่ติ๊ก checkbox ทำให้กระพริบและมุมกล้องกระโดด)
+ *
+ * `fitKey` เปลี่ยนเมื่อพื้นที่/ช่วงวันที่เปลี่ยน → จัดมุมกล้องให้ครอบข้อมูลชุดใหม่
+ * การติ๊กชั้นข้อมูลไม่ขยับกล้อง เพื่อให้ผู้ใช้เปรียบเทียบชั้นในบริเวณเดิมได้
+ */
+export function HouseholdLayerMap({
+  points,
+  sites,
+  siteTypeLabels,
+  center,
+  defaultZoom = 14,
+  base,
+  layers,
+  volunteerSkill,
+  siteTypes,
+  fitKey,
+  onCenterChange,
+}: {
+  points: HouseholdLayerPoint[];
+  sites: ImportantSitePoint[];
+  siteTypeLabels: Record<string, string>;
+  center: { lat: number; lng: number };
+  defaultZoom?: number;
+  base: BaseMapKey;
+  layers: HouseholdLayerKey[];
+  volunteerSkill: string;
+  siteTypes: string[];
+  fitKey: string;
+  onCenterChange?: (center: { lat: number; lng: number }) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState<Record<LayerKey, boolean>>({ vulnerable: true, volunteer: true, host: true });
-  const [volunteerSkill, setVolunteerSkill] = useState("");
-  const [showSites, setShowSites] = useState(true);
-  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [handle, setHandle] = useState<LeafletHandle | null>(null);
+  const onCenterChangeRef = useRef(onCenterChange);
+  useEffect(() => { onCenterChangeRef.current = onCenterChange; }, [onCenterChange]);
+  // มุมกล้องเริ่มต้นอ่านครั้งเดียวตอนสร้างแผนที่ — ค่าที่มาทีหลังจัดการผ่าน fitKey
+  const initialRef = useRef({ center, defaultZoom });
+  // มุมที่ผู้ใช้เคยดูไว้ อ่านก่อนสร้างแผนที่ — ต้องเก็บแยก เพราะแผนที่จะบันทึกมุมเริ่มต้นทับทันทีที่สร้าง
+  const savedViewRef = useRef<SavedMapView | null>(null);
 
   useEffect(() => {
     let map: import("leaflet").Map | null = null;
     let cancelled = false;
-    let removeHeatmap: () => void = () => undefined;
-    if (!ref.current) return;
+    let observer: ResizeObserver | null = null;
     (async () => {
       const L = (await import("leaflet")).default;
       if (cancelled || !ref.current) return;
+      const { center: start, defaultZoom: zoom } = initialRef.current;
       const savedView = readSavedMapView();
+      savedViewRef.current = savedView;
       map = L.map(ref.current, { scrollWheelZoom: true }).setView(
-        savedView ? [savedView.lat, savedView.lng] : [center.lat, center.lng],
-        savedView?.zoom ?? defaultZoom,
+        savedView ? [savedView.lat, savedView.lng] : [start.lat, start.lng],
+        savedView?.zoom ?? zoom,
       );
-      const persistView = () => { if (map) saveMapView(map); };
-      map.on("moveend zoomend", persistView);
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(map);
-      const bounds = L.latLngBounds([]);
-      const groups = new Map<string, HouseholdLayerPoint[]>();
-      for (const point of points) {
-        if (markerLayers(point, active, volunteerSkill).length === 0) continue;
-        const key = `${point.lat.toFixed(7)},${point.lng.toFixed(7)}`;
-        groups.set(key, [...(groups.get(key) ?? []), point]);
-      }
-      for (const group of groups.values()) {
-        const first = group[0];
-        const layers = LAYERS.filter((layer) => group.some((point) => markerLayers(point, active, volunteerSkill).some((candidate) => candidate.key === layer.key)));
-        const skills = active.volunteer ? visibleSkills(group, volunteerSkill) : [];
-        const iconCount = layers.filter((layer) => layer.key !== "volunteer").length + skills.length;
-        const iconWidth = 6 + Math.max(1, iconCount) * 27;
-        const icon = L.divIcon({
-          className: "",
-          html: markerHtml(layers, skills, group.length),
-          iconSize: [iconWidth, 31],
-          iconAnchor: [iconWidth / 2, 16],
-        });
-        L.marker([first.lat, first.lng], { icon })
-          .addTo(map)
-          .bindTooltip(layers.some((layer) => layer.key === "volunteer") ? volunteerTooltip(group, layers.map((layer) => layer.shortLabel).join(" · ")) : layers.map((layer) => layer.shortLabel).join(" · "), { direction: "top", offset: [0, -12] })
-          .bindPopup(groupedPopup(group));
-        bounds.extend([first.lat, first.lng]);
-      }
-      if (showSites) {
-        for (const site of sites) {
-          const style = site.type ? SITE_STYLE[site.type] : SITE_STYLE.OTHER;
-          const icon = L.divIcon({
-            className: "",
-            html: `<div title="${escapeHtml(style.label)}" style="display:grid;place-items:center;width:34px;height:34px;border:3px solid white;border-radius:10px;background:${style.color};box-shadow:0 2px 9px rgba(15,23,42,.5);color:white;font:700 18px/1 system-ui">${style.symbol}</div>`,
-            iconSize: [34, 34], iconAnchor: [17, 17],
-          });
-          L.marker([site.lat, site.lng], { icon }).addTo(map).bindTooltip(`${style.label}: ${site.name}`, { direction: "top" }).bindPopup(sitePopup(site));
-          bounds.extend([site.lat, site.lng]);
-        }
-      }
-      if (showHeatmap) removeHeatmap = addFloodHeatmap(L, map, points);
-      // ครั้งแรกจัดมุมให้เห็นข้อมูลทั้งหมด แต่เมื่อเคยเลื่อน/ซูมแล้วให้คงมุมเดิมหลังรีเฟรช
-      // หากตัวกรองเปลี่ยนไปยังพื้นที่อื่นจนมุมเดิมไม่ครอบข้อมูล จึงค่อยจัดมุมใหม่
-      const savedViewStillRelevant = savedView && bounds.isValid()
-        ? bounds.pad(0.5).contains([savedView.lat, savedView.lng])
-        : false;
-      if (bounds.isValid() && !savedViewStillRelevant) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: Math.min(defaultZoom, 17) });
-      }
-      persistView();
+      const created = map;
+      const reportView = () => {
+        saveMapView(created);
+        const c = created.getCenter();
+        onCenterChangeRef.current?.({ lat: c.lat, lng: c.lng });
+      };
+      map.on("moveend zoomend", reportView);
+      reportView();
+      // แผงชั้นข้อมูล/แผ่นด้านล่างเปลี่ยนขนาดพื้นที่แผนที่บนมือถือ — ให้ Leaflet วัดใหม่
+      observer = new ResizeObserver(() => created.invalidateSize());
+      observer.observe(ref.current);
+      setHandle({ L, map });
     })();
-    return () => { cancelled = true; removeHeatmap(); if (map) saveMapView(map); map?.remove(); };
-  }, [points, sites, center.lat, center.lng, defaultZoom, active, volunteerSkill, showSites, showHeatmap]);
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      if (map) {
+        saveMapView(map);
+        map.remove();
+      }
+      setHandle(null);
+    };
+  }, []);
 
-  return (
-    <div>
-      <div className="flex flex-wrap gap-2 border-b-2 border-slate-100 bg-slate-50/70 p-4">
-        {LAYERS.map((layer) => (
-          <label key={layer.key} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-            <input type="checkbox" checked={active[layer.key]} onChange={(event) => setActive((old) => ({ ...old, [layer.key]: event.target.checked }))} />
-            <LayerIcon path={layer.iconPath} color={layer.color} />
-            {layer.label}
-          </label>
-        ))}
-        <label className="ml-auto flex min-w-[220px] items-center gap-2 text-xs font-semibold text-slate-600">
-          ทักษะอาสาสมัคร
-          <select value={volunteerSkill} onChange={(event) => setVolunteerSkill(event.target.value)} className="min-w-0 flex-1 rounded-lg border-2 border-slate-200 bg-white px-2 py-1.5">
-            <option value="">ทุกทักษะ</option>
-            {availableVolunteerSkills.map((skill) => <option key={skill.code} value={skill.code}>{skill.label}</option>)}
-          </select>
-        </label>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-          <input type="checkbox" checked={showSites} onChange={(event) => setShowSites(event.target.checked)} />
-          <span aria-hidden="true">🏫</span> จุดสำคัญพื้นที่
-        </label>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-          <input type="checkbox" checked={showHeatmap} onChange={(event) => setShowHeatmap(event.target.checked)} />
-          <span aria-hidden="true">🌊</span> ฮีตแมประดับน้ำ
-        </label>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-2 text-[11px] text-slate-600">
-        <strong>สัญลักษณ์ทักษะ:</strong>
-        {availableVolunteerSkills.map((skill) => { const style = skillStyle(skill); return <span key={skill.code} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-100 px-2 py-1"><LayerIcon path={style.iconPath} color={style.color} />{skill.label}</span>; })}
-      </div>
-      {showHeatmap ? <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-white px-4 py-2 text-[11px] text-slate-600"><strong>ระดับน้ำสูงสุด:</strong><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-yellow-300" /> ต่ำกว่า 0.30 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-amber-500" /> 0.30–0.79 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-orange-600" /> 0.80–1.49 เมตร</span><span className="inline-flex items-center gap-1"><i className="h-3 w-5 rounded bg-red-700" /> 1.50 เมตรขึ้นไป</span><span>บริเวณที่จุดใกล้กันจะมีสีเข้มขึ้น</span></div> : null}
-      <div ref={ref} className="h-[580px] w-full" role="img" aria-label="แผนที่จุดครัวเรือนแยกตามกลุ่มข้อมูล" />
-    </div>
-  );
+  // แผนที่พื้นฐาน
+  useEffect(() => {
+    if (!handle) return;
+    const config = BASE_MAPS[base];
+    const tiles = handle.L.tileLayer(config.url, {
+      attribution: config.attribution,
+      maxZoom: 19,
+      maxNativeZoom: config.maxNativeZoom,
+    }).addTo(handle.map);
+    tiles.bringToBack();
+    return () => { tiles.remove(); };
+  }, [handle, base]);
+
+  // จุดครัวเรือน (รวมจุดที่พิกัดซ้ำเป็นหมุดเดียว)
+  useEffect(() => {
+    if (!handle) return;
+    const { L, map } = handle;
+    const group = L.layerGroup().addTo(map);
+    const markerKeys = HOUSEHOLD_LAYERS.filter((layer) => layers.includes(layer.key));
+    const groups = new Map<string, HouseholdLayerPoint[]>();
+    for (const point of points) {
+      if (!markerKeys.some((layer) => belongsToLayer(point, layer.key, volunteerSkill))) continue;
+      const key = `${point.lat.toFixed(7)},${point.lng.toFixed(7)}`;
+      groups.set(key, [...(groups.get(key) ?? []), point]);
+    }
+    for (const members of groups.values()) {
+      const first = members[0];
+      const shown = markerKeys.filter((layer) => members.some((point) => belongsToLayer(point, layer.key, volunteerSkill)));
+      const skills = shown.some((layer) => layer.key === "volunteer") ? visibleSkills(members, volunteerSkill) : [];
+      const iconCount = shown.filter((layer) => layer.key !== "volunteer").length + skills.length;
+      const iconWidth = 6 + Math.max(1, iconCount) * 27;
+      const icon = L.divIcon({
+        className: "",
+        html: markerHtml(shown, skills, members.length),
+        iconSize: [iconWidth, 31],
+        iconAnchor: [iconWidth / 2, 16],
+      });
+      const fallback = shown.map((layer) => layer.shortLabel).join(" · ");
+      L.marker([first.lat, first.lng], { icon })
+        .addTo(group)
+        .bindTooltip(shown.some((layer) => layer.key === "volunteer") ? volunteerTooltip(members, fallback) : fallback, { direction: "top", offset: [0, -12] })
+        .bindPopup(groupedPopup(members), { maxWidth: 340 });
+    }
+    return () => { group.remove(); };
+  }, [handle, points, layers, volunteerSkill]);
+
+  // จุดสำคัญ แยกตามประเภท
+  useEffect(() => {
+    if (!handle) return;
+    const { L, map } = handle;
+    const group = L.layerGroup().addTo(map);
+    for (const site of sites) {
+      const type = siteTypeKey(site);
+      if (!siteTypes.includes(type)) continue;
+      const style = SITE_STYLE[type] ?? SITE_STYLE.OTHER;
+      const label = siteTypeLabels[type] ?? "จุดสำคัญ";
+      const icon = L.divIcon({
+        className: "",
+        html: `<div title="${escapeHtml(label)}" style="display:grid;place-items:center;width:34px;height:34px;border:3px solid white;border-radius:10px;background:${style.color};box-shadow:0 2px 9px rgba(15,23,42,.5);color:white;font:700 18px/1 system-ui">${style.symbol}</div>`,
+        iconSize: [34, 34], iconAnchor: [17, 17],
+      });
+      L.marker([site.lat, site.lng], { icon, zIndexOffset: 500 })
+        .addTo(group)
+        .bindTooltip(`${label}: ${site.name}`, { direction: "top" })
+        .bindPopup(sitePopup(site, label));
+    }
+    return () => { group.remove(); };
+  }, [handle, sites, siteTypes, siteTypeLabels]);
+
+  // ฮีตแมประดับน้ำ
+  const heatOn = layers.includes("heat");
+  useEffect(() => {
+    if (!handle || !heatOn) return;
+    return addFloodHeatmap(handle.L, handle.map, points);
+  }, [handle, points, heatOn]);
+
+  // จัดมุมกล้อง: ครั้งแรกคงมุมที่เคยดูไว้ (ถ้ายังครอบข้อมูล) · เปลี่ยนพื้นที่แล้วจัดใหม่เสมอ
+  const lastFitKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!handle || lastFitKey.current === fitKey) return;
+    const isFirst = lastFitKey.current === null;
+    lastFitKey.current = fitKey;
+    const { L, map } = handle;
+    const bounds = L.latLngBounds([]);
+    for (const point of points) bounds.extend([point.lat, point.lng]);
+    for (const site of sites) bounds.extend([site.lat, site.lng]);
+    if (!bounds.isValid()) return;
+    // คงมุมเดิมเฉพาะเมื่อยังเห็นข้อมูลอย่างน้อยหนึ่งจุดในกรอบจอ (แผนที่เพิ่งสร้างด้วยมุมที่บันทึกไว้)
+    // เทียบแค่จุดกึ่งกลางไม่พอ: ซูมลึกที่กึ่งกลางกลุ่มอาจไม่มีหมุดสักจุดในจอ
+    if (isFirst && savedViewRef.current) {
+      const visible = map.getBounds();
+      if (points.some((point) => visible.contains([point.lat, point.lng])) || sites.some((site) => visible.contains([site.lat, site.lng]))) return;
+    }
+    // เว้นขอบให้แผงชั้นข้อมูลที่ลอยทับแผนที่ (ขวา 340px บนเดสก์ท็อป · แถบล่าง 56px บนมือถือ)
+    const desktop = window.matchMedia("(min-width: 768px)").matches;
+    map.fitBounds(bounds, {
+      paddingTopLeft: [48, 48],
+      paddingBottomRight: desktop ? [400, 48] : [48, 104],
+      maxZoom: Math.min(initialRef.current.defaultZoom, 17),
+    });
+  }, [handle, fitKey, points, sites]);
+
+  return <div ref={ref} className="h-full w-full" role="region" aria-label="แผนที่จุดครัวเรือนและจุดสำคัญ" />;
 }
 
-function LayerIcon({ path, color }: { path: string; color: string }) {
+export function LayerIcon({ path, color, size = "md" }: { path: string; color: string; size?: "sm" | "md" }) {
   return (
-    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white" style={{ backgroundColor: color }} aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d={path} /></svg>
+    <span
+      className={`grid shrink-0 place-items-center rounded-full text-white ${size === "sm" ? "h-5 w-5" : "h-6 w-6"}`}
+      // สีมาจากชุดเดียวกับหมุดบนแผนที่ (ดูคอมเมนต์ HOUSEHOLD_LAYERS)
+      style={{ backgroundColor: color }}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"}><path d={path} /></svg>
     </span>
   );
 }
