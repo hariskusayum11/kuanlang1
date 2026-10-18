@@ -5,10 +5,8 @@ import Link from "next/link";
 import { submitRegistrationAction } from "@/lib/registration/actions";
 import {
   REQUESTABLE_ROLES,
-  REQUESTABLE_ROLE_HINTS,
   REQUESTABLE_ROLE_LABELS,
   registrationSchema,
-  type RequestableRole,
 } from "@/lib/registration/validation";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 import { Mascot } from "@/components/brand/mascot";
@@ -89,13 +87,29 @@ export function RegisterForm({
         </div>
         <div>
           <h3 className="text-xl font-bold text-slate-900">ส่งคำขอลงทะเบียนแล้ว</h3>
-          <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
-            {!emailEnabled
-              ? "คำขอของคุณถูกบันทึกแล้ว ผู้ดูแลระบบจะตรวจสอบและติดต่อกลับเพื่อเปิดใช้งานบัญชีให้ — ขณะนี้ระบบยังไม่ส่งอีเมลยืนยัน"
-              : verificationEmailSent
+          {!emailEnabled ? (
+            // ปิดระบบอีเมล: ต้องไม่พูดถึงอีเมลยืนยันเลย ผู้สมัครจะไปเฝ้ารอเมลที่ไม่มีวันมา
+            // บอกขั้นต่อไปเป็นลำดับให้ชัด — รออนุมัติ แล้วเข้าระบบด้วยรหัสที่ตั้งไว้
+            <ol className="mx-auto mt-4 max-w-xs space-y-2 text-left text-sm leading-relaxed text-slate-600">
+              <li className="flex gap-2.5">
+                <span className="chip chip-mint shrink-0">1</span>
+                <span>ผู้ดูแลระบบตรวจสอบคำขอและอนุมัติบัญชีให้</span>
+              </li>
+              <li className="flex gap-2.5">
+                <span className="chip chip-mint shrink-0">2</span>
+                <span>
+                  เข้าสู่ระบบด้วย<strong>อีเมลและรหัสผ่านที่เพิ่งตั้ง</strong>
+                  ได้ทันทีหลังอนุมัติ — ไม่ต้องรออีเมลยืนยัน
+                </span>
+              </li>
+            </ol>
+          ) : (
+            <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
+              {verificationEmailSent
                 ? "ระบบส่งลิงก์ยืนยันไปที่อีเมลของคุณแล้ว กรุณายืนยันอีเมลก่อน จากนั้นรอผู้ดูแลระบบตรวจสอบและอนุมัติบัญชี"
                 : "สร้างคำขอสำเร็จ แต่ยังส่งอีเมลยืนยันไม่ได้ กรุณากดส่งลิงก์อีกครั้งด้านล่าง หรือติดต่อผู้ดูแลระบบ"}
-          </p>
+            </p>
+          )}
         </div>
         {/* ปิดระบบอีเมล = ปุ่มส่งลิงก์ซ้ำไม่มีความหมาย ซ่อนไว้ไม่ให้ผู้สมัครกดวนเปล่า ๆ */}
         {emailEnabled && (
@@ -208,10 +222,8 @@ export function RegisterForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          {/* ถามว่า "คุณคือใคร" ไม่ใช่ "เลือกสิทธิ์ที่อยากได้" — ผู้ดูแลระบบเป็นผู้มอบ
-              บทบาทจริงตอนอนุมัติ (Owner Decision 2026-10-18) */}
           <label htmlFor="reg-role" className="label">
-            คุณคือใคร <span className="text-red-500">*</span>
+            บทบาทที่ขอ <span className="text-red-500">*</span>
           </label>
           <select
             id="reg-role"
@@ -219,21 +231,15 @@ export function RegisterForm({
             value={form.requestedRole}
             onChange={(e) => set("requestedRole", e.target.value)}
             disabled={submitting}
-            aria-describedby="reg-role-hint"
             className="field disabled:bg-slate-50"
           >
-            <option value="">— เลือก —</option>
+            <option value="">— เลือกบทบาท —</option>
             {REQUESTABLE_ROLES.map((role) => (
               <option key={role} value={role}>
                 {REQUESTABLE_ROLE_LABELS[role]}
               </option>
             ))}
           </select>
-          <p id="reg-role-hint" className="text-xs leading-relaxed text-slate-400">
-            {form.requestedRole
-              ? REQUESTABLE_ROLE_HINTS[form.requestedRole as RequestableRole]
-              : "ผู้ดูแลระบบจะตรวจสอบและกำหนดสิทธิ์ให้ตรงกับงานของคุณ"}
-          </p>
         </div>
         <div className="space-y-1.5">
           <label htmlFor="reg-phone" className="label">

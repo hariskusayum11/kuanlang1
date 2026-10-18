@@ -21,24 +21,16 @@ export const REQUESTABLE_ROLES = [
 export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
 
 /**
- * ป้ายในหน้าสมัคร — ตอบคำถาม **"คุณคือใคร"** ไม่ใช่ "เลือกสิทธิ์ที่อยากได้"
- * (Owner Decision 2026-10-18)
+ * ป้ายบทบาทในหน้าสมัคร (ใช้ชื่อบทบาทตรง ๆ — เจ้าของระบบไม่ใช้แบบคำถาม "คุณคือใคร")
  *
- * ค่าที่เก็บยังเป็น UserRoleEnum เหมือนเดิมเพื่อไม่ต้อง migrate — แต่ความหมาย
- * เปลี่ยนเป็น "บทบาทที่ผู้สมัครเสนอ" ซึ่ง **ADMIN มีสิทธิ์เปลี่ยนตอนอนุมัติ**
- * เช่น ผู้ที่เลือก "เจ้าหน้าที่หน่วยงาน" อาจได้ EXECUTIVE ถ้าเป็นแพทย์/ผู้บริหาร
+ * ค่าที่เก็บคือ "บทบาทที่ผู้สมัครขอ" ซึ่ง **ADMIN เปลี่ยนได้ตอนอนุมัติ**
+ * (Owner Decision 2026-10-18) เช่น ผู้ที่ขอเป็น "เจ้าหน้าที่" อาจได้ EXECUTIVE
+ * ถ้าเป็นแพทย์/ผู้บริหาร — EXECUTIVE จึงไม่อยู่ในตัวเลือกให้ขอเอง
  */
 export const REQUESTABLE_ROLE_LABELS: Record<RequestableRole, string> = {
-  [UserRoleEnum.DATA_ENTRY]: "ผู้คีย์ข้อมูล",
-  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่หน่วยงาน",
+  [UserRoleEnum.DATA_ENTRY]: "เจ้าหน้าที่คีย์ข้อมูล",
+  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่",
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
-};
-
-/** คำอธิบายใต้ตัวเลือก — ช่วยให้ผู้สมัครเลือกถูกตั้งแต่ครั้งแรก */
-export const REQUESTABLE_ROLE_HINTS: Record<RequestableRole, string> = {
-  [UserRoleEnum.DATA_ENTRY]: "คีย์ข้อมูลจากแบบสอบถามกระดาษเข้าระบบ",
-  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่หน่วยงาน/โรงพยาบาล/ชุมชน ที่ต้องใช้ข้อมูลทำงาน",
-  [UserRoleEnum.VOLUNTEER]: "อาสาช่วยเหลือเมื่อเกิดเหตุ — ลงทะเบียนไว้ล่วงหน้า",
 };
 
 /**

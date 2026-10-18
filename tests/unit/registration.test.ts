@@ -4,7 +4,6 @@ import {
   APPROVABLE_ROLES,
   APPROVABLE_ROLE_LABELS,
   REQUESTABLE_ROLES,
-  REQUESTABLE_ROLE_HINTS,
   REQUESTABLE_ROLE_LABELS,
   registrationSchema,
 } from "../../lib/registration/validation";
@@ -52,8 +51,8 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     }
   });
 
-  it("whitelist = DATA_ENTRY, OFFICER, VOLUNTEER เท่านั้น และมี label/คำอธิบายไทยครบ", () => {
-    // Owner Decision 2026-10-18: หน้าสมัครถามว่า "คุณคือใคร" — ไม่ใช่เลือกสิทธิ์เอง
+  it("whitelist = DATA_ENTRY, OFFICER, VOLUNTEER เท่านั้น และมี label ไทยครบ", () => {
+    // Owner Decision 2026-10-18: EXECUTIVE ถอดออก (ADMIN มอบตอนอนุมัติ) · เพิ่ม OFFICER
     expect([...REQUESTABLE_ROLES].sort()).toEqual(
       [
         UserRoleEnum.DATA_ENTRY,
@@ -63,7 +62,6 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     );
     for (const role of REQUESTABLE_ROLES) {
       expect(REQUESTABLE_ROLE_LABELS[role]).toBeTruthy();
-      expect(REQUESTABLE_ROLE_HINTS[role]).toBeTruthy();
     }
   });
 
