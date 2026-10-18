@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, type ReactNode } from "react";
+import { Portal } from "./portal";
 
 /**
  * Modal กลางของระบบ — เรนเดอร์ผ่าน Portal ไปที่ <body> เสมอ
  *
- * เหตุผลที่ต้อง Portal (บั๊กจริงที่เคยเกิด):
- *   `.stagger > *` ใช้ `animation: slide-up ... both` ซึ่ง keyframe มี `transform`
- *   และ fill-mode `both` ทำให้ transform ค้างอยู่หลังอนิเมชันจบ
- *   ตาม CSS spec element ที่มี transform != none จะกลายเป็น containing block
- *   ของลูกที่เป็น `position: fixed` → modal ไปยึดขอบการ์ดแทนขอบจอ แล้วถูกตัดจนกดปุ่มไม่ได้
- *   การ Portal ออกไปที่ body ตัดปัญหานี้ทั้งหมด ไม่ว่าจะถูกวางไว้ใต้ ancestor แบบไหน
+ * เหตุผลที่ต้อง Portal อยู่ใน components/ui/portal.tsx (บั๊กที่เกิดซ้ำ 2 ครั้ง:
+ * `transform` จาก `.stagger` และ `opacity` จาก `animate-fade-in`)
  *
  * รองรับเนื้อหาสูงเกินจอด้วย max-height + scroll ภายใน (ปุ่มยืนยันต้องกดได้เสมอ)
  */
@@ -27,9 +23,6 @@ export function Modal({
   labelledBy?: string;
   children: ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
   // ปิดด้วย Esc + ล็อกการเลื่อนพื้นหลังระหว่างเปิด
   useEffect(() => {
     if (!open) return;
@@ -45,9 +38,10 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open || !mounted) return null;
+  if (!open) return null;
 
-  return createPortal(
+  return (
+    <Portal>
     <div
       className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-950/50 p-4 backdrop-blur-sm sm:items-center"
       role="dialog"
@@ -59,7 +53,7 @@ export function Modal({
       }}
     >
       <div className="my-auto w-full max-w-md">{children}</div>
-    </div>,
-    document.body,
+    </div>
+    </Portal>
   );
 }

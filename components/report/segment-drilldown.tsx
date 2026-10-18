@@ -4,6 +4,7 @@
 // ข้อมูลส่วนบุคคล: โหลดผ่าน /reports/segment (ตรวจ RBAC + Audit ฝั่ง server เสมอ)
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Portal } from "@/components/ui/portal";
 import type { HouseholdSegmentRow } from "@/lib/report/segment-data";
 import type { VulnerableExportRow } from "@/lib/report/vulnerable-export";
 import { isTriageBelowRecommendation, TRIAGE_LABEL } from "@/domain/triage";
@@ -110,6 +111,10 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
   const visibleCount = data?.kind === "person" ? visiblePersonRows.length : visibleHouseholdRows.length;
 
   return (
+    // Portal ออกไปที่ body เสมอ — หน้ารายงาน/แดชบอร์ดมี `animate-*` ที่ div ราก
+    // ซึ่งสร้าง stacking context ค้างไว้ ถ้าเรนเดอร์ในที่ตั้งเดิม header (sticky z-20)
+    // จะวาดทับหัว modal จนกดปุ่มไม่ได้ (ดู components/ui/portal.tsx)
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/50 p-0 sm:items-center sm:p-6"
       role="dialog"
@@ -196,6 +201,7 @@ function DrilldownModal({ query, onClose }: { query: string; onClose: () => void
         />
       ) : null}
     </div>
+    </Portal>
   );
 }
 

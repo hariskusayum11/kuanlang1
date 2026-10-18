@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { authClient } from "@/lib/auth-client";
 import { recordLogout } from "@/lib/auth-actions";
 
@@ -36,6 +37,10 @@ export function LogoutButton() {
       </button>
 
       {confirmOpen && (
+        // Portal ออกไปที่ body — กล่องนี้ถูกเรนเดอร์อยู่ใน header (sticky z-20)
+        // ถ้าไม่ Portal จะถูกขังอยู่ใน stacking context ของ header แล้วโดนสิ่งที่
+        // z สูงกว่า 20 ที่ระดับหน้า (เช่น เมนูมือถือ) วาดทับ (ดู components/ui/portal.tsx)
+        <Portal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-sm animate-rise rounded-2xl bg-white p-6 text-center shadow-lg">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
@@ -74,6 +79,7 @@ export function LogoutButton() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </>
   );

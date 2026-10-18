@@ -3,6 +3,7 @@
 // ปุ่ม "ดูรายละเอียด" ข้างแท่งที่มีช่อง "อื่นๆ" — กดแล้วเด้ง modal สรุปว่ากรอกอะไรมาบ้าง กี่คน
 // aggregate (ข้อความ + จำนวน) ไม่ใช่รายชื่อ · ข้อมูลโหลดผ่าน /reports/detail-breakdown (ตรวจสิทธิ์+Audit ฝั่ง server)
 import { useEffect, useRef, useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import type { DetailBreakdown } from "@/lib/report/detail-breakdown";
 
 interface Payload extends DetailBreakdown {
@@ -67,6 +68,10 @@ function Modal({ query, onClose }: { query: string; onClose: () => void }) {
   const max = data && data.items.length ? data.items[0].count : 1;
 
   return (
+    // Portal ออกไปที่ body เสมอ — หน้าที่เรียกใช้มี `animate-fade-in` ที่ div ราก
+    // ซึ่งสร้าง stacking context ค้างไว้ ถ้าเรนเดอร์ในที่ตั้งเดิม header (sticky z-20)
+    // จะวาดทับหัว modal จนกดปุ่มดาวน์โหลด/ปิดไม่ได้ (ดู components/ui/portal.tsx)
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/50 p-0 sm:items-center sm:p-6"
       role="dialog"
@@ -133,5 +138,6 @@ function Modal({ query, onClose }: { query: string; onClose: () => void }) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
