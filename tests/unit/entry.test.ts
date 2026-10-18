@@ -128,7 +128,8 @@ describe("defaultLandingPath — ครบทุก role ใน UserRoleEnum", (
     [UserRoleEnum.EXECUTIVE]: "/dashboard",
     [UserRoleEnum.OFFICER]: "/dashboard",
     [UserRoleEnum.COORDINATOR]: "/dashboard",
-    [UserRoleEnum.VOLUNTEER]: "/dashboard",
+    // อาสาสมัครมีหน้าของตัวเองแล้ว ไม่เข้าแดชบอร์ดผู้บริหารอีก (Owner Decision 2026-10-18)
+    [UserRoleEnum.VOLUNTEER]: "/volunteer",
     [UserRoleEnum.RESEARCHER]: "/dashboard",
     [UserRoleEnum.DATA_ENTRY]: "/surveys",
     [UserRoleEnum.VERIFIER]: "/verification",

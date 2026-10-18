@@ -36,7 +36,10 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
   ],
   [UserRoleEnum.VERIFIER]: [PERMISSIONS.VERIFICATION_VIEW],
   [UserRoleEnum.DATA_ENTRY]: [PERMISSIONS.SURVEY_ENTRY],
-  [UserRoleEnum.VOLUNTEER]: [PERMISSIONS.DASHBOARD_VIEW],
+  // อาสาสมัครเห็นเฉพาะหน้าของตัวเอง (Owner Decision 2026-10-18)
+  // เดิมมี dashboard.view ทำให้เห็น "แดชบอร์ดผู้บริหาร" พร้อมตัวเลขรวมทั้งระบบ
+  // ทั้งที่ยังไม่มีโมดูลภารกิจให้ทำอะไร — ขัดกฎ "Volunteer เห็นเฉพาะข้อมูลที่จำเป็นต่อภารกิจ"
+  [UserRoleEnum.VOLUNTEER]: [PERMISSIONS.VOLUNTEER_PORTAL_VIEW],
   [UserRoleEnum.RESEARCHER]: [
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORT_VIEW,

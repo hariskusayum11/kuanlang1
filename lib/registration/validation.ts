@@ -13,21 +13,61 @@ import { z } from "zod";
  * เดิมเป็นทางตันจริงในระบบ (พบจากการทดสอบ 2026-07-26)
  */
 export const REQUESTABLE_ROLES = [
-  UserRoleEnum.VOLUNTEER,
   UserRoleEnum.DATA_ENTRY,
-  // Owner Decision (2026-09-02): เปิดให้ "ผู้บริหาร" สมัครเองได้ตาม TOR (ผู้ใช้ 4 ประเภท:
-  // Admin สร้างเอง · คีย์ข้อมูล · ผู้บริหาร · อาสาสมัคร) — EXECUTIVE เป็นสิทธิ์อ่านอย่างเดียว
-  // (Dashboard/รายงาน/แผนที่/ข้อมูลสุขภาพ) แก้ข้อมูลไม่ได้ และยังต้องผ่าน ADMIN อนุมัติก่อน login
-  // บทบาทอำนาจสูงอื่น (OFFICER/COORDINATOR/VERIFIER/RESEARCHER/ADMIN) ยังสงวนให้แอดมินสร้างเอง
-  UserRoleEnum.EXECUTIVE,
+  UserRoleEnum.OFFICER,
+  UserRoleEnum.VOLUNTEER,
 ] as const satisfies readonly UserRoleEnum[];
 
 export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
 
+/**
+ * ป้ายในหน้าสมัคร — ตอบคำถาม **"คุณคือใคร"** ไม่ใช่ "เลือกสิทธิ์ที่อยากได้"
+ * (Owner Decision 2026-10-18)
+ *
+ * ค่าที่เก็บยังเป็น UserRoleEnum เหมือนเดิมเพื่อไม่ต้อง migrate — แต่ความหมาย
+ * เปลี่ยนเป็น "บทบาทที่ผู้สมัครเสนอ" ซึ่ง **ADMIN มีสิทธิ์เปลี่ยนตอนอนุมัติ**
+ * เช่น ผู้ที่เลือก "เจ้าหน้าที่หน่วยงาน" อาจได้ EXECUTIVE ถ้าเป็นแพทย์/ผู้บริหาร
+ */
 export const REQUESTABLE_ROLE_LABELS: Record<RequestableRole, string> = {
+  [UserRoleEnum.DATA_ENTRY]: "ผู้คีย์ข้อมูล",
+  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่หน่วยงาน",
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
+};
+
+/** คำอธิบายใต้ตัวเลือก — ช่วยให้ผู้สมัครเลือกถูกตั้งแต่ครั้งแรก */
+export const REQUESTABLE_ROLE_HINTS: Record<RequestableRole, string> = {
+  [UserRoleEnum.DATA_ENTRY]: "คีย์ข้อมูลจากแบบสอบถามกระดาษเข้าระบบ",
+  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่หน่วยงาน/โรงพยาบาล/ชุมชน ที่ต้องใช้ข้อมูลทำงาน",
+  [UserRoleEnum.VOLUNTEER]: "อาสาช่วยเหลือเมื่อเกิดเหตุ — ลงทะเบียนไว้ล่วงหน้า",
+};
+
+/**
+ * บทบาทที่ ADMIN "มอบได้" ตอนกดอนุมัติ (Owner Decision 2026-10-18)
+ *
+ * กว้างกว่า REQUESTABLE_ROLES เพราะ EXECUTIVE (ผู้บริหาร/แพทย์) ถูกถอดออกจาก
+ * การสมัครเองแล้ว — ต้องให้ ADMIN เป็นผู้มอบเท่านั้น เนื่องจากเห็นข้อมูลสุขภาพ
+ * รายบุคคลและดาวน์โหลดรายชื่อกลุ่มเปราะบางพร้อมพิกัดบ้านได้
+ *
+ * **ADMIN ไม่อยู่ในรายการนี้โดยตั้งใจ** — การยกสิทธิ์ผู้ดูแลระบบต้องทำแยกที่หน้า
+ * จัดการผู้ใช้ เพื่อไม่ให้เกิดขึ้นได้ด้วยการกดปุ่มเดียวในคิวอนุมัติ
+ *
+ * รายการนี้ยังเป็นด่านตรวจของคำขอเก่าที่ค้างอยู่ด้วย (เช่นคำขอที่ยื่นมาเป็น
+ * EXECUTIVE ก่อนเปลี่ยนกติกา) จึงต้องครอบคลุมค่าที่เคยยื่นได้ทั้งหมด
+ */
+export const APPROVABLE_ROLES = [
+  UserRoleEnum.DATA_ENTRY,
+  UserRoleEnum.OFFICER,
+  UserRoleEnum.EXECUTIVE,
+  UserRoleEnum.VOLUNTEER,
+] as const satisfies readonly UserRoleEnum[];
+
+export type ApprovableRole = (typeof APPROVABLE_ROLES)[number];
+
+export const APPROVABLE_ROLE_LABELS: Record<ApprovableRole, string> = {
   [UserRoleEnum.DATA_ENTRY]: "เจ้าหน้าที่คีย์ข้อมูล",
-  [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร",
+  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่",
+  [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร/แพทย์",
+  [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
 };
 
 // ช่อง optional จากฟอร์ม: ค่าว่าง ("") ถือว่าไม่กรอก — แปลงเป็น undefined ก่อนตรวจ

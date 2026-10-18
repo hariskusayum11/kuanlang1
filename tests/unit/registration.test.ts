@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { UserRoleEnum } from "@prisma/client";
 import {
+  APPROVABLE_ROLES,
+  APPROVABLE_ROLE_LABELS,
   REQUESTABLE_ROLES,
+  REQUESTABLE_ROLE_HINTS,
   REQUESTABLE_ROLE_LABELS,
   registrationSchema,
 } from "../../lib/registration/validation";
@@ -32,11 +35,12 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     expect(parsed.organization).toBe("เทศบาลเมืองควนลัง");
   });
 
-  it("บทบาทอำนาจสูงนอก whitelist (เช่น ADMIN/VERIFIER) ถูกปฏิเสธ", () => {
+  it("บทบาทอำนาจสูงนอก whitelist (เช่น ADMIN/EXECUTIVE) ถูกปฏิเสธ", () => {
     for (const role of [
       UserRoleEnum.ADMIN,
+      // Owner Decision 2026-10-18: EXECUTIVE สมัครเองไม่ได้แล้ว — ADMIN เป็นผู้มอบตอนอนุมัติ
+      UserRoleEnum.EXECUTIVE,
       UserRoleEnum.VERIFIER,
-      UserRoleEnum.OFFICER,
       UserRoleEnum.COORDINATOR,
       UserRoleEnum.RESEARCHER,
     ]) {
@@ -48,27 +52,39 @@ describe("registrationSchema (Zod — ใช้ทั้ง client และ ser
     }
   });
 
-  it("whitelist = VOLUNTEER, DATA_ENTRY, EXECUTIVE เท่านั้น และมี label ไทยครบ", () => {
-    // Owner Decision 2026-09-02: เพิ่ม EXECUTIVE (ผู้บริหาร) ให้สมัครเองได้ตาม TOR
+  it("whitelist = DATA_ENTRY, OFFICER, VOLUNTEER เท่านั้น และมี label/คำอธิบายไทยครบ", () => {
+    // Owner Decision 2026-10-18: หน้าสมัครถามว่า "คุณคือใคร" — ไม่ใช่เลือกสิทธิ์เอง
     expect([...REQUESTABLE_ROLES].sort()).toEqual(
       [
-        UserRoleEnum.VOLUNTEER,
         UserRoleEnum.DATA_ENTRY,
-        UserRoleEnum.EXECUTIVE,
+        UserRoleEnum.OFFICER,
+        UserRoleEnum.VOLUNTEER,
       ].sort(),
     );
     for (const role of REQUESTABLE_ROLES) {
       expect(REQUESTABLE_ROLE_LABELS[role]).toBeTruthy();
+      expect(REQUESTABLE_ROLE_HINTS[role]).toBeTruthy();
     }
   });
 
-  it("EXECUTIVE สมัครเองได้ (Owner Decision 2026-09-02 — ตาม TOR ผู้ใช้ 4 ประเภท)", () => {
+  it("EXECUTIVE สมัครเองไม่ได้ — ADMIN มอบให้ตอนอนุมัติเท่านั้น", () => {
+    expect([...REQUESTABLE_ROLES]).not.toContain(UserRoleEnum.EXECUTIVE);
+    // ส่งมาทาง payload ตรง ๆ ก็ต้องถูกปฏิเสธที่ schema ไม่ใช่แค่ซ่อนใน dropdown
     expect(
       registrationSchema.safeParse({
         ...VALID_INPUT,
         requestedRole: UserRoleEnum.EXECUTIVE,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
+    // แต่ ADMIN ต้องยังมอบได้ตอนอนุมัติ (และคำขอเก่าที่ยื่นเป็น EXECUTIVE ต้องอนุมัติได้)
+    expect([...APPROVABLE_ROLES]).toContain(UserRoleEnum.EXECUTIVE);
+  });
+
+  it("ADMIN ไม่อยู่ใน APPROVABLE_ROLES — ต้องมอบจากหน้าจัดการผู้ใช้เท่านั้น", () => {
+    expect([...APPROVABLE_ROLES]).not.toContain(UserRoleEnum.ADMIN);
+    for (const role of APPROVABLE_ROLES) {
+      expect(APPROVABLE_ROLE_LABELS[role]).toBeTruthy();
+    }
   });
 
   it("FIELD_SURVEYOR สมัครเองไม่ได้ (Owner Decision 2026-07-26 — ยังไม่มีโมดูลให้ใช้)", () => {

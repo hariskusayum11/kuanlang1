@@ -127,7 +127,9 @@ describe.skipIf(!isLocalDevDb)("Integration: RBAC + Community Scope", () => {
     const ctx = await loadContextOrThrow(toSessionUser(u));
     expect(ctx.communityIds).toEqual([tk01Id]);
     expect(ctx.isGlobalScope).toBe(true);
-    expect(ctx.permissions).toContain(PERMISSIONS.DASHBOARD_VIEW);
+    // อาสาสมัครเห็นเฉพาะหน้าของตัวเอง ไม่มี dashboard.view แล้ว (Owner Decision 2026-10-18)
+    expect(ctx.permissions).toContain(PERMISSIONS.VOLUNTEER_PORTAL_VIEW);
+    expect(ctx.permissions).not.toContain(PERMISSIONS.DASHBOARD_VIEW);
   });
 
   it("6) canAccessCommunity: เข้าได้ทุกชุมชน — Community Scope ถูกยกเลิก (#R7-B)", async () => {

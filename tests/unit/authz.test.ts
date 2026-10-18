@@ -218,6 +218,8 @@ describe("visibleNavItems", () => {
       "ความเสี่ยงและการช่วยเหลือ",
       "รายงานและส่งออก",
       "ผลงานผู้กรอก",
+      // หน้าเดียวของอาสาสมัคร — อยู่หมวด overview เพราะเป็นหน้าแรกของเขา
+      "ศูนย์อาสาสมัคร",
       "ผู้ใช้และสิทธิ์",
       "คำขอลงทะเบียน",
       "ตั้งค่าระบบ",
@@ -234,6 +236,7 @@ describe("visibleNavItems", () => {
       "analysis",
       "analysis",
       "analysis",
+      "overview",
       "system",
       "system",
       "system",
@@ -244,6 +247,12 @@ describe("visibleNavItems", () => {
     const { permissions } = buildAuthorization([UserRoleEnum.DATA_ENTRY]);
     const items = visibleNavItems(permissions);
     expect(items.map((i) => i.href)).toEqual(["/surveys"]);
+  });
+
+  it("VOLUNTEER เห็นเฉพาะศูนย์อาสาสมัคร — ไม่เห็นแดชบอร์ดผู้บริหาร", () => {
+    // Owner Decision 2026-10-18: อาสาสมัครเห็นเฉพาะข้อมูลที่จำเป็นต่อภารกิจ
+    const { permissions } = buildAuthorization([UserRoleEnum.VOLUNTEER]);
+    expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/volunteer"]);
   });
 
   it("EXECUTIVE ไม่เห็นเมนูตั้งค่าระบบ", () => {
@@ -270,6 +279,7 @@ describe("visibleNavItems", () => {
       "/risk",
       "/reports",
       "/keyer-performance",
+      "/volunteer",
       "/admin/users",
       "/admin/registrations",
       "/settings",

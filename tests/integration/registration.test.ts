@@ -15,7 +15,10 @@ import {
   rejectRegistration,
   submitRegistration,
 } from "../../lib/registration/core";
-import type { RegistrationInput } from "../../lib/registration/validation";
+import type {
+  RegistrationInput,
+  RequestableRole,
+} from "../../lib/registration/validation";
 
 // Integration tests — Self-registration + Approval (docs/26 §5)
 // -----------------------------------------------------------------------------
@@ -30,6 +33,9 @@ const EMAILS = {
   applicant1: "test-reg-applicant1@test.invalid",
   applicant2: "test-reg-applicant2@test.invalid",
   race: "test-reg-race@test.invalid",
+  grantExecutive: "test-reg-grant-exec@test.invalid",
+  grantDefault: "test-reg-grant-default@test.invalid",
+  grantAdmin: "test-reg-grant-admin@test.invalid",
 } as const;
 const PASSWORD = "Test.Reg.Password.01";
 const COMMUNITY_CODE = "TEST-REG-C1";
@@ -262,6 +268,91 @@ describe.skipIf(!isLocalDevDb)("Integration: Self-registration + Approval", () =
       body: { email: EMAILS.applicant1, password: PASSWORD },
     });
     expect(signIn.user.email).toBe(EMAILS.applicant1);
+  });
+
+  describe("ADMIN เลือกบทบาทจริงตอนอนุมัติ (Owner Decision 2026-10-18)", () => {
+    /** ผู้สมัครรายใหม่ที่ยืนยันอีเมลแล้ว พร้อมให้อนุมัติ */
+    async function freshApplicant(email: string, requestedRole: RequestableRole) {
+      await submitRegistration(makeInput(email, { requestedRole }));
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
+      const request = await prisma.registrationRequest.findUniqueOrThrow({
+        where: { userId: user.id },
+      });
+      return { user, request };
+    }
+
+    it("สมัครเป็น 'เจ้าหน้าที่หน่วยงาน' → ADMIN ยกให้เป็น EXECUTIVE ได้", async () => {
+      const { user, request } = await freshApplicant(
+        EMAILS.grantExecutive,
+        UserRoleEnum.OFFICER,
+      );
+
+      expect(
+        await approveRegistration(adminCtx, request.id, UserRoleEnum.EXECUTIVE),
+      ).toEqual({ ok: true });
+
+      const roles = await prisma.userRole.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { role: true },
+      });
+      // ได้เฉพาะบทบาทที่ ADMIN มอบ — ไม่ติดบทบาทที่ขอมาด้วย
+      expect(roles.map((r) => r.role)).toEqual([UserRoleEnum.EXECUTIVE]);
+    });
+
+    it("บันทึก Audit ทั้งบทบาทที่ขอและที่มอบจริง เมื่อ ADMIN เปลี่ยน", async () => {
+      const request = await prisma.registrationRequest.findFirstOrThrow({
+        where: { user: { email: EMAILS.grantExecutive } },
+      });
+      const audit = await prisma.auditLog.findFirst({
+        where: {
+          action: AuditAction.APPROVE,
+          entityType: "RegistrationRequest",
+          entityId: request.id,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(audit?.changes).toMatchObject({
+        requestedRole: UserRoleEnum.OFFICER,
+        grantedRole: UserRoleEnum.EXECUTIVE,
+        roleChangedByAdmin: true,
+      });
+    });
+
+    it("ไม่ส่งบทบาทมา → ใช้ตามที่ผู้สมัครเสนอ", async () => {
+      const { user, request } = await freshApplicant(
+        EMAILS.grantDefault,
+        UserRoleEnum.DATA_ENTRY,
+      );
+      expect(await approveRegistration(adminCtx, request.id)).toEqual({ ok: true });
+      const roles = await prisma.userRole.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { role: true },
+      });
+      expect(roles.map((r) => r.role)).toEqual([UserRoleEnum.DATA_ENTRY]);
+    });
+
+    it("ยก ADMIN ผ่านคิวอนุมัติไม่ได้ — ต้องทำที่หน้าจัดการผู้ใช้", async () => {
+      const { user, request } = await freshApplicant(
+        EMAILS.grantAdmin,
+        UserRoleEnum.VOLUNTEER,
+      );
+      expect(
+        await approveRegistration(adminCtx, request.id, UserRoleEnum.ADMIN),
+      ).toEqual({ ok: false, reason: "INVALID_ROLE" });
+
+      // คำขอต้องยังค้างอยู่ และบัญชีต้องยังเข้าระบบไม่ได้
+      const after = await prisma.registrationRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      expect(after.status).toBe(RegistrationRequestStatus.PENDING);
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).isActive,
+      ).toBe(false);
+    });
   });
 
   it("อนุมัติซ้ำ → NOT_FOUND_OR_DECIDED", async () => {

@@ -17,6 +17,10 @@ export const PERMISSIONS = {
   REPORT_SEGMENT_EXPORT: "report.segment.export",
   // แก้ค่ารายการสำคัญโดยตรงจากรายชื่อในรายงาน — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS
   REPORT_QUICK_EDIT: "report.quick-edit",
+  // หน้าของอาสาสมัครเอง — ยืนยันว่าลงทะเบียนแล้วและรอการติดต่อเมื่อมีภารกิจ
+  // แยกเป็น permission ของตัวเองเพื่อให้ถอด dashboard.view ออกจาก VOLUNTEER ได้
+  // (เดิมอาสาสมัครเห็น "แดชบอร์ดผู้บริหาร" ซึ่งขัดกับกฎ "เห็นเฉพาะข้อมูลที่จำเป็นต่อภารกิจ")
+  VOLUNTEER_PORTAL_VIEW: "volunteer.portal.view",
   SETTINGS_VIEW: "settings.view",
   USER_MANAGE: "user.manage",
   // ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS

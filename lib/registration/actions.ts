@@ -4,6 +4,7 @@
 // ห้ามรับ userId/role/scope จาก client — โหลดจาก session จริงเสมอ
 
 import { headers } from "next/headers";
+import { UserRoleEnum } from "@prisma/client";
 import { z } from "zod";
 import { getAuthorizationContext } from "../authz/context";
 import {
@@ -17,7 +18,7 @@ import {
   type SubmitRegistrationResult,
 } from "./core";
 import { consumeRegistrationQuota } from "./rate-limit";
-import { registrationSchema } from "./validation";
+import { APPROVABLE_ROLES, registrationSchema } from "./validation";
 
 export type SubmitRegistrationActionResult =
   | SubmitRegistrationResult
@@ -49,6 +50,11 @@ export async function submitRegistrationAction(
 }
 
 const requestIdSchema = z.string().cuid();
+
+/** บทบาทที่ ADMIN มอบได้ตอนอนุมัติ — ADMIN ไม่อยู่ในรายการ (ดู validation.ts) */
+const grantedRoleSchema = z
+  .nativeEnum(UserRoleEnum)
+  .refine((r) => (APPROVABLE_ROLES as readonly UserRoleEnum[]).includes(r));
 // เหตุผลการปฏิเสธ — บังคับกรอก (ผู้ขอควรได้รู้เหตุผลเมื่อติดต่อสอบถาม)
 const rejectReasonSchema = z.string().trim().min(2).max(500);
 
@@ -58,12 +64,23 @@ export type DecideRegistrationActionResult =
 
 export async function approveRegistrationAction(
   requestId: string,
+  /** บทบาทที่ ADMIN เลือกมอบ — ไม่ส่ง = ใช้ตามที่ผู้สมัครเสนอ */
+  grantedRole?: unknown,
 ): Promise<DecideRegistrationActionResult> {
   const ctx = await getAuthorizationContext();
   if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
   const parsed = requestIdSchema.safeParse(requestId);
   if (!parsed.success) return { ok: false, reason: "INVALID" };
-  return approveRegistration(ctx, parsed.data);
+
+  // ห้ามเชื่อค่าจาก client — ตรวจว่าอยู่ใน whitelist ก่อนส่งต่อ (core ตรวจซ้ำอีกชั้น)
+  let role: UserRoleEnum | undefined;
+  if (grantedRole !== undefined && grantedRole !== null && grantedRole !== "") {
+    const roleParsed = grantedRoleSchema.safeParse(grantedRole);
+    if (!roleParsed.success) return { ok: false, reason: "INVALID" };
+    role = roleParsed.data;
+  }
+
+  return approveRegistration(ctx, parsed.data, role);
 }
 
 export async function rejectRegistrationAction(

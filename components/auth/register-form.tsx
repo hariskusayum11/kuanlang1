@@ -5,8 +5,10 @@ import Link from "next/link";
 import { submitRegistrationAction } from "@/lib/registration/actions";
 import {
   REQUESTABLE_ROLES,
+  REQUESTABLE_ROLE_HINTS,
   REQUESTABLE_ROLE_LABELS,
   registrationSchema,
+  type RequestableRole,
 } from "@/lib/registration/validation";
 import { SAFE_ERROR_MESSAGES } from "@/lib/errors";
 import { Mascot } from "@/components/brand/mascot";
@@ -206,8 +208,10 @@ export function RegisterForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
+          {/* ถามว่า "คุณคือใคร" ไม่ใช่ "เลือกสิทธิ์ที่อยากได้" — ผู้ดูแลระบบเป็นผู้มอบ
+              บทบาทจริงตอนอนุมัติ (Owner Decision 2026-10-18) */}
           <label htmlFor="reg-role" className="label">
-            บทบาทที่ขอ <span className="text-red-500">*</span>
+            คุณคือใคร <span className="text-red-500">*</span>
           </label>
           <select
             id="reg-role"
@@ -215,15 +219,21 @@ export function RegisterForm({
             value={form.requestedRole}
             onChange={(e) => set("requestedRole", e.target.value)}
             disabled={submitting}
+            aria-describedby="reg-role-hint"
             className="field disabled:bg-slate-50"
           >
-            <option value="">— เลือกบทบาท —</option>
+            <option value="">— เลือก —</option>
             {REQUESTABLE_ROLES.map((role) => (
               <option key={role} value={role}>
                 {REQUESTABLE_ROLE_LABELS[role]}
               </option>
             ))}
           </select>
+          <p id="reg-role-hint" className="text-xs leading-relaxed text-slate-400">
+            {form.requestedRole
+              ? REQUESTABLE_ROLE_HINTS[form.requestedRole as RequestableRole]
+              : "ผู้ดูแลระบบจะตรวจสอบและกำหนดสิทธิ์ให้ตรงกับงานของคุณ"}
+          </p>
         </div>
         <div className="space-y-1.5">
           <label htmlFor="reg-phone" className="label">

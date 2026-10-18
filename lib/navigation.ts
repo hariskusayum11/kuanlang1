@@ -94,6 +94,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconHref: "/reports",
   },
   {
+    // อยู่กลุ่ม "ภาพรวม" เพราะเป็นหน้าแรกและหน้าเดียวของอาสาสมัคร
+    group: "overview",
+    label: "ศูนย์อาสาสมัคร",
+    href: "/volunteer",
+    permission: PERMISSIONS.VOLUNTEER_PORTAL_VIEW,
+    implemented: true,
+    iconHref: "/volunteer",
+  },
+  {
     group: "system",
     label: "ผู้ใช้และสิทธิ์",
     href: "/admin/users",

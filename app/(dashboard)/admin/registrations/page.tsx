@@ -198,7 +198,7 @@ function PendingRow({
         )}
       </div>
       <div className="shrink-0">
-        <RegistrationDecideButtons requestId={r.id} />
+        <RegistrationDecideButtons requestId={r.id} requestedRole={r.requestedRole} />
       </div>
     </div>
   );

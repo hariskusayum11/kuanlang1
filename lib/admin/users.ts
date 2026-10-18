@@ -25,7 +25,7 @@ import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import { isLegacyRole } from "../authz/role-labels";
-import { REQUESTABLE_ROLES } from "../registration/validation";
+import { APPROVABLE_ROLES } from "../registration/validation";
 import type { AuthorizationContext } from "../authz/types";
 
 export interface AdminUserRow {
@@ -704,7 +704,8 @@ export type RecoverUserResult =
  * ใช้กับบัญชีที่ยัง inactive และมีคำขอสถานะ REJECTED/CANCELLED — ทำให้กลับมาใช้งานได้
  * เหมือน "อนุมัติใหม่": ตั้งคำขอเป็น APPROVED + เปิดบัญชี + มอบบทบาทที่เคยขอ + มอบ community scope
  *
- * ป้องกันเชิงลึก: มอบได้เฉพาะบทบาทใน REQUESTABLE_ROLES (กัน role อำนาจสูงหลุดผ่านช่องนี้)
+ * ป้องกันเชิงลึก: มอบได้เฉพาะบทบาทใน APPROVABLE_ROLES (กัน ADMIN หลุดผ่านช่องนี้)
+ * ใช้รายการเดียวกับการอนุมัติคำขอ เพื่อให้บัญชีที่เคยยื่นเป็น EXECUTIVE กู้คืนได้ด้วย
  * ทั้งหมดอยู่ในทรานแซกชันเดียว — race-safe ด้วยเงื่อนไขสถานะบน updateMany
  */
 export async function recoverUser(
@@ -724,7 +725,7 @@ export async function recoverUser(
   ) {
     return { ok: false, reason: "NOT_RECOVERABLE" };
   }
-  if (!(REQUESTABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
+  if (!(APPROVABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
     return { ok: false, reason: "INVALID_ROLE" };
   }
 

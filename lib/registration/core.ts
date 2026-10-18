@@ -13,7 +13,7 @@ import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import { isEmailEnabled } from "../config/email";
 import type { AuthorizationContext } from "../authz/types";
-import { REQUESTABLE_ROLES, type RegistrationInput } from "./validation";
+import { APPROVABLE_ROLES, type RegistrationInput } from "./validation";
 
 export type SubmitRegistrationResult =
   | { ok: true; verificationEmailSent: boolean }
@@ -320,6 +320,12 @@ export async function deleteRegistrationRequest(
 export async function approveRegistration(
   ctx: AuthorizationContext,
   requestId: string,
+  /**
+   * บทบาทที่ ADMIN เลือกมอบจริง — ไม่ส่ง = ใช้ตามที่ผู้สมัครเสนอมา
+   * (Owner Decision 2026-10-18: ผู้สมัครเป็นคนบอกว่า "ฉันคือใคร"
+   *  ADMIN เป็นคนตัดสินว่า "ได้สิทธิ์อะไร")
+   */
+  grantedRole?: UserRoleEnum,
 ): Promise<DecideRegistrationResult> {
   if (!hasPermission(ctx, PERMISSIONS.REGISTRATION_MANAGE)) {
     return { ok: false, reason: "FORBIDDEN" };
@@ -339,8 +345,11 @@ export async function approveRegistration(
   if (!request || request.status !== RegistrationRequestStatus.PENDING) {
     return { ok: false, reason: "NOT_FOUND_OR_DECIDED" };
   }
-  // Defense-in-depth: ต่อให้ row ถูกเขียนด้วยช่องทางอื่น ก็ห้ามอนุมัติ role นอก whitelist
-  if (!(REQUESTABLE_ROLES as readonly UserRoleEnum[]).includes(request.requestedRole)) {
+  // บทบาทที่จะมอบจริง — ADMIN เลือกได้ ไม่เลือกก็ใช้ตามที่ผู้สมัครเสนอ
+  const roleToGrant = grantedRole ?? request.requestedRole;
+  // Defense-in-depth: ต่อให้ row ถูกเขียนด้วยช่องทางอื่นหรือ client ส่งค่าแปลก ๆ มา
+  // ก็ห้ามมอบ role นอก whitelist — โดยเฉพาะ ADMIN ที่ต้องมอบจากหน้าจัดการผู้ใช้เท่านั้น
+  if (!(APPROVABLE_ROLES as readonly UserRoleEnum[]).includes(roleToGrant)) {
     return { ok: false, reason: "INVALID_ROLE" };
   }
   // ด่านยืนยันอีเมลมีผลเฉพาะตอนที่ระบบอีเมลเปิดใช้งาน
@@ -367,10 +376,10 @@ export async function approveRegistration(
       data: { isActive: true },
     });
     await tx.userRole.upsert({
-      where: { userId_role: { userId: request.userId, role: request.requestedRole } },
+      where: { userId_role: { userId: request.userId, role: roleToGrant } },
       create: {
         userId: request.userId,
-        role: request.requestedRole,
+        role: roleToGrant,
         assignedBy: ctx.userId,
       },
       update: { isActive: true, assignedBy: ctx.userId },
@@ -397,7 +406,14 @@ export async function approveRegistration(
     action: AuditAction.APPROVE,
     entityType: "RegistrationRequest",
     entityId: requestId,
-    changes: { status: { old: "PENDING", new: "APPROVED" } },
+    // บันทึกทั้งบทบาทที่ขอมาและที่มอบจริง — ถ้าต่างกันต้องตรวจย้อนหลังได้ว่าใครเป็นคนยก
+    // (บทบาทไม่ใช่ PII จึงบันทึกค่าตรงได้)
+    changes: {
+      status: { old: "PENDING", new: "APPROVED" },
+      requestedRole: request.requestedRole,
+      grantedRole: roleToGrant,
+      roleChangedByAdmin: roleToGrant !== request.requestedRole,
+    },
   });
   return { ok: true };
 }
