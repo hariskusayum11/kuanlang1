@@ -57,8 +57,20 @@ SELECT count(*) AS persons,
 FROM vulnerable_person vp JOIN trusted t ON t.id = vp."householdId";
 
 \echo '=== 5) กลุ่มเปราะบาง: แยกระดับความเร่งด่วน ==='
-SELECT coalesce(vp."triageLevel"::text, 'ยังไม่ประเมิน') AS triage, count(*) AS persons
-FROM vulnerable_person vp JOIN trusted t ON t.id = vp."householdId"
+-- ใช้สูตรเดียวกับระบบ (domain/triage effectiveTriage): ค่าที่ผู้ดูแลตั้งไว้ก่อน
+-- ถ้าไม่มี ใช้ระดับที่เร่งด่วนที่สุดจากลักษณะความเปราะบางของคนนั้น
+-- ('P1' < 'P2' < 'P3' ตามลำดับตัวอักษร min() จึงได้ระดับที่เร่งด่วนที่สุด)
+-- คอลัมน์ triageLevel ว่างเกือบทั้งหมด เพราะเขียนเฉพาะตอนผู้ดูแลแก้ด่วน — ห้ามอ่านคอลัมน์นี้ตรง ๆ
+SELECT coalesce(eff, 'ยังไม่ประเมิน') AS triage, count(*) AS persons
+FROM (
+  SELECT vp.id,
+         coalesce(vp."triageLevel"::text,
+                  (SELECT min(vt."basePriority"::text)
+                   FROM person_vulnerability pv
+                   JOIN vulnerability_type vt ON vt.id = pv."vulnerabilityTypeId"
+                   WHERE pv."personId" = vp.id)) AS eff
+  FROM vulnerable_person vp JOIN trusted t ON t.id = vp."householdId"
+) x
 GROUP BY 1 ORDER BY 1;
 
 \echo '=== 6) กลุ่มเปราะบาง: แยกลักษณะความเปราะบาง (1 คนมีได้หลายลักษณะ) ==='
@@ -158,5 +170,40 @@ SELECT status::text, count(*) FROM registration_request GROUP BY 1 ORDER BY 2 DE
 SELECT to_char(date_trunc('month', h."enteredAt"), 'YYYY-MM') AS month, count(*) AS entered
 FROM household h WHERE h."deletedAt" IS NULL
 GROUP BY 1 ORDER BY 1;
+
+\echo '=== 21) กลุ่มเปราะบางรายชุมชน (ตามระดับความเร่งด่วน) ==='
+SELECT c."nameTh" AS community,
+       count(*) AS persons,
+       count(*) FILTER (WHERE x.eff = 'P1') AS p1,
+       count(*) FILTER (WHERE x.eff = 'P2') AS p2,
+       count(*) FILTER (WHERE x.eff = 'P3') AS p3
+FROM (
+  SELECT vp.id, t."communityId",
+         coalesce(vp."triageLevel"::text,
+                  (SELECT min(vt."basePriority"::text)
+                   FROM person_vulnerability pv
+                   JOIN vulnerability_type vt ON vt.id = pv."vulnerabilityTypeId"
+                   WHERE pv."personId" = vp.id)) AS eff
+  FROM vulnerable_person vp JOIN trusted t ON t.id = vp."householdId"
+) x
+JOIN community c ON c.id = x."communityId"
+GROUP BY c."nameTh" ORDER BY persons DESC;
+
+\echo '=== 22) ค่าที่ควรตรวจสอบ ==='
+SELECT (SELECT count(*) FROM trusted WHERE "surveyedAt" > now()) AS future_survey_dates,
+       (SELECT count(*) FROM trusted WHERE "surveyedAt" IS NULL) AS no_survey_date,
+       (SELECT count(*) FROM flood_risk_profile f JOIN trusted t ON t.id = f."householdId" WHERE f."maxFloodDepthCm" > 500) AS depth_over_5m,
+       (SELECT count(*) FROM flood_risk_profile f JOIN trusted t ON t.id = f."householdId" WHERE f."maxFloodDepthCm" > 800) AS depth_over_8m,
+       (SELECT count(*) FROM trusted WHERE "memberCount" IS NULL OR "memberCount" = 0) AS no_member_count;
+
+\echo '=== 23) ระดับน้ำสูงสุดเฉลี่ยรายชุมชน ==='
+SELECT c."nameTh" AS community,
+       count(*) FILTER (WHERE f."hasFloodedBefore" IS TRUE) AS flooded_before,
+       round(avg(f."maxFloodDepthCm") FILTER (WHERE f."maxFloodDepthCm" > 0)) AS avg_depth_cm,
+       count(*) FILTER (WHERE f."floorLevelVsRoad" = 'BELOW_ROAD') AS below_road
+FROM flood_risk_profile f
+JOIN trusted t ON t.id = f."householdId"
+JOIN community c ON c.id = t."communityId"
+GROUP BY c."nameTh" ORDER BY avg_depth_cm DESC NULLS LAST;
 
 ROLLBACK;
