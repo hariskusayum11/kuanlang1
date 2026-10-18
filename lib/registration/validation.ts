@@ -21,15 +21,19 @@ export const REQUESTABLE_ROLES = [
 export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
 
 /**
- * ป้ายบทบาทในหน้าสมัคร (ใช้ชื่อบทบาทตรง ๆ — เจ้าของระบบไม่ใช้แบบคำถาม "คุณคือใคร")
+ * ป้าย "ประเภทผู้สมัคร" ในหน้าสมัคร (Owner Decision 2026-10-18)
+ *
+ * ตั้งชื่อให้คำขึ้นต้นไม่ซ้ำกัน — เดิม "เจ้าหน้าที่คีย์ข้อมูล" กับ "เจ้าหน้าที่"
+ * อ่านผ่าน ๆ แล้วสับสน · เป็นป้ายเฉพาะหน้าสมัคร ส่วนชื่อบทบาทในระบบ
+ * (ROLE_LABELS / APPROVABLE_ROLE_LABELS) คงเดิม
  *
  * ค่าที่เก็บคือ "บทบาทที่ผู้สมัครขอ" ซึ่ง **ADMIN เปลี่ยนได้ตอนอนุมัติ**
- * (Owner Decision 2026-10-18) เช่น ผู้ที่ขอเป็น "เจ้าหน้าที่" อาจได้ EXECUTIVE
- * ถ้าเป็นแพทย์/ผู้บริหาร — EXECUTIVE จึงไม่อยู่ในตัวเลือกให้ขอเอง
+ * เช่น ผู้ที่สมัครเป็น "เจ้าหน้าที่หน่วยงาน" อาจได้ EXECUTIVE ถ้าเป็นแพทย์/ผู้บริหาร
+ * — EXECUTIVE จึงไม่อยู่ในตัวเลือกให้ขอเอง
  */
 export const REQUESTABLE_ROLE_LABELS: Record<RequestableRole, string> = {
-  [UserRoleEnum.DATA_ENTRY]: "เจ้าหน้าที่คีย์ข้อมูล",
-  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่",
+  [UserRoleEnum.DATA_ENTRY]: "ผู้คีย์ข้อมูล",
+  [UserRoleEnum.OFFICER]: "เจ้าหน้าที่หน่วยงาน",
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
 };
 

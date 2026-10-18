@@ -84,7 +84,7 @@ export default async function RegisterPage() {
             <div className="mb-6">
               <h2 className="text-xl font-bold text-slate-900">ลงทะเบียนใช้งาน</h2>
               <p className="mt-1 text-sm text-slate-500">
-                สำหรับเจ้าหน้าที่คีย์ข้อมูล เจ้าหน้าที่ และอาสาสมัครในโครงการ
+                สำหรับผู้คีย์ข้อมูล เจ้าหน้าที่หน่วยงาน และอาสาสมัครในโครงการ
               </p>
             </div>
             <RegisterForm emailEnabled={isEmailEnabled()} />

@@ -223,7 +223,7 @@ export function RegisterForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="reg-role" className="label">
-            บทบาทที่ขอ <span className="text-red-500">*</span>
+            ประเภทผู้สมัคร <span className="text-red-500">*</span>
           </label>
           <select
             id="reg-role"
@@ -233,7 +233,7 @@ export function RegisterForm({
             disabled={submitting}
             className="field disabled:bg-slate-50"
           >
-            <option value="">— เลือกบทบาท —</option>
+            <option value="">— เลือกประเภทผู้สมัคร —</option>
             {REQUESTABLE_ROLES.map((role) => (
               <option key={role} value={role}>
                 {REQUESTABLE_ROLE_LABELS[role]}
