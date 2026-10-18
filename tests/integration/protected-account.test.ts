@@ -91,12 +91,20 @@ describe.skipIf(!isLocalDevDb)("Integration: บัญชีคุ้มคร�
   describe("ADMIN ธรรมดาแตะบัญชีคุ้มครองไม่ได้ — ครบทุกการกระทำ", () => {
     // ตารางนี้ผูกกับ PROTECTED_ACTIONS โดยตรง — เพิ่มการกระทำใหม่ใน domain
     // แล้วไม่มาเพิ่มที่นี่ เทสต์ "ครอบคลุมครบ" ด้านล่างจะฟ้องทันที
-    const cases: Record<ProtectedAction, () => Promise<{ ok: boolean; reason?: string }>> = {
-      "delete-user": () => deleteUser(plainCtx, guardedId),
-      "set-active": () => setUserActive(plainCtx, guardedId, false),
-      "set-roles": () => setUserRoles(plainCtx, guardedId, [UserRoleEnum.VOLUNTEER]),
-      "reset-password": () => resetUserPassword(plainCtx, guardedId),
-      "set-global-scope": () => setUserGlobalScope(plainCtx, guardedId, true),
+    //
+    // reason ต่างกันได้ตามด่านที่ดักก่อน แต่ invariant ที่ต้องจริงเสมอคือ "ถูกปฏิเสธ":
+    //  - reset-password ถูกดักตั้งแต่ด่านแรก เพราะ ADMIN ทั่วไปตั้งรหัสให้ "ใครก็ตาม"
+    //    ไม่ได้อยู่แล้ว (Owner Decision 2026-10-18) จึงได้ NOT_ALLOWED ไม่ถึงด่านคุ้มครอง
+    //  - ที่เหลือ ADMIN ทั่วไปทำกับบัญชีทั่วไปได้ จึงต้องถูกดักด้วย PROTECTED_ACCOUNT
+    const cases: Record<
+      ProtectedAction,
+      { run: () => Promise<{ ok: boolean; reason?: string }>; expected: string }
+    > = {
+      "delete-user": { run: () => deleteUser(plainCtx, guardedId), expected: "PROTECTED_ACCOUNT" },
+      "set-active": { run: () => setUserActive(plainCtx, guardedId, false), expected: "PROTECTED_ACCOUNT" },
+      "set-roles": { run: () => setUserRoles(plainCtx, guardedId, [UserRoleEnum.VOLUNTEER]), expected: "PROTECTED_ACCOUNT" },
+      "reset-password": { run: () => resetUserPassword(plainCtx, guardedId), expected: "NOT_ALLOWED" },
+      "set-global-scope": { run: () => setUserGlobalScope(plainCtx, guardedId, true), expected: "PROTECTED_ACCOUNT" },
     };
 
     it("รายการเคสครอบคลุมทุกค่าใน PROTECTED_ACTIONS (กันลืมใส่ guard ในอนาคต)", () => {
@@ -104,9 +112,9 @@ describe.skipIf(!isLocalDevDb)("Integration: บัญชีคุ้มคร�
     });
 
     for (const action of PROTECTED_ACTIONS) {
-      it(`${action} → PROTECTED_ACCOUNT`, async () => {
-        const result = await cases[action]();
-        expect(result).toMatchObject({ ok: false, reason: "PROTECTED_ACCOUNT" });
+      it(`${action} → ถูกปฏิเสธ (${cases[action].expected})`, async () => {
+        const result = await cases[action].run();
+        expect(result).toMatchObject({ ok: false, reason: cases[action].expected });
       });
     }
 
@@ -132,10 +140,12 @@ describe.skipIf(!isLocalDevDb)("Integration: บัญชีคุ้มคร�
         },
         select: { userId: true, changes: true },
       });
-      expect(attempts.length).toBeGreaterThanOrEqual(PROTECTED_ACTIONS.length);
       for (const a of attempts) expect(a.userId).toBe(plainCtx.userId);
       const blocked = attempts.map((a) => (a.changes as { blocked?: string }).blocked);
-      for (const action of PROTECTED_ACTIONS) expect(blocked).toContain(action);
+      // reset-password ถูกปฏิเสธตั้งแต่ด่านแรก จึงไม่ถึงด่านคุ้มครองและไม่มี REJECT ของตัวเอง
+      const reachesProtectedGuard = PROTECTED_ACTIONS.filter((a) => a !== "reset-password");
+      expect(attempts.length).toBeGreaterThanOrEqual(reachesProtectedGuard.length);
+      for (const action of reachesProtectedGuard) expect(blocked).toContain(action);
     });
   });
 
@@ -143,6 +153,30 @@ describe.skipIf(!isLocalDevDb)("Integration: บัญชีคุ้มคร�
     it("ADMIN ธรรมดาจัดการบัญชีทั่วไปได้ตามเดิม", async () => {
       const result = await setUserGlobalScope(plainCtx, ordinaryId, true);
       expect(result).toMatchObject({ ok: true });
+    });
+
+    it("ADMIN ธรรมดาตั้งรหัสผ่านให้ 'บัญชีทั่วไป' ก็ไม่ได้ (Owner Decision 2026-10-18)", async () => {
+      expect(await resetUserPassword(plainCtx, ordinaryId)).toEqual({
+        ok: false,
+        reason: "NOT_ALLOWED",
+      });
+    });
+
+    it("บัญชีคุ้มครองตั้งรหัสผ่านให้บัญชีทั่วไปได้", async () => {
+      const result = await resetUserPassword(peerCtx, ordinaryId);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.tempPassword.length).toBeGreaterThan(0);
+      const user = await prisma.user.findUnique({
+        where: { id: ordinaryId },
+        select: { mustChangePassword: true },
+      });
+      expect(user!.mustChangePassword).toBe(true);
+      // คืนสถานะเดิมไม่ให้กระทบเทสต์อื่นในไฟล์นี้
+      await prisma.user.update({
+        where: { id: ordinaryId },
+        data: { mustChangePassword: false },
+      });
     });
 
     it("บัญชีคุ้มครองจัดการบัญชีคุ้มครองด้วยกันได้", async () => {

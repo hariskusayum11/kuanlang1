@@ -23,6 +23,7 @@ import {
   buildTempPassword,
 } from "../../domain/admin/temp-password";
 import {
+  canResetOthersPassword,
   isBlockedByProtectedAccount,
   type ProtectedAction,
 } from "../../domain/admin/protected-account";
@@ -49,7 +50,14 @@ export async function resetUserPassword(
   ctx: AuthorizationContext,
   userId: string,
 ): Promise<ResetUserPasswordResult> {
-  if (!hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET)) {
+  // ต้องมีทั้ง permission และเป็น "บัญชีคุ้มครอง" — ADMIN ทั่วไปตั้งรหัสให้ใครไม่ได้
+  // (Owner Decision 2026-10-18 — เหตุผลอยู่ใน domain/admin/protected-account.ts)
+  if (
+    !canResetOthersPassword({
+      hasPasswordResetPermission: hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET),
+      actorIsProtected: ctx.isProtectedAccount,
+    })
+  ) {
     return { ok: false, reason: "NOT_ALLOWED" };
   }
   // ตั้งรหัสชั่วคราวให้ตัวเองไม่มีประโยชน์ และจะบังคับให้ตัวเองเปลี่ยนรหัสทันที

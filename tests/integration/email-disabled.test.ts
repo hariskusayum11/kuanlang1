@@ -80,8 +80,15 @@ describe.skipIf(!isLocalDevDb)("Integration: ปิดระบบอีเม�
     await prisma.$queryRaw`SELECT 1`;
     await cleanupFixtures();
 
+    // ตั้งรหัสผ่านให้ผู้อื่นต้องเป็น "บัญชีคุ้มครอง" ด้วย (Owner Decision 2026-10-18)
+    // fixture นี้จึงต้องมีธง มิฉะนั้นจะถูกปฏิเสธตั้งแต่ด่านแรก
     const admin = await prisma.user.create({
-      data: { email: EMAILS.admin, name: "NoMail Admin", isActive: true },
+      data: {
+        email: EMAILS.admin,
+        name: "NoMail Admin",
+        isActive: true,
+        isProtectedAccount: true,
+      },
     });
     await prisma.userRole.create({
       data: { userId: admin.id, role: UserRoleEnum.ADMIN, isActive: true },

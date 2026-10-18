@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROTECTED_ACTIONS,
   canManageProtectedFlag,
+  canResetOthersPassword,
   isBlockedByProtectedAccount,
   isLastProtectedAccount,
 } from "../../domain/admin/protected-account";
@@ -63,6 +64,25 @@ describe("บัญชีคุ้มครอง — สิทธิ์ตั�
 
   it("การ \"ตั้ง\" ธงไม่เคยทำให้เหลือศูนย์", () => {
     expect(isLastProtectedAccount({ otherProtectedCount: 0, nextValue: true })).toBe(false);
+  });
+});
+
+describe("สิทธิ์ตั้งรหัสผ่านให้ผู้อื่น", () => {
+  it("ต้องครบทั้ง permission และเป็นบัญชีคุ้มครอง", () => {
+    expect(
+      canResetOthersPassword({ hasPasswordResetPermission: true, actorIsProtected: true }),
+    ).toBe(true);
+    // ADMIN ทั่วไป: มี permission แต่ไม่ใช่บัญชีคุ้มครอง → ทำไม่ได้
+    expect(
+      canResetOthersPassword({ hasPasswordResetPermission: true, actorIsProtected: false }),
+    ).toBe(false);
+    // บัญชีคุ้มครองที่ถูกถอด permission ก็ทำไม่ได้ — ธงไม่ใช่สิทธิ์ในตัวเอง
+    expect(
+      canResetOthersPassword({ hasPasswordResetPermission: false, actorIsProtected: true }),
+    ).toBe(false);
+    expect(
+      canResetOthersPassword({ hasPasswordResetPermission: false, actorIsProtected: false }),
+    ).toBe(false);
   });
 });
 

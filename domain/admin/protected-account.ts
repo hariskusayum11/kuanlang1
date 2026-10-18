@@ -54,6 +54,25 @@ export function isBlockedByProtectedAccount(
 }
 
 /**
+ * true = ผู้กระทำตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่นได้ (Owner Decision 2026-10-18)
+ *
+ * ต้องครบ **ทั้งสองอย่าง**: มี permission `user.password-reset` และเป็นบัญชีคุ้มครอง
+ *
+ * ทำไมไม่ให้ ADMIN ทุกคน: การตั้งรหัสให้ผู้อื่นแล้วเข้าระบบในชื่อเขา อันตรายกว่า
+ * การลบบัญชีเสียอีก เพราะ Audit Log จะบันทึกว่าเป็นเจ้าตัวที่เปิดดูข้อมูลสุขภาพ
+ * และกลุ่มเปราะบาง — ตรวจย้อนหลังแล้วแยกไม่ออกว่าใครทำจริง
+ *
+ * ผลที่ตามมาซึ่งต้องยอมรับ: ถ้าระบบยังไม่มีบัญชีคุ้มครองเลย จะไม่มีใครตั้งรหัส
+ * ให้ใครได้จากหน้าเว็บ — ต้องใช้ `npm run password:reset` บนเซิร์ฟเวอร์แทน
+ */
+export function canResetOthersPassword(input: {
+  hasPasswordResetPermission: boolean;
+  actorIsProtected: boolean;
+}): boolean {
+  return input.hasPasswordResetPermission && input.actorIsProtected;
+}
+
+/**
  * true = ผู้กระทำมีสิทธิ์ตั้ง/ถอดธงบัญชีคุ้มครองของผู้อื่น
  *
  * เฉพาะบัญชีคุ้มครองเท่านั้น — มิฉะนั้น ADMIN ธรรมดาจะแต่งตั้งตัวเอง

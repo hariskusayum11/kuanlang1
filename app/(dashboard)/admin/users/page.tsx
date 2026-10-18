@@ -21,6 +21,7 @@ import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { UserPasswordResetButton } from "@/components/admin/user-password-reset-button";
 import { ProtectedAccountToggle } from "@/components/admin/protected-account-toggle";
 import { hasPermission } from "@/lib/authz/access";
+import { canResetOthersPassword } from "@/domain/admin/protected-account";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ผู้ใช้และบทบาท" };
@@ -33,7 +34,12 @@ export default async function AdminUsersPage() {
   const activeCount = users.filter((u) => u.isActive).length;
   // การเข้าถึง credential ของผู้อื่นเป็นสิทธิ์แยกจาก user.manage — ซ่อนปุ่มถ้าไม่มี
   // (การซ่อนเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
-  const canResetPassword = hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET);
+  // ตั้งรหัสผ่านให้ผู้อื่นต้องเป็นบัญชีคุ้มครองด้วย ไม่ใช่แค่มี permission
+  // (ซ่อนปุ่มเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
+  const canResetPassword = canResetOthersPassword({
+    hasPasswordResetPermission: hasPermission(ctx, PERMISSIONS.USER_PASSWORD_RESET),
+    actorIsProtected: ctx.isProtectedAccount,
+  });
   // แถวที่ผู้ดูคนนี้แตะไม่ได้: เป็นบัญชีคุ้มครอง และผู้ดูไม่ใช่บัญชีคุ้มครอง
   // (บัญชีของตัวเองไม่นับ — กฎ SELF_* จัดการแยกและยังต้องถอดธงตัวเองได้)
   const locked = (u: { id: string; isProtectedAccount: boolean }) =>

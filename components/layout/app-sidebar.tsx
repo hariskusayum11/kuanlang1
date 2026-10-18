@@ -6,6 +6,9 @@ import { useState } from "react";
 import { APP_NAME } from "@/lib/app-config";
 import { LogoMark } from "@/components/brand/logo-mark";
 
+/** true เฉพาะตอนรันบนเครื่องพัฒนา — Next แทนค่าคงที่นี้ตอน build ฝั่ง client */
+const IS_DEV = process.env.NODE_ENV !== "production";
+
 // รายการเมนูถูกกรองตาม permission จากฝั่ง Server (lib/navigation.ts) แล้ว
 // Component นี้เป็นแค่ตัวแสดงผล — ไม่ใช่ Authorization
 export type SidebarItem = {
@@ -219,12 +222,19 @@ export function AppSidebar({ items }: { items: SidebarItem[] }) {
           </button>
         </div>
         {nav}
-        <div className="border-t border-white/10 px-5 py-3">
-          <span className="inline-flex items-center gap-2 text-[11px] font-medium text-white/45">
-            <span className="live-dot" />
-            Development Environment
-          </span>
-        </div>
+        {/* ป้ายบอกว่ากำลังรันบนเครื่องพัฒนา — ต้องไม่โผล่บนระบบจริง
+            เดิมเขียนตายตัวจึงขึ้นทุกที่ เจ้าหน้าที่/ผู้บริหารที่เปิดระบบจริงเห็นแล้ว
+            เข้าใจว่าระบบยังไม่พร้อมใช้งาน ทั้งที่ใช้งานจริงอยู่
+            Next แทนค่า process.env.NODE_ENV ตอน build ฝั่ง client ป้ายนี้จึง
+            ถูกตัดออกจาก bundle ของ production ไปเลย ไม่ใช่แค่ซ่อนด้วย CSS */}
+        {IS_DEV ? (
+          <div className="border-t border-white/10 px-5 py-3">
+            <span className="inline-flex items-center gap-2 text-[11px] font-medium text-white/45">
+              <span className="live-dot" />
+              Development Environment
+            </span>
+          </div>
+        ) : null}
       </aside>
     </>
   );
