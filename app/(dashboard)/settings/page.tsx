@@ -3,17 +3,36 @@ import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getSystemPreferences } from "@/lib/settings/core";
 import { saveSystemPreferencesAction } from "@/lib/settings/actions";
 import { PageHero, SectionTitle } from "@/components/layout/page-hero";
+import { UsageDashboardSection, UsageDashboardSkeleton } from "@/components/usage/usage-dashboard";
+import { Suspense } from "react";
 
 export const metadata = { title: "ตั้งค่าระบบ" };
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
-  await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  const ctx = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
   const [settings, sp] = await Promise.all([getSystemPreferences(), searchParams]);
   return (
-    <div className="mx-auto max-w-5xl space-y-7 animate-fade-in">
-      <PageHero title="ตั้งค่าระบบ" tone="ink" description="กำหนดค่ากลางที่มีผลกับแดชบอร์ดและแผนที่ การเปลี่ยนแปลงทุกครั้งมี Audit Log" />
+    <div className="mx-auto max-w-6xl space-y-7 animate-fade-in">
+      <PageHero
+        title="ตั้งค่าระบบ"
+        tone="ink"
+        description="สถิติการใช้งาน 30 วันล่าสุด และค่ากลางที่มีผลกับแดชบอร์ดและแผนที่ การเปลี่ยนค่าทุกครั้งมี Audit Log"
+        actions={<>
+          <a href="#usage" className="btn btn-secondary btn-sm">สถิติการใช้งาน</a>
+          <a href="#system-settings" className="btn btn-secondary btn-sm">ค่ากลางของระบบ</a>
+        </>}
+      />
       {sp.saved === "1" ? <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-800" role="status">บันทึกตั้งค่าระบบแล้ว</div> : null}
+      <div id="usage" className="scroll-mt-6 space-y-4">
+        <SectionTitle title="สถิติการใช้งาน" tone="brand" />
+        <Suspense fallback={<UsageDashboardSkeleton />}>
+          <UsageDashboardSection ctx={ctx} />
+        </Suspense>
+      </div>
+      <div id="system-settings" className="scroll-mt-6">
+        <SectionTitle title="ค่ากลางของระบบ" tone="mint" />
+      </div>
       <form action={saveSystemPreferencesAction} className="space-y-5">
         <section className="card p-6">
           <SectionTitle title="แดชบอร์ดและประกาศ" tone="brand" />
