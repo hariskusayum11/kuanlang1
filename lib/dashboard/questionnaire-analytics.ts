@@ -7,6 +7,7 @@ import {
 import type { DashboardScope } from "./get-dashboard-stats";
 import { effectiveTriage, type TriageCode } from "../../domain/triage";
 import { calculateFloodDepthCm } from "../../domain/flood/depth";
+import { countDepthBins, type DepthBinCount } from "../../domain/flood/depth-scale";
 
 export interface NamedCount {
   key: string;
@@ -50,6 +51,10 @@ export interface QuestionnaireAnalytics {
     averageDurationDays: number | null;
     withoutSurvivalKit: number;
     withoutResources: number;
+    /** การกระจายระดับน้ำ 9 ช่วงเดียวกับฮีตแมป (เฉพาะบ้านที่เคยท่วมและตอบระดับน้ำ) */
+    depthBins: DepthBinCount[];
+    /** ระดับพื้นบ้านเทียบถนน — unknown = ไม่ได้ตอบ (ไม่นับเป็นความเสี่ยง) */
+    floorLevels: { below: number; equal: number; above: number; unknown: number };
   };
   preparedness: {
     vehicles: NamedCount[];
@@ -73,6 +78,19 @@ export interface QuestionnaireAnalytics {
     communities: { id: string; label: string }[];
     tambons: { id: string; label: string }[];
   };
+  /** เปรียบเทียบรายชุมชนตามตัวกรองเดียวกับทั้งหน้า (Owner Decision 2026-10-19 ข้อ 2) — ตัวเลขรวม ไม่มี PII */
+  byCommunity: CommunityComparisonRow[];
+}
+
+export interface CommunityComparisonRow {
+  communityId: string;
+  label: string;
+  households: number;
+  vulnerablePeople: number;
+  flooded: number;
+  belowRoad: number;
+  /** ตัวหารของ belowRoad — บ้านที่ตอบระดับพื้นเทียบถนน */
+  floorAnswered: number;
 }
 
 const VEHICLE_LABEL: Record<VehicleType, string> = {
@@ -273,6 +291,36 @@ export async function fetchQuestionnaireAnalytics(
       ?? record.maxFloodDepthCm;
     return depth == null ? [] : [depth];
   });
+  const [communityHouseholds, communityFlooded, communityFloors, communityVulnerable] = await Promise.all([
+    prisma.household.groupBy({ by: ["communityId"], where, _count: { _all: true } }),
+    prisma.household.groupBy({ by: ["communityId"], where: { AND: [where, { floodRiskProfile: { hasFloodedBefore: true } }] }, _count: { _all: true } }),
+    prisma.household.findMany({
+      where: { AND: [where, { floodRiskProfile: { floorLevelVsRoad: { not: null } } }] },
+      select: { communityId: true, floodRiskProfile: { select: { floorLevelVsRoad: true } } },
+    }),
+    prisma.vulnerablePerson.findMany({ where: { isActive: true, household: where }, select: { household: { select: { communityId: true } } } }),
+  ]);
+  const floorGroups = await prisma.floodRiskProfile.groupBy({
+    by: ["floorLevelVsRoad"],
+    where: { household: where },
+    _count: { _all: true },
+  });
+  const householdTotal = householdAggregate._count._all;
+  const floorCount = (level: "BELOW_ROAD" | "EQUAL_ROAD" | "ABOVE_ROAD") =>
+    floorGroups.find((g) => g.floorLevelVsRoad === level)?._count._all ?? 0;
+  const byCommunityIds = [...new Set(communityHouseholds.map((g) => g.communityId))];
+  const byCommunity: CommunityComparisonRow[] = byCommunityIds.map((communityId) => {
+    const floors = communityFloors.filter((h) => h.communityId === communityId);
+    return {
+      communityId,
+      label: "",
+      households: communityHouseholds.find((g) => g.communityId === communityId)?._count._all ?? 0,
+      vulnerablePeople: communityVulnerable.filter((p) => p.household.communityId === communityId).length,
+      flooded: communityFlooded.find((g) => g.communityId === communityId)?._count._all ?? 0,
+      belowRoad: floors.filter((h) => h.floodRiskProfile?.floorLevelVsRoad === "BELOW_ROAD").length,
+      floorAnswered: floors.length,
+    };
+  });
   const floodDurations = floodRecords.flatMap((record) =>
     record.lastFloodDurationDays == null ? [] : [record.lastFloodDurationDays],
   );
@@ -328,6 +376,13 @@ export async function fetchQuestionnaireAnalytics(
         : null,
       withoutSurvivalKit,
       withoutResources,
+      depthBins: countDepthBins(floodDepths),
+      floorLevels: (() => {
+        const below = floorCount("BELOW_ROAD");
+        const equal = floorCount("EQUAL_ROAD");
+        const above = floorCount("ABOVE_ROAD");
+        return { below, equal, above, unknown: Math.max(0, householdTotal - below - equal - above) };
+      })(),
     },
     preparedness: {
       vehicles: vehicleGroups.map((group) => ({
@@ -361,5 +416,10 @@ export async function fetchQuestionnaireAnalytics(
       communities: communities.map((c) => ({ id: c.id, label: `${c.nameTh} (${c.code})` })),
       tambons: tambons.map((t) => ({ id: t.id, label: t.nameTh })),
     },
+    // เรียงตามรหัสชุมชนเดียวกับตัวเลือก · ชุมชนที่ไม่มีข้อมูลตามตัวกรองไม่แสดง
+    byCommunity: communities.flatMap((c) => {
+      const row = byCommunity.find((r) => r.communityId === c.id);
+      return row ? [{ ...row, label: c.nameTh }] : [];
+    }),
   };
 }

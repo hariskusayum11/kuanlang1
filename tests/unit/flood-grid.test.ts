@@ -63,3 +63,12 @@ describe("gridLevel / gridLegend", () => {
     expect(legend[0].label).toBe("5 ม. ขึ้นไป");
   });
 });
+
+describe("countDepthBins (กราฟแดชบอร์ด)", () => {
+  it("ครบ 9 ช่วงเสมอ · ค่าเกิน 5 ม. นับในช่วงสุดท้าย · ค่าเพี้ยนไม่นับ", async () => {
+    const { countDepthBins } = await import("../../domain/flood/depth-scale");
+    const bins = countDepthBins([10, 45, 45, 120, 650, 900, null, -1, Number.NaN]);
+    expect(bins).toHaveLength(9);
+    expect(bins.map((b) => b.count)).toEqual([1, 2, 0, 1, 0, 0, 0, 0, 2]);
+  });
+});

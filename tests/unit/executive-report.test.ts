@@ -34,6 +34,8 @@ const report: ExecutiveReport = {
     averageDurationDays: 3.2,
     withoutSurvivalKit: 1,
     withoutResources: 1,
+    depthBins: [],
+    floorLevels: { below: 1, equal: 0, above: 1, unknown: 0 },
   },
   preparedness: {
     vehicles: [{ key: "BOAT", label: "เรือ", count: 1 }],
@@ -50,6 +52,7 @@ const report: ExecutiveReport = {
   },
   quality: { missingCoordinates: 1, incomplete: 0, illegible: 0 },
   options: { communities: [], tambons: [] },
+  byCommunity: [],
 };
 
 describe("executive report", () => {

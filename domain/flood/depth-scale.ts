@@ -43,3 +43,19 @@ export function depthBin(cm: number | null | undefined): DepthBin | null {
 export function heatVar(level: number): string {
   return `--heat-${level}`;
 }
+
+export interface DepthBinCount {
+  level: number;
+  label: string;
+  count: number;
+}
+
+/** นับครัวเรือนตามช่วงระดับน้ำ (ครบทั้ง 9 ช่วงเสมอ แม้เป็น 0 — กราฟจะได้เทียบกันได้) */
+export function countDepthBins(depthsCm: readonly (number | null | undefined)[]): DepthBinCount[] {
+  const counts = new Map<number, number>(FLOOD_DEPTH_BINS.map((bin) => [bin.level, 0]));
+  for (const depth of depthsCm) {
+    const bin = depthBin(depth);
+    if (bin) counts.set(bin.level, (counts.get(bin.level) ?? 0) + 1);
+  }
+  return FLOOD_DEPTH_BINS.map((bin) => ({ level: bin.level, label: bin.label, count: counts.get(bin.level) ?? 0 }));
+}

@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { getSystemPreferences } from "@/lib/settings/core";
 import { floodDepthMeters } from "@/domain/flood/depth";
 import { TRIAGE_EXAMPLE } from "@/domain/triage";
+import { CommunityComparison, DepthHistogram, StackedBar } from "@/components/dashboard/charts";
 
 export const metadata = { title: "แดชบอร์ดผู้บริหาร" };
 export const dynamic = "force-dynamic";
@@ -260,16 +261,22 @@ export default async function DashboardPage({
         </AnalyticsPanel>
       </section>
 
+      {/* เปรียบเทียบ 5 ชุมชนในตารางเดียว — ใช้ตัวกรองเดียวกับทั้งหน้า (Owner Decision 2026-10-19 ข้อ 2) */}
+      <AnalyticsPanel title="เปรียบเทียบรายชุมชน" description="ตามตัวกรองด้านบน · ตัวเลขรวมระดับชุมชน ไม่มีข้อมูลรายบุคคล · ร้อยละคิดจากหลังที่ตอบข้อนั้น">
+        <CommunityComparison rows={analytics.byCommunity} />
+      </AnalyticsPanel>
+
       <section className="grid gap-5 xl:grid-cols-2">
-        <AnalyticsPanel title="ระดับความเร่งด่วนของกลุ่มเปราะบาง" description="ใช้ระดับที่เร่งด่วนที่สุดเมื่อบุคคลหนึ่งมีหลายลักษณะ · ไม่รวมรายชื่อหรือข้อมูลส่วนบุคคล">
-          <BarList
-            rows={[
-              { key: "P1", label: `วิกฤต — ${TRIAGE_EXAMPLE.P1}`, count: analytics.triage.P1 },
-              { key: "P2", label: `เร่งด่วน — ${TRIAGE_EXAMPLE.P2}`, count: analytics.triage.P2 },
-              { key: "P3", label: `เฝ้าระวัง — ${TRIAGE_EXAMPLE.P3}`, count: analytics.triage.P3 },
-              { key: "NA", label: "ยังไม่ประเมิน", count: analytics.triage.UNASSESSED },
+        <AnalyticsPanel title="ระดับความเร่งด่วนของกลุ่มเปราะบาง" description="ใช้ระดับที่เร่งด่วนที่สุดเมื่อบุคคลหนึ่งมีหลายลักษณะ · สีเดียวกับหมุดบนแผนที่ · ไม่รวมรายชื่อหรือข้อมูลส่วนบุคคล">
+          <StackedBar
+            unit="คน"
+            totalLabel="กลุ่มเปราะบางทั้งหมด"
+            segments={[
+              { key: "P1", label: "วิกฤต — ช่วยภายใน 30 นาที", hint: TRIAGE_EXAMPLE.P1, count: analytics.triage.P1, colorClass: "bg-red-600" },
+              { key: "P2", label: "เร่งด่วน — ภายใน 2 ชั่วโมง", hint: TRIAGE_EXAMPLE.P2, count: analytics.triage.P2, colorClass: "bg-sun-400" },
+              { key: "P3", label: "เฝ้าระวัง — ภายใน 6 ชั่วโมง", hint: TRIAGE_EXAMPLE.P3, count: analytics.triage.P3, colorClass: "bg-brand-600" },
+              { key: "NA", label: "ยังไม่ประเมิน", count: analytics.triage.UNASSESSED, colorClass: "bg-slate-300" },
             ]}
-            tone="alert"
           />
         </AnalyticsPanel>
         {/* แสดงทั้งครัวเรือนและคน เหมือนตารางในเอกสาร (Owner Decision 2026-10-19) —
@@ -291,6 +298,19 @@ export default async function DashboardPage({
             <MiniMetric label="ไม่มีชุดยังชีพ" value={analytics.flood.withoutSurvivalKit} suffix="หลัง" />
             <MiniMetric label="ไม่มีทรัพยากร" value={analytics.flood.withoutResources} suffix="หลัง" />
           </div>
+          <h4 className="mb-3 mt-6 text-xs font-bold text-slate-700">ระดับน้ำสูงสุดที่เคยท่วม (จำนวนหลังในแต่ละช่วง)</h4>
+          <DepthHistogram bins={analytics.flood.depthBins} />
+          <h4 className="mb-3 mt-6 text-xs font-bold text-slate-700">ระดับพื้นบ้านเทียบถนน</h4>
+          <StackedBar
+            unit="หลัง"
+            totalLabel="ครัวเรือนทั้งหมดตามตัวกรอง"
+            segments={[
+              { key: "below", label: "ต่ำกว่าถนน", hint: "น้ำเข้าบ้านก่อน — เสี่ยงที่สุด", count: analytics.flood.floorLevels.below, colorClass: "bg-sun-400" },
+              { key: "equal", label: "เท่าระดับถนน", count: analytics.flood.floorLevels.equal, colorClass: "bg-brand-300" },
+              { key: "above", label: "สูงกว่าถนน", count: analytics.flood.floorLevels.above, colorClass: "bg-emerald-500" },
+              { key: "unknown", label: "ไม่ได้ตอบ", count: analytics.flood.floorLevels.unknown, colorClass: "bg-slate-200" },
+            ]}
+          />
         </AnalyticsPanel>
         <AnalyticsPanel title="ยานพาหนะสำหรับอพยพ" description="จำนวนรายการยานพาหนะที่ครัวเรือนระบุ">
           <BarList rows={analytics.preparedness.vehicles} tone="mint" empty="ยังไม่มีข้อมูลยานพาหนะ" />
