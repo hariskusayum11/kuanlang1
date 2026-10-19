@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { HouseholdLayerPoint, VolunteerMapSkill } from "@/lib/geo/household-layer-map";
 import type { ImportantSitePoint } from "@/lib/geo/important-sites";
 import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
+import type { CommunityMapSummary } from "@/lib/geo/community-map-summary";
 import {
   countActiveLayers,
   HOUSEHOLD_LAYER_KEYS,
@@ -53,6 +54,8 @@ export function MapWorkspace({
   points,
   sites,
   boundaries,
+  communitySummaries,
+  summaryGeneratedAt,
   volunteerSkills,
   communities,
   tambons,
@@ -68,6 +71,8 @@ export function MapWorkspace({
   points: HouseholdLayerPoint[];
   sites: ImportantSitePoint[];
   boundaries: CommunityBoundaryShape[];
+  communitySummaries: Record<string, CommunityMapSummary>;
+  summaryGeneratedAt: string;
   volunteerSkills: VolunteerMapSkill[];
   communities: Option[];
   tambons: Option[];
@@ -149,6 +154,12 @@ export function MapWorkspace({
     }
   }, [currentState, allSiteTypes]);
 
+  // ลิงก์ในกล่องข้อมูลชุมชน — คงชั้นข้อมูลที่เปิดอยู่ ล้างตำบลเพราะชุมชนหนึ่งครอบคลุมได้หลายตำบล
+  const communityFilterHref = useCallback(
+    (communityId: string) => mapViewHref(currentState({ communityId, tambonId: undefined }), allSiteTypes),
+    [currentState, allSiteTypes],
+  );
+
   const navigateArea = (patch: Partial<Pick<MapViewState, "communityId" | "tambonId" | "dateFrom" | "dateTo">>) => {
     const href = mapViewHref(currentState(patch), allSiteTypes);
     startTransition(() => router.replace(href, { scroll: false }));
@@ -207,6 +218,9 @@ export function MapWorkspace({
         volunteerSkill={skill}
         siteTypes={siteTypes}
         boundaries={boundaries}
+        communitySummaries={communitySummaries}
+        summaryGeneratedAt={summaryGeneratedAt}
+        communityFilterHref={communityFilterHref}
         showBoundaries={showBoundaries}
         selectedCommunityId={view.communityId}
         fitKey={fitKey}

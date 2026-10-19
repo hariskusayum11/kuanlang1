@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient, UserRoleEnum } from "@prisma/client";
 import { getCurrentCommunityBoundaries } from "../../lib/geo/community-boundaries";
+import { getCommunityMapSummaries } from "../../lib/geo/community-map-summary";
 import { getPublicMapData } from "../../lib/public/stats";
+import { loadContextOrThrow } from "../helpers/authz";
 
 // Integration tests — ขอบเขตชุมชนบนแผนที่ (docs/35)
 // พิสูจน์: อ่านเฉพาะเวอร์ชันปัจจุบัน · หมุดชุมชนอยู่ในขอบเขตจริง · ไม่มีขอบเขต → centroid
@@ -12,6 +14,7 @@ const isLocalDevDb = /@(localhost|127\.0\.0\.1)[:/]/.test(dbUrl);
 
 const prisma = new PrismaClient();
 const CODES = ["ZZBND1", "ZZBND2"] as const;
+const EMAILS = ["test-bnd-admin@test.invalid", "test-bnd-keyer@test.invalid"] as const;
 
 // สี่เหลี่ยมรูปตัว L (เว้า) — centroid ทางเรขาคณิตตกนอกรูป แต่ PointOnSurface ต้องอยู่ข้างใน
 const L_SHAPE = {
@@ -24,6 +27,10 @@ const OLD_SQUARE = {
 };
 
 async function cleanup() {
+  const users = await prisma.user.findMany({ where: { email: { in: [...EMAILS] } }, select: { id: true } });
+  if (users.length) await prisma.auditLog.deleteMany({ where: { userId: { in: users.map((u) => u.id) } } });
+  await prisma.user.deleteMany({ where: { email: { in: [...EMAILS] } } });
+  await prisma.evacuationSite.deleteMany({ where: { community: { code: { in: [...CODES] } } } });
   await prisma.$executeRaw(Prisma.sql`
     DELETE FROM community_boundary WHERE "communityId" IN (SELECT id FROM community WHERE code IN (${Prisma.join([...CODES])}))
   `);
@@ -53,6 +60,13 @@ describe.skipIf(!isLocalDevDb)("Integration: ขอบเขตชุมชน�
     centroidOnly = b.id;
     await insertBoundary(withBoundary, 1, OLD_SQUARE, false);
     await insertBoundary(withBoundary, 2, L_SHAPE, true);
+    // จุดอพยพ: ในเขต (ขา L) · นอกเขตแม้ communityId เดียวกัน (มุมเว้าของรูป L)
+    await prisma.evacuationSite.createMany({
+      data: [
+        { communityId: withBoundary, name: "จุดทดสอบในเขต", latitude: 6.002, longitude: 100.01 },
+        { communityId: withBoundary, name: "จุดทดสอบนอกเขต", latitude: 6.015, longitude: 100.015 },
+      ],
+    });
   });
 
   afterAll(async () => {
@@ -102,16 +116,60 @@ describe.skipIf(!isLocalDevDb)("Integration: ขอบเขตชุมชน�
     expect(Number(stored.centroidLng)).toBe(100.5);
   });
 
-  it("4) payload สาธารณะ: whitelist ฟิลด์ (ไม่มี source/version/รายบ้าน) และทศนิยมไม่เกิน 5 ตำแหน่ง", async () => {
+  it("4) payload สาธารณะ: whitelist ฟิลด์ (ไม่มี source/version/รายบ้าน/กลุ่มเปราะบาง) และทศนิยมไม่เกิน 5 ตำแหน่ง", async () => {
     const data = await getPublicMapData();
-    expect(Object.keys(data).sort()).toEqual(["communities", "sites"]);
+    expect(Object.keys(data).sort()).toEqual(["communities", "generatedAt", "sites"]);
     for (const c of data.communities) {
-      expect(Object.keys(c).sort()).toEqual(["boundary", "boundaryApproved", "id", "lat", "lng", "nameTh", "positionSource"]);
+      expect(Object.keys(c).sort()).toEqual(["boundary", "boundaryApproved", "id", "lat", "lng", "nameTh", "positionSource", "summary"]);
+      // กล่องข้อมูลฝั่งประชาชน: ห้ามมีตัวเลขกลุ่มเปราะบาง/สุขภาพ (docs/35)
+      expect(Object.keys(c.summary).sort()).toEqual(["areaRai", "sites", "verifiedHouseholds"]);
+      for (const site of c.summary.sites) expect(Object.keys(site).sort()).toEqual(["lat", "lng", "name"]);
     }
     for (const s of data.sites) {
       expect(Object.keys(s).sort()).toEqual(["id", "lat", "lng", "name", "type"]);
     }
     const a = data.communities.find((c) => c.id === withBoundary)!;
     expect(a.boundary!.flat(2).flat().every((n) => Number(n.toFixed(5)) === n)).toBe(true);
+  });
+
+  it("5) กล่องข้อมูลสาธารณะ: พื้นที่ (ไร่) จากขอบเขตจริง · จุดอพยพนับเชิงพื้นที่ ไม่ใช่ตาม communityId", async () => {
+    const data = await getPublicMapData();
+    const a = data.communities.find((c) => c.id === withBoundary)!;
+    const b = data.communities.find((c) => c.id === centroidOnly)!;
+
+    const [{ area }] = await prisma.$queryRaw<{ area: number }[]>(Prisma.sql`
+      SELECT ST_Area(ST_GeomFromGeoJSON(${JSON.stringify(L_SHAPE)})::geography) AS area
+    `);
+    expect(a.summary.areaRai).toBeCloseTo(Number(area) / 1600, 0);
+    expect(a.summary.sites.map((s) => s.name)).toEqual(["จุดทดสอบในเขต"]);
+    expect(a.summary.verifiedHouseholds).toBe(0);
+
+    // ไม่มีขอบเขต → ไม่ทราบพื้นที่ (ไม่ใช่ 0) และไม่เดาจุดอพยพ
+    expect(b.summary).toEqual({ areaRai: null, verifiedHouseholds: 0, sites: [] });
+  });
+
+  it("6) กล่องข้อมูลภายใน: ต้องมี map.view · มีตัวเลขครบและความครอบคลุม 'ยังไม่ทราบ' เมื่อไม่มีจำนวนครัวเรือนทั้งหมด", async () => {
+    const mk = async (email: string, role: UserRoleEnum) => {
+      const u = await prisma.user.create({ data: { email, name: `Fixture ${email}` } });
+      await prisma.userRole.create({ data: { userId: u.id, role, isActive: true } });
+      return loadContextOrThrow({ id: u.id, name: u.name, email: u.email });
+    };
+    const [admin, keyer] = [await mk(EMAILS[0], UserRoleEnum.ADMIN), await mk(EMAILS[1], UserRoleEnum.DATA_ENTRY)];
+
+    expect((await getCommunityMapSummaries(keyer)).summaries).toEqual({});
+
+    const { summaries, generatedAt } = await getCommunityMapSummaries(admin);
+    expect(Number.isNaN(Date.parse(generatedAt))).toBe(false);
+    expect(summaries[withBoundary]).toMatchObject({
+      surveyed: 0,
+      verified: 0,
+      pending: 0,
+      totalHouseholds: null,
+      verifiedCoverage: { kind: "NOT_CALCULABLE" },
+      vulnerable: { activePersons: 0, inactivePersons: 0, byType: [] },
+      siteCount: 1,
+    });
+    expect(summaries[withBoundary].areaRai).toBeGreaterThan(0);
+    expect(summaries[centroidOnly]).toMatchObject({ areaRai: null, siteCount: 0 });
   });
 });

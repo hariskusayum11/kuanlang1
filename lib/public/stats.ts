@@ -4,7 +4,8 @@
 
 import { SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
-import { BOUNDARY_PRECISION, getCurrentCommunityBoundaries } from "../geo/community-boundaries";
+import { BOUNDARY_PRECISION, getBoundaryStats, getCurrentCommunityBoundaries } from "../geo/community-boundaries";
+import { squareMetersToRai } from "../../domain/geo/community-summary";
 import { communityMarkerPosition, type LngLat } from "../../domain/geo/community-boundary";
 
 /**
@@ -80,6 +81,18 @@ export interface PublicMapCommunity {
   boundary: LngLat[][][] | null;
   /** ขอบเขตผ่านการรับรองแล้วหรือยัง (ชุดแรกยังเป็นร่าง) */
   boundaryApproved: boolean;
+  /**
+   * กล่องข้อมูลเมื่อกดชุมชน (docs/35) — **ไม่มีตัวเลขกลุ่มเปราะบาง/สุขภาพโดยตั้งใจ**
+   * ชุมชนเล็ก ตัวเลขอย่าง "ผู้ป่วยติดเตียง 2 คน" คนในพื้นที่เดาตัวได้ แม้เป็นตัวเลขรวม
+   */
+  summary: {
+    /** null = ไม่มีขอบเขต จึงไม่ทราบพื้นที่ */
+    areaRai: number | null;
+    /** ครัวเรือนที่สำรวจและตรวจแล้ว (ไม่นับใบที่ยังไม่ตรวจ/ใบซ้ำ) */
+    verifiedHouseholds: number;
+    /** จุดอพยพที่อยู่ในเขตจริง — สถานที่สาธารณะ */
+    sites: Array<{ name: string; lat: number; lng: number }>;
+  };
 }
 
 export interface PublicMapSite {
@@ -93,6 +106,8 @@ export interface PublicMapSite {
 export interface PublicMapData {
   communities: PublicMapCommunity[];
   sites: PublicMapSite[];
+  /** เวลาที่ดึงข้อมูล — แสดง "ข้อมูล ณ วันที่" */
+  generatedAt: string;
 }
 
 /**
@@ -102,7 +117,7 @@ export interface PublicMapData {
  *  - จุดอพยพ/พักพิง: ชื่อ + ประเภท + พิกัด (ไม่คืนชื่อ/เบอร์ผู้ประสานงาน = ไม่มี PII)
  */
 export async function getPublicMapData(): Promise<PublicMapData> {
-  const [communities, boundaries, sites] = await Promise.all([
+  const [communities, boundaries, sites, boundaryStats, verifiedGroups] = await Promise.all([
     prisma.community.findMany({
       where: { deletedAt: null, isActive: true },
       select: { id: true, nameTh: true, centroidLat: true, centroidLng: true },
@@ -114,7 +129,15 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       select: { id: true, name: true, type: true, latitude: true, longitude: true },
       orderBy: { name: "asc" },
     }),
+    getBoundaryStats(),
+    // นับแบบเดียวกับ Verified Coverage ของแดชบอร์ด (ไม่นับ soft-deleted/ใบสงสัยซ้ำ)
+    prisma.household.groupBy({
+      by: ["communityId"],
+      where: { deletedAt: null, hasDuplicateFlag: false, sheet: { status: SheetStatus.VERIFIED } },
+      _count: { _all: true },
+    }),
   ]);
+  const verifiedBy = new Map(verifiedGroups.map((g) => [g.communityId, g._count._all]));
 
   const boundaryById = new Map(boundaries.map((b) => [b.communityId, b]));
   const mapCommunities: PublicMapCommunity[] = [];
@@ -133,6 +156,11 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       positionSource: position.source,
       boundary: boundary?.geometry.coordinates ?? null,
       boundaryApproved: boundary?.isApproved ?? false,
+      summary: {
+        areaRai: squareMetersToRai(boundaryStats.get(c.id)?.areaSquareMeters),
+        verifiedHouseholds: verifiedBy.get(c.id) ?? 0,
+        sites: (boundaryStats.get(c.id)?.sites ?? []).map((s) => ({ name: s.name, lat: s.lat, lng: s.lng })),
+      },
     });
   }
 
@@ -145,6 +173,7 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       lat: Number(s.latitude),
       lng: Number(s.longitude),
     })),
+    generatedAt: new Date().toISOString(),
   };
 }
 

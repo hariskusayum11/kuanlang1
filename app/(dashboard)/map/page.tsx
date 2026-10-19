@@ -7,6 +7,7 @@ import { canManageImportantSites, getImportantSites, IMPORTANT_SITE_TYPES } from
 import { parseMapViewState, type RawSearchParams } from "@/lib/geo/map-view-state";
 import { dateRangeError } from "@/lib/household/trusted-where";
 import { getCurrentCommunityBoundaries } from "@/lib/geo/community-boundaries";
+import { getCommunityMapSummaries } from "@/lib/geo/community-map-summary";
 
 export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
@@ -32,12 +33,14 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
     dateTo: view.dateTo,
   };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
-  const [householdMap, preferences, sites, boundaries] = await Promise.all([
+  const [householdMap, preferences, sites, boundaries, communitySummary] = await Promise.all([
     getHouseholdLayerMap(ctx, filters),
     getSystemPreferences(),
     getImportantSites(filters.communityId),
     // ขอบเขตทุกชุมชนเป็นบริบทเสมอ (ชุมชนที่เลือกถูกเน้นฝั่ง client) — ระดับชุมชน ไม่ใช่รายบ้าน
     getCurrentCommunityBoundaries({ communityIds: ctx.isGlobalScope ? undefined : ctx.communityIds }),
+    // กล่องข้อมูลเมื่อกดชุมชน — ตัวเลขรวมระดับชุมชน (docs/35)
+    getCommunityMapSummaries(ctx),
   ]);
   const labelPoints = boundaries.flatMap((boundary) => (boundary.labelPoint ? [boundary.labelPoint] : []));
   const average = (items: { lat: number; lng: number }[]) => ({
@@ -59,6 +62,8 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
       points={householdMap.points}
       sites={sites}
       boundaries={boundaries}
+      communitySummaries={communitySummary.summaries}
+      summaryGeneratedAt={communitySummary.generatedAt}
       volunteerSkills={householdMap.options.volunteerSkills}
       communities={householdMap.options.communities}
       tambons={householdMap.options.tambons}

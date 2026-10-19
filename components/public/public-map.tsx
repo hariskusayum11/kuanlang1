@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type { PublicMapCommunity, PublicMapSite } from "@/lib/public/stats";
+import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
 
 const SITE_TYPE_LABEL: Record<string, string> = {
   SCHOOL: "โรงเรียน",
@@ -20,6 +21,38 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * กล่องข้อมูลชุมชนฝั่งประชาชน (docs/35) — พื้นที่ · ครัวเรือนที่ตรวจแล้ว · จุดอพยพในเขตพร้อมปุ่มนำทาง
+ * **ไม่มีตัวเลขกลุ่มเปราะบาง/สุขภาพ** แม้เป็นตัวเลขรวม (ชุมชนเล็ก ย้อนระบุตัวได้)
+ */
+function communityPopup(c: PublicMapCommunity, generatedAt: string): string {
+  const sites = c.summary.sites.length
+    ? `<ul class="mt-1 space-y-1">${c.summary.sites
+        .map(
+          (s) => `<li class="flex items-center justify-between gap-2"><span>${escapeHtml(s.name)}</span>
+            <a class="shrink-0 font-semibold text-brand-700 underline underline-offset-2" target="_blank" rel="noopener noreferrer"
+               href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}">นำทาง</a></li>`,
+        )
+        .join("")}</ul>`
+    : `<div class="text-slate-500">ยังไม่มีจุดอพยพที่บันทึกไว้ในเขตนี้</div>`;
+  const draft = c.boundary && !c.boundaryApproved
+    ? `<div class="mt-2 text-[11px] text-sun-800">ขอบเขตชุมชนเป็นฉบับร่าง อยู่ระหว่างตรวจสอบ</div>`
+    : c.positionSource === "CENTROID"
+      ? `<div class="mt-2 text-[11px] text-slate-500">ตำแหน่งชุมชนโดยประมาณ</div>`
+      : "";
+  return `<div class="w-[240px] font-sans text-xs leading-relaxed text-slate-700">
+    <div class="text-sm font-bold text-ink-900">${escapeHtml(c.nameTh)}</div>
+    <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+      <div class="rounded-lg bg-mist px-2 py-1"><div class="text-[10px] font-semibold text-slate-500">พื้นที่</div><div class="font-bold text-ink-900">${formatRai(c.summary.areaRai)}</div></div>
+      <div class="rounded-lg bg-mist px-2 py-1"><div class="text-[10px] font-semibold text-slate-500">ครัวเรือนที่สำรวจแล้ว</div><div class="font-bold tabular-nums text-ink-900">${c.summary.verifiedHouseholds.toLocaleString("th-TH")}</div></div>
+    </div>
+    <div class="mt-2 font-semibold text-slate-500">จุดอพยพ/พักพิงในเขต</div>
+    ${sites}
+    ${draft}
+    <div class="mt-2 text-[11px] text-slate-400">นับเฉพาะแบบสำรวจที่ตรวจสอบแล้ว ณ ${thaiShortDate(new Date(generatedAt))}</div>
+  </div>`;
+}
+
+/**
  * แผนที่สาธารณะ — เส้นขอบชุมชน + หมุดชุมชน + จุดพักพิง/อพยพสาธารณะ
  * ไม่มีพิกัดรายบ้าน/PII (กติกา CLAUDE.md: Public map = aggregate เท่านั้น)
  * หมุดชุมชนวางที่จุดภายในขอบเขตจริง (ถ้ามี) ไม่งั้นใช้ centroid โดยประมาณ
@@ -28,9 +61,11 @@ function escapeHtml(value: string): string {
 export function PublicMap({
   communities,
   sites,
+  generatedAt,
 }: {
   communities: PublicMapCommunity[];
   sites: PublicMapSite[];
+  generatedAt: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -60,7 +95,8 @@ export function PublicMap({
           const geometry: GeoJSON.MultiPolygon = { type: "MultiPolygon", coordinates: c.boundary };
           const layer = L.geoJSON(geometry, { style: () => ({ className }) })
             .addTo(map)
-            .bindTooltip(escapeHtml(c.nameTh), { sticky: true, direction: "top" });
+            .bindTooltip(escapeHtml(c.nameTh), { sticky: true, direction: "top" })
+            .bindPopup(communityPopup(c, generatedAt), { maxWidth: 280 });
           bounds.extend(layer.getBounds());
         }
 
@@ -74,15 +110,7 @@ export function PublicMap({
           L.marker([c.lat, c.lng], { icon })
             .addTo(map)
             .bindTooltip(escapeHtml(c.nameTh), { direction: "top" })
-            .bindPopup(
-              `<b>${escapeHtml(c.nameTh)}</b><br/><span class="text-slate-500">${
-                c.positionSource === "CENTROID"
-                  ? "จุดศูนย์กลางชุมชนโดยประมาณ"
-                  : c.boundaryApproved
-                    ? "ภายในเขตชุมชน"
-                    : "ภายในเขตชุมชน (ขอบเขตร่าง อยู่ระหว่างตรวจสอบ)"
-              }</span>`,
-            );
+            .bindPopup(communityPopup(c, generatedAt), { maxWidth: 280 });
           bounds.extend([c.lat, c.lng]);
         }
 
@@ -115,7 +143,7 @@ export function PublicMap({
       cancelled = true;
       map?.remove();
     };
-  }, [communities, sites]);
+  }, [communities, sites, generatedAt]);
 
   if (failed) {
     return (

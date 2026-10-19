@@ -92,3 +92,59 @@ export async function getCurrentCommunityBoundaries(
   }
   return shapes.sort((a, b) => a.code.localeCompare(b.code));
 }
+
+export interface BoundarySite {
+  id: string;
+  name: string;
+  type: string | null;
+  lat: number;
+  lng: number;
+}
+
+export interface BoundaryStats {
+  /** พื้นที่ (ตารางเมตร) จาก geography — ไม่ผ่าน simplify */
+  areaSquareMeters: number | null;
+  /** จุดอพยพที่อยู่ในเขตจริง (เชิงพื้นที่ ไม่ใช่ตาม communityId ที่กรอกไว้) */
+  sites: BoundarySite[];
+}
+
+/**
+ * พื้นที่ + จุดอพยพในเขต ของขอบเขตปัจจุบันแต่ละชุมชน
+ * จุดอพยพเป็นสถานที่สาธารณะ (ไม่มีชื่อ/เบอร์ผู้ประสานงาน) จึงใช้ได้ทั้งภายในและสาธารณะ
+ * ST_Covers รวมจุดที่อยู่บนเส้นขอบพอดี — จุดบนเส้นที่สองชุมชนใช้ร่วมกันนับให้ทั้งสองฝั่ง
+ */
+export async function getBoundaryStats(): Promise<Map<string, BoundaryStats>> {
+  const [areas, sites] = await Promise.all([
+    prisma.$queryRaw<{ communityId: string; area: number | null }[]>(Prisma.sql`
+      SELECT DISTINCT ON (cb."communityId") cb."communityId", ST_Area(cb.geom) AS area
+      FROM community_boundary cb
+      WHERE cb."effectiveTo" IS NULL AND cb.geom IS NOT NULL
+      ORDER BY cb."communityId", cb.version DESC
+    `),
+    prisma.$queryRaw<{ communityId: string; id: string; name: string; type: string | null; lat: number; lng: number }[]>(Prisma.sql`
+      SELECT cb."communityId", s.id, s.name, s.type::text AS type,
+             s.latitude::float8 AS lat, s.longitude::float8 AS lng
+      FROM community_boundary cb
+      JOIN evacuation_site s
+        ON s."isActive" = TRUE
+       AND ST_Covers(cb.geom, ST_SetSRID(ST_MakePoint(s.longitude::float8, s.latitude::float8), 4326)::geography)
+      WHERE cb."effectiveTo" IS NULL AND cb.geom IS NOT NULL
+      ORDER BY cb."communityId", s.name
+    `),
+  ]);
+
+  const stats = new Map<string, BoundaryStats>();
+  for (const row of areas) {
+    stats.set(row.communityId, {
+      areaSquareMeters: row.area === null ? null : Number(row.area),
+      sites: [],
+    });
+  }
+  for (const row of sites) {
+    const entry = stats.get(row.communityId);
+    if (!entry) continue;
+    if (entry.sites.some((site) => site.id === row.id)) continue;
+    entry.sites.push({ id: row.id, name: row.name, type: row.type, lat: Number(row.lat), lng: Number(row.lng) });
+  }
+  return stats;
+}

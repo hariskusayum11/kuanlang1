@@ -7,6 +7,8 @@ import type { ImportantSitePoint } from "@/lib/geo/important-sites";
 import type { BaseMapKey, HouseholdLayerKey } from "@/lib/geo/map-view-state";
 import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
 import { boundaryBounds } from "@/domain/geo/community-boundary";
+import type { CommunityMapSummary } from "@/lib/geo/community-map-summary";
+import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
 
@@ -196,11 +198,69 @@ function sitePopup(site: ImportantSitePoint, typeLabel: string): string {
 }
 
 /** popup ใช้คลาส Tailwind/Token (HTML นี้อยู่ใน document เดียวกัน ไม่ใช่ SVG) */
-function boundaryPopup(boundary: CommunityBoundaryShape): string {
-  return `<div class="min-w-[220px] font-sans leading-relaxed">
-    <b class="text-ink-900">${escapeHtml(boundary.nameTh)}</b> <span class="text-slate-500">(${escapeHtml(boundary.code)})</span>
-    <div class="mt-1 text-xs text-slate-600">ขอบเขตเวอร์ชัน ${boundary.version.toLocaleString("th-TH")} · ${boundary.isApproved ? "รับรองแล้ว" : '<span class="font-semibold text-sun-800">ร่าง — ยังไม่รับรอง</span>'}</div>
-    ${boundary.source ? `<div class="mt-0.5 text-xs text-slate-500">ที่มา: ${escapeHtml(boundary.source)}</div>` : ""}
+function popupStat(label: string, value: number, tone: string): string {
+  return `<div class="rounded-lg px-1.5 py-1 ${tone}">
+    <div class="text-base font-bold tabular-nums leading-tight">${value.toLocaleString("th-TH")}</div>
+    <div class="text-[10px] font-semibold">${label}</div>
+  </div>`;
+}
+
+function coverageLine(summary: CommunityMapSummary): string {
+  const coverage = summary.verifiedCoverage;
+  // ไม่มีจำนวนครัวเรือนทั้งหมด → "ยังไม่ทราบ" ห้ามแสดงเป็น 0% (CLAUDE.md: Data as hero)
+  if (coverage.kind === "NOT_CALCULABLE" || summary.totalHouseholds == null) {
+    return `<span class="text-slate-500">ยังไม่ทราบ — ยังไม่ได้กำหนดจำนวนครัวเรือนทั้งหมดของชุมชน</span>`;
+  }
+  const percent = Number.isFinite(coverage.percent) ? coverage.percent : 0;
+  const status = coverage.meetsTarget
+    ? `<span class="font-semibold text-emerald-700">ผ่านเป้า</span>`
+    : `<span class="font-semibold text-sun-800">ยังไม่ถึงเป้า</span>`;
+  return `<b class="tabular-nums text-ink-900">${percent.toLocaleString("th-TH", { maximumFractionDigits: 1 })}%</b>
+    <span class="text-slate-500">(${summary.verified.toLocaleString("th-TH")} จาก ${summary.totalHouseholds.toLocaleString("th-TH")} ครัวเรือน · เป้า &gt; ${summary.targetCoveragePercent}%)</span> ${status}`;
+}
+
+/**
+ * กล่องข้อมูลชุมชน (docs/35) — ตัวเลขรวมระดับชุมชน ไม่มีข้อมูลรายบ้าน
+ * ข้อมูลขอบเขต (เวอร์ชัน/ที่มา) เป็นบรรทัดเล็กท้ายกล่อง เพราะผู้ใช้ส่วนใหญ่ไม่ได้ใช้
+ */
+function boundaryPopup(
+  boundary: CommunityBoundaryShape,
+  summary: CommunityMapSummary | undefined,
+  generatedAt: string,
+  filterHref: string | null,
+): string {
+  const header = `<div class="font-bold text-ink-900">${escapeHtml(boundary.nameTh)} <span class="font-normal text-slate-500">(${escapeHtml(boundary.code)})</span></div>`;
+  const footer = `<div class="mt-2 border-t border-slate-100 pt-1.5 text-[11px] leading-snug text-slate-400">
+    ขอบเขตเวอร์ชัน ${boundary.version.toLocaleString("th-TH")} · ${boundary.isApproved ? "รับรองแล้ว" : '<span class="font-semibold text-sun-800">ร่าง — ยังไม่รับรอง</span>'}
+    ${boundary.source ? `<br/>ที่มา: ${escapeHtml(boundary.source)}` : ""}
+  </div>`;
+  if (!summary) {
+    return `<div class="min-w-[220px] font-sans leading-relaxed">${header}<div class="mt-1 text-xs text-slate-500">ยังไม่มีข้อมูลสรุปของชุมชนนี้</div>${footer}</div>`;
+  }
+
+  const vulnerable = summary.vulnerable;
+  const typeRows = vulnerable.byType
+    .map((type) => `<li class="flex justify-between gap-3"><span>${escapeHtml(type.name)}</span><b class="tabular-nums">${type.count.toLocaleString("th-TH")}</b></li>`)
+    .join("");
+
+  return `<div class="w-[260px] font-sans text-xs leading-relaxed text-slate-700">
+    ${header}
+    <div class="mt-2 grid grid-cols-3 gap-1.5 text-center">
+      ${popupStat("สำรวจแล้ว", summary.surveyed, "bg-brand-50 text-brand-800")}
+      ${popupStat("ตรวจแล้ว", summary.verified, "bg-emerald-50 text-emerald-800")}
+      ${popupStat("รอตรวจ", summary.pending, summary.pending > 0 ? "bg-sun-50 text-sun-900" : "bg-slate-50 text-slate-500")}
+    </div>
+    <div class="mt-2"><span class="font-semibold text-slate-500">ความครอบคลุม (ตรวจแล้ว):</span> ${coverageLine(summary)}</div>
+    <div class="mt-2">
+      <span class="font-semibold text-slate-500">กลุ่มเปราะบาง:</span>
+      <b class="tabular-nums text-ink-900">${vulnerable.activePersons.toLocaleString("th-TH")}</b> คน
+      ${vulnerable.inactivePersons > 0 ? `<span class="text-slate-400">· ไม่นับแล้ว ${vulnerable.inactivePersons.toLocaleString("th-TH")} คน (เสียชีวิต/ย้ายออก)</span>` : ""}
+      ${typeRows ? `<ul class="mt-1 space-y-0.5 rounded-lg bg-mist px-2 py-1.5">${typeRows}</ul>` : ""}
+    </div>
+    <div class="mt-2"><span class="font-semibold text-slate-500">พื้นที่:</span> ${formatRai(summary.areaRai)} · <span class="font-semibold text-slate-500">จุดอพยพในเขต:</span> ${summary.siteCount.toLocaleString("th-TH")} แห่ง</div>
+    ${filterHref ? `<a href="${escapeHtml(filterHref)}" class="mt-2 inline-block font-semibold text-brand-700 underline underline-offset-2">แสดงเฉพาะชุมชนนี้ →</a>` : `<div class="mt-2 font-semibold text-brand-700">กำลังแสดงเฉพาะชุมชนนี้</div>`}
+    <div class="mt-2 text-[11px] text-slate-400">ตัวเลขนับจากแบบสอบถามที่ตรวจแล้ว ณ ${thaiShortDate(new Date(generatedAt))} (สำรวจแล้ว/รอตรวจ รวมใบที่ยังไม่ตรวจ)</div>
+    ${footer}
   </div>`;
 }
 
@@ -272,6 +332,9 @@ export function HouseholdLayerMap({
   volunteerSkill,
   siteTypes,
   boundaries,
+  communitySummaries,
+  summaryGeneratedAt,
+  communityFilterHref,
   showBoundaries,
   selectedCommunityId,
   fitKey,
@@ -287,6 +350,11 @@ export function HouseholdLayerMap({
   volunteerSkill: string;
   siteTypes: string[];
   boundaries: CommunityBoundaryShape[];
+  /** สรุปรายชุมชนสำหรับกล่องข้อมูลเมื่อกดเขตชุมชน (docs/35) */
+  communitySummaries?: Record<string, CommunityMapSummary>;
+  summaryGeneratedAt?: string;
+  /** ลิงก์ "แสดงเฉพาะชุมชนนี้" — คงชั้นข้อมูลที่เปิดอยู่ไว้ */
+  communityFilterHref?: (communityId: string) => string;
   showBoundaries: boolean;
   /** ชุมชนที่กรองอยู่ — เน้นขอบเขตนั้น ชุมชนอื่นจางลง */
   selectedCommunityId?: string;
@@ -297,6 +365,9 @@ export function HouseholdLayerMap({
   const [handle, setHandle] = useState<LeafletHandle | null>(null);
   const onCenterChangeRef = useRef(onCenterChange);
   useEffect(() => { onCenterChangeRef.current = onCenterChange; }, [onCenterChange]);
+  // อ่านตอนเปิดกล่องข้อมูล (bindPopup แบบฟังก์ชัน) — ไม่ต้องวาดเส้นขอบใหม่ทุกครั้งที่ชั้นข้อมูลเปลี่ยน
+  const filterHrefRef = useRef(communityFilterHref);
+  useEffect(() => { filterHrefRef.current = communityFilterHref; }, [communityFilterHref]);
   // มุมกล้องเริ่มต้นอ่านครั้งเดียวตอนสร้างแผนที่ — ค่าที่มาทีหลังจัดการผ่าน fitKey
   const initialRef = useRef({ center, defaultZoom });
   // มุมที่ผู้ใช้เคยดูไว้ อ่านก่อนสร้างแผนที่ — ต้องเก็บแยก เพราะแผนที่จะบันทึกมุมเริ่มต้นทับทันทีที่สร้าง
@@ -371,7 +442,15 @@ export function HouseholdLayerMap({
       L.geoJSON(boundary.geometry, { style: () => ({ className }) })
         .addTo(group)
         .bindTooltip(escapeHtml(boundary.nameTh), { sticky: true, direction: "top" })
-        .bindPopup(boundaryPopup(boundary));
+        .bindPopup(
+          () => boundaryPopup(
+            boundary,
+            communitySummaries?.[boundary.communityId],
+            summaryGeneratedAt ?? new Date().toISOString(),
+            boundary.communityId === selectedCommunityId ? null : (filterHrefRef.current?.(boundary.communityId) ?? null),
+          ),
+          { maxWidth: 300 },
+        );
       if (boundary.labelPoint) {
         L.marker([boundary.labelPoint.lat, boundary.labelPoint.lng], {
           icon: L.divIcon({
@@ -386,7 +465,7 @@ export function HouseholdLayerMap({
       }
     }
     return () => { group.remove(); };
-  }, [handle, boundaries, showBoundaries, selectedCommunityId]);
+  }, [handle, boundaries, showBoundaries, selectedCommunityId, communitySummaries, summaryGeneratedAt]);
 
   // จุดครัวเรือน (รวมจุดที่พิกัดซ้ำเป็นหมุดเดียว)
   useEffect(() => {
