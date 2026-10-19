@@ -5,6 +5,8 @@ import "leaflet/dist/leaflet.css";
 import type { HouseholdLayerPoint, VolunteerMapSkill } from "@/lib/geo/household-layer-map";
 import type { ImportantSitePoint } from "@/lib/geo/important-sites";
 import type { BaseMapKey, HouseholdLayerKey } from "@/lib/geo/map-view-state";
+import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
+import { boundaryBounds } from "@/domain/geo/community-boundary";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
 
@@ -193,6 +195,15 @@ function sitePopup(site: ImportantSitePoint, typeLabel: string): string {
   return `<div style="font-family:system-ui;min-width:220px;line-height:1.6"><b>${escapeHtml(site.name)}</b><br/>${escapeHtml(typeLabel)} · ${escapeHtml(site.communityName)}${site.address ? `<br/>${escapeHtml(site.address)}` : ""}${site.capacity != null ? `<br/>รองรับได้ ${site.capacity.toLocaleString("th-TH")} คน` : ""}</div>`;
 }
 
+/** popup ใช้คลาส Tailwind/Token (HTML นี้อยู่ใน document เดียวกัน ไม่ใช่ SVG) */
+function boundaryPopup(boundary: CommunityBoundaryShape): string {
+  return `<div class="min-w-[220px] font-sans leading-relaxed">
+    <b class="text-ink-900">${escapeHtml(boundary.nameTh)}</b> <span class="text-slate-500">(${escapeHtml(boundary.code)})</span>
+    <div class="mt-1 text-xs text-slate-600">ขอบเขตเวอร์ชัน ${boundary.version.toLocaleString("th-TH")} · ${boundary.isApproved ? "รับรองแล้ว" : '<span class="font-semibold text-sun-800">ร่าง — ยังไม่รับรอง</span>'}</div>
+    ${boundary.source ? `<div class="mt-0.5 text-xs text-slate-500">ที่มา: ${escapeHtml(boundary.source)}</div>` : ""}
+  </div>`;
+}
+
 function volunteerTooltip(points: HouseholdLayerPoint[], fallback: string): string {
   const skills = visibleSkills(points, "");
   return skills.length ? `อาสาสมัคร: ${skills.map((skill) => skill.label).join(", ")}` : fallback;
@@ -260,6 +271,9 @@ export function HouseholdLayerMap({
   layers,
   volunteerSkill,
   siteTypes,
+  boundaries,
+  showBoundaries,
+  selectedCommunityId,
   fitKey,
   onCenterChange,
 }: {
@@ -272,6 +286,10 @@ export function HouseholdLayerMap({
   layers: HouseholdLayerKey[];
   volunteerSkill: string;
   siteTypes: string[];
+  boundaries: CommunityBoundaryShape[];
+  showBoundaries: boolean;
+  /** ชุมชนที่กรองอยู่ — เน้นขอบเขตนั้น ชุมชนอื่นจางลง */
+  selectedCommunityId?: string;
   fitKey: string;
   onCenterChange?: (center: { lat: number; lng: number }) => void;
 }) {
@@ -332,8 +350,43 @@ export function HouseholdLayerMap({
       maxNativeZoom: config.maxNativeZoom,
     }).addTo(handle.map);
     tiles.bringToBack();
-    return () => { tiles.remove(); };
+    // สีเส้นขอบชุมชนสลับตามพื้นแผนที่ (ดู .map-satellite ใน globals.css)
+    // ใช้ classList ไม่ใช่ prop className — React จะเขียนทับคลาส leaflet-container ที่ Leaflet ใส่ไว้
+    const container = handle.map.getContainer();
+    container.classList.toggle("map-satellite", base === "satellite");
+    return () => {
+      tiles.remove();
+      container.classList.remove("map-satellite");
+    };
   }, [handle, base]);
+
+  // เส้นขอบชุมชน + ป้ายชื่อ — อยู่ใต้หมุดเสมอ (overlayPane / zIndexOffset ติดลบ)
+  useEffect(() => {
+    if (!handle || !showBoundaries || !boundaries.length) return;
+    const { L, map } = handle;
+    const group = L.layerGroup().addTo(map);
+    for (const boundary of boundaries) {
+      const dim = Boolean(selectedCommunityId && boundary.communityId !== selectedCommunityId);
+      const className = ["map-boundary", boundary.isApproved ? "" : "map-boundary-draft", dim ? "map-boundary-dim" : ""].filter(Boolean).join(" ");
+      L.geoJSON(boundary.geometry, { style: () => ({ className }) })
+        .addTo(group)
+        .bindTooltip(escapeHtml(boundary.nameTh), { sticky: true, direction: "top" })
+        .bindPopup(boundaryPopup(boundary));
+      if (boundary.labelPoint) {
+        L.marker([boundary.labelPoint.lat, boundary.labelPoint.lng], {
+          icon: L.divIcon({
+            className: "",
+            html: `<span class="map-boundary-label${dim ? " map-boundary-label-dim" : ""}">${escapeHtml(boundary.nameTh)}</span>`,
+            iconSize: [0, 0],
+          }),
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: -1000,
+        }).addTo(group);
+      }
+    }
+    return () => { group.remove(); };
+  }, [handle, boundaries, showBoundaries, selectedCommunityId]);
 
   // จุดครัวเรือน (รวมจุดที่พิกัดซ้ำเป็นหมุดเดียว)
   useEffect(() => {
@@ -408,6 +461,13 @@ export function HouseholdLayerMap({
     const bounds = L.latLngBounds([]);
     for (const point of points) bounds.extend([point.lat, point.lng]);
     for (const site of sites) bounds.extend([site.lat, site.lng]);
+    // ขอบเขตชุมชน: เลือกชุมชนอยู่ → ครอบขอบเขตนั้นด้วย (เห็นทั้งพื้นที่แม้หมุดยังน้อย)
+    // ไม่มีหมุดเลย → ครอบทุกชุมชน แทนการค้างอยู่ที่มุมเริ่มต้น
+    const fitShapes = selectedCommunityId
+      ? boundaries.filter((boundary) => boundary.communityId === selectedCommunityId)
+      : bounds.isValid() ? [] : boundaries;
+    const shapeBox = boundaryBounds(fitShapes.map((boundary) => boundary.geometry));
+    if (shapeBox) bounds.extend([[shapeBox.south, shapeBox.west], [shapeBox.north, shapeBox.east]]);
     if (!bounds.isValid()) return;
     // คงมุมเดิมเฉพาะเมื่อยังเห็นข้อมูลอย่างน้อยหนึ่งจุดในกรอบจอ (แผนที่เพิ่งสร้างด้วยมุมที่บันทึกไว้)
     // เทียบแค่จุดกึ่งกลางไม่พอ: ซูมลึกที่กึ่งกลางกลุ่มอาจไม่มีหมุดสักจุดในจอ
@@ -422,9 +482,9 @@ export function HouseholdLayerMap({
       paddingBottomRight: desktop ? [400, 48] : [48, 104],
       maxZoom: Math.min(initialRef.current.defaultZoom, 17),
     });
-  }, [handle, fitKey, points, sites]);
+  }, [handle, fitKey, points, sites, boundaries, selectedCommunityId]);
 
-  return <div ref={ref} className="h-full w-full" role="region" aria-label="แผนที่จุดครัวเรือนและจุดสำคัญ" />;
+  return <div ref={ref} className="h-full w-full" role="region" aria-label="แผนที่จุดครัวเรือน จุดสำคัญ และเส้นขอบชุมชน" />;
 }
 
 export function LayerIcon({ path, color, size = "md" }: { path: string; color: string; size?: "sm" | "md" }) {

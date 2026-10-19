@@ -20,8 +20,9 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * แผนที่สาธารณะ — แสดงจุดศูนย์กลางชุมชน (โดยประมาณ) + จุดพักพิง/อพยพสาธารณะ
+ * แผนที่สาธารณะ — เส้นขอบชุมชน + หมุดชุมชน + จุดพักพิง/อพยพสาธารณะ
  * ไม่มีพิกัดรายบ้าน/PII (กติกา CLAUDE.md: Public map = aggregate เท่านั้น)
+ * หมุดชุมชนวางที่จุดภายในขอบเขตจริง (ถ้ามี) ไม่งั้นใช้ centroid โดยประมาณ
  * Leaflet โหลดแบบ dynamic ใน useEffect เพื่อไม่พึ่ง window ตอน SSR
  */
 export function PublicMap({
@@ -52,6 +53,17 @@ export function PublicMap({
 
         const bounds = L.latLngBounds([]);
 
+        // เส้นขอบชุมชน — สีจาก Token ผ่าน .map-boundary (globals.css) · เส้นประ = ร่าง
+        for (const c of communities) {
+          if (!c.boundary) continue;
+          const className = c.boundaryApproved ? "map-boundary" : "map-boundary map-boundary-draft";
+          const geometry: GeoJSON.MultiPolygon = { type: "MultiPolygon", coordinates: c.boundary };
+          const layer = L.geoJSON(geometry, { style: () => ({ className }) })
+            .addTo(map)
+            .bindTooltip(escapeHtml(c.nameTh), { sticky: true, direction: "top" });
+          bounds.extend(layer.getBounds());
+        }
+
         for (const c of communities) {
           const icon = L.divIcon({
             className: "",
@@ -62,7 +74,15 @@ export function PublicMap({
           L.marker([c.lat, c.lng], { icon })
             .addTo(map)
             .bindTooltip(escapeHtml(c.nameTh), { direction: "top" })
-            .bindPopup(`<b>${escapeHtml(c.nameTh)}</b><br/><span style="color:#64748b">จุดศูนย์กลางชุมชนโดยประมาณ</span>`);
+            .bindPopup(
+              `<b>${escapeHtml(c.nameTh)}</b><br/><span class="text-slate-500">${
+                c.positionSource === "CENTROID"
+                  ? "จุดศูนย์กลางชุมชนโดยประมาณ"
+                  : c.boundaryApproved
+                    ? "ภายในเขตชุมชน"
+                    : "ภายในเขตชุมชน (ขอบเขตร่าง อยู่ระหว่างตรวจสอบ)"
+              }</span>`,
+            );
           bounds.extend([c.lat, c.lng]);
         }
 

@@ -40,6 +40,7 @@ describe("map view state (URL query)", () => {
       layers: ["heat", "vulnerable"],
       skill: "RESCUE",
       siteTypes: ["OTHER", "SCHOOL"],
+      boundaries: false,
     };
     const query = serializeMapViewState(original, SITE_TYPES);
     const reparsed = parseMapViewState(Object.fromEntries(new URLSearchParams(query)), SITE_TYPES);
@@ -69,6 +70,7 @@ describe("map view state (URL query)", () => {
       layers: ["vulnerable"],
       skill: undefined,
       siteTypes: ["SCHOOL"],
+      boundaries: true,
     });
   });
 
@@ -76,9 +78,20 @@ describe("map view state (URL query)", () => {
     expect(parseMapViewState({ community: ["c1", "c2"] }, SITE_TYPES).communityId).toBe("c1");
   });
 
-  it("นับชั้นที่เปิด: ครัวเรือน 4 ชั้น + จุดสำคัญตามประเภท ไม่นับแผนที่พื้นฐาน", () => {
-    expect(countActiveLayers(parseMapViewState({}, SITE_TYPES), SITE_TYPES)).toEqual({ active: 7, total: 8 });
-    expect(countActiveLayers({ layers: [], siteTypes: [] }, SITE_TYPES)).toEqual({ active: 0, total: 8 });
-    expect(countActiveLayers({ layers: ["heat"], siteTypes: ["SCHOOL", "GONE"] }, SITE_TYPES)).toEqual({ active: 2, total: 8 });
+  it("นับชั้นที่เปิด: เส้นขอบชุมชน 1 + ครัวเรือน 4 ชั้น + จุดสำคัญตามประเภท ไม่นับแผนที่พื้นฐาน", () => {
+    expect(countActiveLayers(parseMapViewState({}, SITE_TYPES), SITE_TYPES)).toEqual({ active: 8, total: 9 });
+    expect(countActiveLayers({ layers: [], siteTypes: [], boundaries: false }, SITE_TYPES)).toEqual({ active: 0, total: 9 });
+    expect(countActiveLayers({ layers: ["heat"], siteTypes: ["SCHOOL", "GONE"], boundaries: false }, SITE_TYPES)).toEqual({ active: 2, total: 9 });
+  });
+
+  it("เส้นขอบชุมชน: เปิดเป็นค่าเริ่มต้น (ไม่เขียนลง URL) · ปิดเขียนเป็น boundary=off", () => {
+    expect(parseMapViewState({}, SITE_TYPES).boundaries).toBe(true);
+    const off = parseMapViewState({ boundary: "off" }, SITE_TYPES);
+    expect(off.boundaries).toBe(false);
+    expect(serializeMapViewState(off, SITE_TYPES)).toBe("boundary=off");
+    // รูปแบบอื่นที่สื่อว่าปิดก็รับ แต่เขียนกลับเป็น off รูปเดียว · ค่าแปลกปลอม = ค่าเริ่มต้น (เปิด)
+    expect(parseMapViewState({ boundary: "none" }, SITE_TYPES).boundaries).toBe(false);
+    expect(parseMapViewState({ boundary: "OFF" }, SITE_TYPES).boundaries).toBe(false);
+    expect(parseMapViewState({ boundary: "<x>" }, SITE_TYPES).boundaries).toBe(true);
   });
 });

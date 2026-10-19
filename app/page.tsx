@@ -110,6 +110,8 @@ export default async function PublicHomePage() {
     getPublicMapData(),
   ]);
   const hasMapPoints = mapData.communities.length + mapData.sites.length > 0;
+  const boundaryCount = mapData.communities.filter((c) => c.boundary).length;
+  const boundaryDraft = mapData.communities.some((c) => c.boundary && !c.boundaryApproved);
 
   const updatedAt = stats.generatedAt.toLocaleString("th-TH", {
     dateStyle: "medium",
@@ -370,7 +372,7 @@ export default async function PublicHomePage() {
           </div>
         </section>
 
-        {/* แผนที่สาธารณะ — จุดศูนย์กลางชุมชน + จุดพักพิง (aggregate เท่านั้น ไม่มีรายบ้าน) */}
+        {/* แผนที่สาธารณะ — เส้นขอบ/หมุดชุมชน + จุดพักพิง (aggregate เท่านั้น ไม่มีรายบ้าน) */}
         <section aria-labelledby="map-title" className="mt-10">
           <SectionTitle id="map-title" tone="mint" title="แผนที่ชุมชนและจุดพักพิง" />
           {hasMapPoints ? (
@@ -379,8 +381,14 @@ export default async function PublicHomePage() {
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-2 py-3 text-xs font-medium text-slate-600">
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 rounded-full border-2 border-white bg-brand-600 shadow" />
-                  จุดศูนย์กลางชุมชน (โดยประมาณ) · {mapData.communities.length.toLocaleString("th-TH")} แห่ง
+                  ชุมชน · {mapData.communities.length.toLocaleString("th-TH")} แห่ง
                 </span>
+                {boundaryCount ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-5 rounded-sm border-2 border-dashed border-brand-600 bg-brand-500/10" />
+                    เส้นขอบชุมชน{boundaryDraft ? " (ร่าง — อยู่ระหว่างตรวจสอบ)" : ""}
+                  </span>
+                ) : null}
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 rounded-full border-2 border-white bg-alert-500 shadow" />
                   จุดพักพิง / จุดอพยพ · {mapData.sites.length.toLocaleString("th-TH")} จุด
@@ -397,7 +405,7 @@ export default async function PublicHomePage() {
                 กำลังรวบรวมข้อมูลจุดพักพิงและพื้นที่เสี่ยง
               </h3>
               <p className="max-w-md text-xs leading-relaxed text-slate-600">
-                แผนที่สาธารณะจะแสดงจุดศูนย์กลางชุมชนและจุดอพยพเมื่อข้อมูลพร้อม —
+                แผนที่สาธารณะจะแสดงขอบเขตชุมชนและจุดอพยพเมื่อข้อมูลพร้อม —
                 จะแสดงเฉพาะข้อมูลภาพรวม ไม่มีตำแหน่งรายบ้าน
               </p>
             </div>

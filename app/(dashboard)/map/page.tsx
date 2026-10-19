@@ -6,6 +6,7 @@ import { getSystemPreferences } from "@/lib/settings/core";
 import { canManageImportantSites, getImportantSites, IMPORTANT_SITE_TYPES } from "@/lib/geo/important-sites";
 import { parseMapViewState, type RawSearchParams } from "@/lib/geo/map-view-state";
 import { dateRangeError } from "@/lib/household/trusted-where";
+import { getCurrentCommunityBoundaries } from "@/lib/geo/community-boundaries";
 
 export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
@@ -31,16 +32,25 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
     dateTo: view.dateTo,
   };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
-  const [householdMap, preferences, sites] = await Promise.all([
+  const [householdMap, preferences, sites, boundaries] = await Promise.all([
     getHouseholdLayerMap(ctx, filters),
     getSystemPreferences(),
     getImportantSites(filters.communityId),
+    // ขอบเขตทุกชุมชนเป็นบริบทเสมอ (ชุมชนที่เลือกถูกเน้นฝั่ง client) — ระดับชุมชน ไม่ใช่รายบ้าน
+    getCurrentCommunityBoundaries({ communityIds: ctx.isGlobalScope ? undefined : ctx.communityIds }),
   ]);
+  const labelPoints = boundaries.flatMap((boundary) => (boundary.labelPoint ? [boundary.labelPoint] : []));
+  const average = (items: { lat: number; lng: number }[]) => ({
+    lat: items.reduce((sum, item) => sum + item.lat, 0) / items.length,
+    lng: items.reduce((sum, item) => sum + item.lng, 0) / items.length,
+  });
   const center = householdMap.points.length
     ? householdMap.center
     : sites.length
-      ? { lat: sites.reduce((sum, site) => sum + site.lat, 0) / sites.length, lng: sites.reduce((sum, site) => sum + site.lng, 0) / sites.length }
-      : { lat: preferences.mapDefaultLat, lng: preferences.mapDefaultLng };
+      ? average(sites)
+      : labelPoints.length
+        ? average(labelPoints)
+        : { lat: preferences.mapDefaultLat, lng: preferences.mapDefaultLng };
 
   return (
     <MapWorkspace
@@ -48,6 +58,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
       siteTypeOptions={IMPORTANT_SITE_TYPES}
       points={householdMap.points}
       sites={sites}
+      boundaries={boundaries}
       volunteerSkills={householdMap.options.volunteerSkills}
       communities={householdMap.options.communities}
       tambons={householdMap.options.tambons}

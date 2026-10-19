@@ -33,7 +33,12 @@ export interface MapViewState {
   skill?: string;
   /** ประเภทจุดสำคัญที่แสดง (ค่าเริ่มต้น = ทุกประเภท) */
   siteTypes: string[];
+  /** ชั้นเส้นขอบชุมชน (ค่าเริ่มต้น = เปิด · ปิดเขียนเป็น `boundary=off`) */
+  boundaries: boolean;
 }
+
+/** ค่าที่หมายถึง "ปิดชั้นเส้นขอบชุมชน" ใน URL — เขียนออกเป็น `off` เสมอ */
+const BOUNDARY_OFF_VALUES = new Set(["off", NONE_TOKEN, "0", "false"]);
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -88,6 +93,7 @@ export function parseMapViewState(
     layers: parseList(first(params.layers), HOUSEHOLD_LAYER_KEYS, DEFAULT_HOUSEHOLD_LAYERS),
     skill: cleanId(first(params.skill)),
     siteTypes: parseList(first(params.sites), allSiteTypes, allSiteTypes),
+    boundaries: !BOUNDARY_OFF_VALUES.has(first(params.boundary)?.trim().toLowerCase() ?? ""),
   };
 }
 
@@ -118,6 +124,7 @@ export function serializeMapViewState(
   if (!sameMembers(state.siteTypes, allSiteTypes)) {
     params.set("sites", listValue(state.siteTypes, allSiteTypes));
   }
+  if (!state.boundaries) params.set("boundary", "off");
   // จุลภาคใช้ใน query ได้ตามมาตรฐาน — ไม่ encode เป็น %2C เพื่อให้ลิงก์ที่ส่งต่อกันอ่านออก
   return params.toString().replace(/%2C/gi, ",");
 }
@@ -127,13 +134,16 @@ export function mapViewHref(state: MapViewState, allSiteTypes: readonly string[]
   return query ? `/map?${query}` : "/map";
 }
 
-/** จำนวนชั้นที่เปิดอยู่ / ทั้งหมด (แผนที่พื้นฐานไม่นับ เพราะต้องมีหนึ่งชั้นเสมอ) */
+/**
+ * จำนวนชั้นที่เปิดอยู่ / ทั้งหมด (แผนที่พื้นฐานไม่นับ เพราะต้องมีหนึ่งชั้นเสมอ)
+ * เส้นขอบชุมชนนับเป็น 1 ชั้น
+ */
 export function countActiveLayers(
-  state: Pick<MapViewState, "layers" | "siteTypes">,
+  state: Pick<MapViewState, "layers" | "siteTypes" | "boundaries">,
   allSiteTypes: readonly string[],
 ): { active: number; total: number } {
   return {
-    active: state.layers.length + state.siteTypes.filter((type) => allSiteTypes.includes(type)).length,
-    total: HOUSEHOLD_LAYER_KEYS.length + allSiteTypes.length,
+    active: (state.boundaries ? 1 : 0) + state.layers.length + state.siteTypes.filter((type) => allSiteTypes.includes(type)).length,
+    total: 1 + HOUSEHOLD_LAYER_KEYS.length + allSiteTypes.length,
   };
 }

@@ -4,6 +4,8 @@
 
 import { SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { BOUNDARY_PRECISION, getCurrentCommunityBoundaries } from "../geo/community-boundaries";
+import { communityMarkerPosition, type LngLat } from "../../domain/geo/community-boundary";
 
 /**
  * k-anonymity threshold — aggregate เกี่ยวกับ "กลุ่มคน" (เช่น กลุ่มเปราะบางรายพื้นที่)
@@ -70,8 +72,14 @@ export interface PublicEmergencyContact {
 export interface PublicMapCommunity {
   id: string;
   nameTh: string;
+  /** ตำแหน่งหมุดชุมชน — จุดภายในขอบเขตจริงถ้ามี ไม่งั้นเป็น centroid โดยประมาณ */
   lat: number;
   lng: number;
+  positionSource: "BOUNDARY" | "CENTROID";
+  /** เส้นขอบชุมชน (GeoJSON MultiPolygon coordinates) — ระดับชุมชน ไม่ใช่รายบ้าน */
+  boundary: LngLat[][][] | null;
+  /** ขอบเขตผ่านการรับรองแล้วหรือยัง (ชุดแรกยังเป็นร่าง) */
+  boundaryApproved: boolean;
 }
 
 export interface PublicMapSite {
@@ -89,21 +97,18 @@ export interface PublicMapData {
 
 /**
  * ข้อมูลแผนที่สาธารณะ — เฉพาะ aggregate/สถานที่สาธารณะเท่านั้น
- *  - ชุมชน: จุดศูนย์กลางโดยประมาณ (centroid) ไม่ใช่พิกัดรายบ้าน
+ *  - ชุมชน: เส้นขอบชุมชน + จุดภายในขอบเขต (หรือ centroid โดยประมาณ) ไม่ใช่พิกัดรายบ้าน
+ *    ไม่ส่ง source/version ของขอบเขต — ส่งเฉพาะที่ต้องวาด เพื่อให้ payload เล็กบนเน็ตช้า
  *  - จุดอพยพ/พักพิง: ชื่อ + ประเภท + พิกัด (ไม่คืนชื่อ/เบอร์ผู้ประสานงาน = ไม่มี PII)
  */
 export async function getPublicMapData(): Promise<PublicMapData> {
-  const [communities, sites] = await Promise.all([
+  const [communities, boundaries, sites] = await Promise.all([
     prisma.community.findMany({
-      where: {
-        deletedAt: null,
-        isActive: true,
-        centroidLat: { not: null },
-        centroidLng: { not: null },
-      },
+      where: { deletedAt: null, isActive: true },
       select: { id: true, nameTh: true, centroidLat: true, centroidLng: true },
       orderBy: { code: "asc" },
     }),
+    getCurrentCommunityBoundaries({ precision: BOUNDARY_PRECISION.public }),
     prisma.evacuationSite.findMany({
       where: { isActive: true },
       select: { id: true, name: true, type: true, latitude: true, longitude: true },
@@ -111,13 +116,28 @@ export async function getPublicMapData(): Promise<PublicMapData> {
     }),
   ]);
 
-  return {
-    communities: communities.map((c) => ({
+  const boundaryById = new Map(boundaries.map((b) => [b.communityId, b]));
+  const mapCommunities: PublicMapCommunity[] = [];
+  for (const c of communities) {
+    const boundary = boundaryById.get(c.id);
+    const centroid = c.centroidLat === null || c.centroidLng === null
+      ? null
+      : { lat: Number(c.centroidLat), lng: Number(c.centroidLng) };
+    const position = communityMarkerPosition(boundary?.labelPoint, centroid);
+    if (!position) continue;
+    mapCommunities.push({
       id: c.id,
       nameTh: c.nameTh,
-      lat: Number(c.centroidLat),
-      lng: Number(c.centroidLng),
-    })),
+      lat: position.lat,
+      lng: position.lng,
+      positionSource: position.source,
+      boundary: boundary?.geometry.coordinates ?? null,
+      boundaryApproved: boundary?.isApproved ?? false,
+    });
+  }
+
+  return {
+    communities: mapCommunities,
     sites: sites.map((s) => ({
       id: s.id,
       name: s.name,
