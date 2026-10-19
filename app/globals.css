@@ -507,6 +507,16 @@
   .map-boundary-draft {
     stroke-dasharray: 8 5;
   }
+  /* คลิกรูปทรงบนแผนที่แล้วเบราว์เซอร์วาดกรอบโฟกัสเป็นสี่เหลี่ยมรอบ bounding box ของ <path>
+     (ทั้งเส้นขอบชุมชนและจุดอื่น ๆ ที่ Leaflet วาดเป็น SVG) — ปิดกรอบนั้น
+     แล้วแสดงโฟกัสจากคีย์บอร์ดด้วยการทำเส้นให้หนาขึ้นแทน ไม่ทิ้งผู้ใช้คีย์บอร์ด */
+  .leaflet-container path.leaflet-interactive:focus {
+    outline: none;
+  }
+  .leaflet-container path.leaflet-interactive:focus-visible {
+    stroke-width: 4px;
+    stroke-opacity: 1;
+  }
   /* เลือกชุมชนอยู่: ชุมชนอื่นจางลงเป็นบริบท ไม่แย่งสายตา */
   .map-boundary-dim {
     stroke: var(--color-slate-500);
