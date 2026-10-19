@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { useRouter } from "next/navigation";
 import type { HouseholdLayerPoint, VolunteerMapSkill } from "@/lib/geo/household-layer-map";
 import type { ImportantSitePoint } from "@/lib/geo/important-sites";
+import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
 import {
   countActiveLayers,
   HOUSEHOLD_LAYER_KEYS,
@@ -51,6 +52,7 @@ export function MapWorkspace({
   siteTypeOptions,
   points,
   sites,
+  boundaries,
   volunteerSkills,
   communities,
   tambons,
@@ -65,6 +67,7 @@ export function MapWorkspace({
   siteTypeOptions: SiteTypeOption[];
   points: HouseholdLayerPoint[];
   sites: ImportantSitePoint[];
+  boundaries: CommunityBoundaryShape[];
   volunteerSkills: VolunteerMapSkill[];
   communities: Option[];
   tambons: Option[];
@@ -85,6 +88,8 @@ export function MapWorkspace({
   const [layers, setLayers] = useState<HouseholdLayerKey[]>(view.layers);
   const [skill, setSkill] = useState(view.skill ?? "");
   const [siteTypes, setSiteTypes] = useState<string[]>(view.siteTypes);
+  const [showBoundaries, setShowBoundaries] = useState(view.boundaries);
+  const hasDraftBoundary = boundaries.some((boundary) => !boundary.isApproved);
 
   // พื้นที่: แสดงค่าที่เพิ่งเลือกทันทีระหว่างรอ server แล้วกลับไปเชื่อค่าจาก server เมื่อมาถึง
   const [area, setArea] = useState({ communityId: view.communityId ?? "", tambonId: view.tambonId ?? "" });
@@ -130,9 +135,10 @@ export function MapWorkspace({
       layers,
       skill: skill || undefined,
       siteTypes,
+      boundaries: showBoundaries,
       ...patch,
     }),
-    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, base, layers, skill, siteTypes],
+    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, base, layers, skill, siteTypes, showBoundaries],
   );
 
   // เขียนชั้นข้อมูลลง URL โดยไม่โหลดหน้าใหม่
@@ -164,7 +170,7 @@ export function MapWorkspace({
     for (const site of sites) counts.set(siteTypeKey(site), (counts.get(siteTypeKey(site)) ?? 0) + 1);
     return counts;
   }, [sites]);
-  const { active: activeCount, total: totalCount } = countActiveLayers({ layers, siteTypes }, allSiteTypes);
+  const { active: activeCount, total: totalCount } = countActiveLayers({ layers, siteTypes, boundaries: showBoundaries }, allSiteTypes);
   const visibleSkillList = useMemo(
     () => volunteerSkills.filter((item) => (skillCounts.get(item.code) ?? 0) > 0 && (!skill || item.code === skill)),
     [volunteerSkills, skillCounts, skill],
@@ -200,6 +206,9 @@ export function MapWorkspace({
         layers={layers}
         volunteerSkill={skill}
         siteTypes={siteTypes}
+        boundaries={boundaries}
+        showBoundaries={showBoundaries}
+        selectedCommunityId={view.communityId}
         fitKey={fitKey}
         onCenterChange={(value) => { mapCenterRef.current = value; }}
       />
@@ -246,6 +255,7 @@ export function MapWorkspace({
         totals={totals}
         missing={missingCoordinates}
         layers={layers}
+        boundary={showBoundaries && boundaries.length ? { draft: hasDraftBoundary } : null}
         skills={visibleSkillList}
         siteTypes={siteTypeOptions.filter((type) => siteTypes.includes(type.value) && (siteCounts.get(type.value) ?? 0) > 0)}
       />
@@ -334,6 +344,19 @@ export function MapWorkspace({
             ) : null}
           >
             <div className="space-y-2">
+              <div>
+                <LayerRow
+                  checked={showBoundaries}
+                  onChange={setShowBoundaries}
+                  icon={<BoundarySwatch draft={hasDraftBoundary} />}
+                  label="เส้นขอบชุมชน"
+                  count={boundaries.length}
+                  unit="ชุมชน"
+                />
+                {hasDraftBoundary && showBoundaries ? (
+                  <p className="ml-9 text-[11px] leading-snug text-sun-800">ร่างจากเจ้าของระบบ — ยังไม่รับรองเป็นแนวเขตทางการ</p>
+                ) : null}
+              </div>
               <label className="block text-xs font-bold text-slate-600">ชุมชน
                 <select
                   value={area.communityId}
@@ -533,6 +556,7 @@ function Legend({
   totals,
   missing,
   layers,
+  boundary,
   skills,
   siteTypes,
 }: {
@@ -541,6 +565,7 @@ function Legend({
   totals: Totals;
   missing: Missing;
   layers: HouseholdLayerKey[];
+  boundary: { draft: boolean } | null;
   skills: VolunteerMapSkill[];
   siteTypes: SiteTypeOption[];
 }) {
@@ -572,8 +597,14 @@ function Legend({
               ) : null}
             </p>
 
-            {shownLayers.length || heatOn || siteTypes.length ? (
+            {boundary || shownLayers.length || heatOn || siteTypes.length ? (
               <ul className="space-y-1.5">
+                {boundary ? (
+                  <li className="flex items-center gap-2">
+                    <BoundarySwatch draft={boundary.draft} />
+                    เส้นขอบชุมชน{boundary.draft ? " (เส้นประ = ร่าง ยังไม่รับรอง)" : ""}
+                  </li>
+                ) : null}
                 {shownLayers.filter((layer) => layer.key !== "volunteer").map((layer) => (
                   <li key={layer.key} className="flex items-center gap-2"><LayerIcon path={layer.iconPath} color={layer.color} size="sm" />{layer.label}</li>
                 ))}
@@ -644,6 +675,16 @@ function Toast({ result, onClose }: { result: SiteManagerResult; onClose: () => 
         <button type="button" onClick={onClose} className="shrink-0 opacity-70 hover:opacity-100" aria-label="ปิดข้อความ">✕</button>
       </div>
     </div>
+  );
+}
+
+/** สัญลักษณ์เส้นขอบ — สี/เส้นประตรงกับ .map-boundary(-draft) ใน globals.css */
+function BoundarySwatch({ draft }: { draft: boolean }) {
+  return (
+    <span
+      className={`h-5 w-6 shrink-0 rounded-sm border-2 border-brand-600 bg-brand-500/10 ${draft ? "border-dashed" : ""}`}
+      aria-hidden="true"
+    />
   );
 }
 
