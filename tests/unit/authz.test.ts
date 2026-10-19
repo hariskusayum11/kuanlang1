@@ -212,6 +212,7 @@ describe("visibleNavItems", () => {
       "รอตรวจสอบ",
       "ข้อมูลครัวเรือน",
       "สถานะกลุ่มเปราะบาง",
+      "ยืนยันบ้านพักพิง",
       "ถังขยะแบบสอบถาม",
       "ข้อมูลชุมชน",
       "ข้อมูลสุขภาพและกลุ่มเปราะบาง",
@@ -228,6 +229,7 @@ describe("visibleNavItems", () => {
     ]);
     expect(NAV_ITEMS.map((item) => item.group)).toEqual([
       "overview",
+      "data",
       "data",
       "data",
       "data",
@@ -290,6 +292,7 @@ describe("visibleNavItems", () => {
       "/verification",
       "/households",
       "/community-status",
+      "/shelters",
       "/admin/sheets",
       "/communities",
       "/medical",

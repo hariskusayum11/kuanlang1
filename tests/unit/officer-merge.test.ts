@@ -45,6 +45,8 @@ describe("OFFICER ครอบคลุมหน้าที่ของ COORDIN
       // Owner Decision เฟส 1: ดู/ส่งออก Excel รายชื่อรายกลุ่ม (กลุ่มทั่วไป — ไม่ใช่ข้อมูลสุขภาพ)
       // กลุ่มสุขภาพยังจำกัดที่ MEDICAL_REPORT_EXPORT (ADMIN/EXECUTIVE) เท่านั้น
       PERMISSIONS.REPORT_SEGMENT_EXPORT,
+      // Owner Decision 2026-10-19: ยืนยันบ้านพักพิงหลังติดต่อเจ้าของบ้าน (docs/38)
+      PERMISSIONS.SHELTER_VERIFY,
     ]);
     expect([...officer].sort()).toEqual([...expected].sort());
   });

@@ -71,7 +71,8 @@ export const HOUSEHOLD_LAYERS: { key: MarkerLayerKey; label: string; shortLabel:
   // ไอคอนวีลแชร์ (Owner Decision 2026-10-19 แทนรูปหัวใจ) — สีบนหมุดจริงเปลี่ยนตามความเร่งด่วน (.map-urgency-*)
   { key: "vulnerable", label: "มีกลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M3 16a5 5 0 1 0 10 0a5 5 0 1 0 -10 0M17 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M19 17a3 3 0 0 0 -3 -3h-3.4M3 3h1a2 2 0 0 1 2 2v6M6 8h11M15 8v6" },
   { key: "volunteer", label: "สนใจเป็นอาสาสมัคร", shortLabel: "อาสาสมัคร", color: "#2563eb", iconPath: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-1a7 7 0 0114 0v1M18 8V3M15.5 5.5h5" },
-  { key: "host", label: "บ้านพักพิงเบื้องต้น", shortLabel: "จุดพักพิง", color: "#059669", iconPath: "M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6" },
+  // บ้านที่ติ๊กยินยอมแต่ยังไม่ได้ยืนยัน — ยืนยันแล้วจะย้ายไปเป็นจุดสำคัญ "บ้านพักพิง" (docs/38)
+  { key: "host", label: "บ้านเสนอเป็นจุดพักพิง (ยังไม่ยืนยัน)", shortLabel: "เสนอพักพิง", color: "#059669", iconPath: "M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6" },
 ];
 
 export const HEATMAP_ICON_PATH = "M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M2 20c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M12 3s-4 4.5-4 7a4 4 0 008 0c0-2.5-4-7-4-7z";
@@ -117,7 +118,7 @@ function popup(point: HouseholdLayerPoint): string {
   if (point.volunteerSkills.length) {
     details.push(popupRow("ทักษะอาสา", point.volunteerSkills.map((skill) => escapeHtml(skill.label)).join(" · ")));
   }
-  if (point.potentialHostHouse) details.push(popupRow("จุดพักพิง", "ยินยอมเป็นจุดพักพิงเบื้องต้น"));
+  if (point.potentialHostHouse) details.push(popupRow("จุดพักพิง", "ยินยอมเบื้องต้น — ยังไม่ได้ยืนยัน (ยืนยันได้ที่เมนู “ยืนยันบ้านพักพิง”)"));
   if (point.floodDepthCm != null) {
     details.push(popupRow("ระดับน้ำสูงสุด", `${(point.floodDepthCm / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })} เมตร`));
   }

@@ -73,6 +73,13 @@ function validate(input: ImportantSiteInput): string | null {
   return null;
 }
 
+const HOST_SHELTER_ERROR = "จุดนี้เป็นบ้านพักพิงจากแบบสอบถาม — แก้ไขหรือยกเลิกได้ที่เมนู “ยืนยันบ้านพักพิง”";
+
+async function isHostShelter(id: string): Promise<boolean> {
+  const site = await prisma.evacuationSite.findUnique({ where: { id }, select: { sourceHouseholdId: true } });
+  return site?.sourceHouseholdId != null;
+}
+
 export async function saveImportantSite(ctx: AuthorizationContext, input: ImportantSiteInput) {
   if (!canManageImportantSites(ctx)) return { ok: false as const, error: "เฉพาะผู้ดูแลระบบเท่านั้น" };
   const error = validate(input);
@@ -87,6 +94,8 @@ export async function saveImportantSite(ctx: AuthorizationContext, input: Import
     capacity: input.capacity ?? null,
     isActive: true,
   };
+  // บ้านพักพิงจากแบบสอบถามจัดการที่หน้า "ยืนยันบ้านพักพิง" เท่านั้น — กันเขียนทับพิกัด/การยินยอมเผยแพร่ (docs/38)
+  if (input.id && (await isHostShelter(input.id))) return { ok: false as const, error: HOST_SHELTER_ERROR };
   const site = input.id
     ? await prisma.evacuationSite.update({ where: { id: input.id }, data, select: { id: true } })
     : await prisma.evacuationSite.create({ data, select: { id: true } });
@@ -105,6 +114,7 @@ export async function deleteImportantSite(ctx: AuthorizationContext, id: string)
   if (!canManageImportantSites(ctx)) return { ok: false as const, error: "เฉพาะผู้ดูแลระบบเท่านั้น" };
   const existing = await prisma.evacuationSite.findUnique({ where: { id }, select: { id: true, type: true, communityId: true } });
   if (!existing) return { ok: false as const, error: "ไม่พบจุดที่ต้องการลบ" };
+  if (await isHostShelter(id)) return { ok: false as const, error: HOST_SHELTER_ERROR };
   await prisma.evacuationSite.delete({ where: { id } });
   await writeAuditLog({
     userId: ctx.userId,

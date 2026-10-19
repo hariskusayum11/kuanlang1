@@ -113,7 +113,11 @@ export interface BoundaryStats {
  * จุดอพยพเป็นสถานที่สาธารณะ (ไม่มีชื่อ/เบอร์ผู้ประสานงาน) จึงใช้ได้ทั้งภายในและสาธารณะ
  * ST_Covers รวมจุดที่อยู่บนเส้นขอบพอดี — จุดบนเส้นที่สองชุมชนใช้ร่วมกันนับให้ทั้งสองฝั่ง
  */
-export async function getBoundaryStats(): Promise<Map<string, BoundaryStats>> {
+export async function getBoundaryStats(
+  options: { publicOnly?: boolean } = {},
+): Promise<Map<string, BoundaryStats>> {
+  // หน้าสาธารณะ: เฉพาะจุดที่เผยแพร่ได้ — บ้านพักพิงที่เจ้าของไม่ยินยอมเผยแพร่ต้องไม่หลุดไป (docs/38)
+  const publicFilter = options.publicOnly ? Prisma.sql`AND s."isPublic" = TRUE` : Prisma.empty;
   const [areas, sites] = await Promise.all([
     prisma.$queryRaw<{ communityId: string; area: number | null }[]>(Prisma.sql`
       SELECT DISTINCT ON (cb."communityId") cb."communityId", ST_Area(cb.geom) AS area
@@ -128,6 +132,7 @@ export async function getBoundaryStats(): Promise<Map<string, BoundaryStats>> {
       JOIN evacuation_site s
         ON s."isActive" = TRUE
        AND ST_Covers(cb.geom, ST_SetSRID(ST_MakePoint(s.longitude::float8, s.latitude::float8), 4326)::geography)
+       ${publicFilter}
       WHERE cb."effectiveTo" IS NULL AND cb.geom IS NOT NULL
       ORDER BY cb."communityId", s.name
     `),

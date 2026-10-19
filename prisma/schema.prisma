@@ -309,6 +309,7 @@ model User {
   surveyedHouseholds           Household[]        @relation("surveyorUser") // FK ที่ขาด (SCH-20)
   duplicateResolvedHouseholds  Household[]        @relation("duplicateResolvedBy")
   deactivatedVulnerablePersons VulnerablePerson[] @relation("vulnerableDeactivatedBy")
+  verifiedShelters             EvacuationSite[]   @relation("shelterVerifiedBy")
 
   // Relations — Batch
   receivedBatches PaperBatch[] @relation("receivedBy")
@@ -1028,6 +1029,7 @@ model Household {
   vulnerablePersons  VulnerablePerson[]
   assistanceNeeds    AssistanceNeed[]
   floodRiskProfile   FloodRiskProfile? /// 1:1
+  hostShelter        EvacuationSite?     @relation("hostShelter") /// บ้านพักพิงที่ยืนยันแล้ว (docs/38)
   householdResources HouseholdResource[]
   evacuationVehicles EvacuationVehicle[]
   alertChannelPrefs  AlertChannelPref[]
@@ -1363,11 +1365,19 @@ model EvacuationSite {
   contactName             String? /// ผู้ประสานงาน
   contactPhone            String? /// เบอร์
   isActive                Boolean                                @default(true)
+  /// แสดงบนแผนที่สาธารณะหรือไม่ — จุดเดิมทั้งหมด true · บ้านพักพิงที่ยืนยันแล้วต้องได้ความยินยอมจากเจ้าของก่อน (docs/38)
+  isPublic                Boolean                                @default(true)
+  /// บ้านพักพิงที่มาจากครัวเรือนในแบบสอบถาม (ติ๊กยินยอมเป็นจุดพักพิง → เจ้าหน้าที่ยืนยัน)
+  sourceHouseholdId       String?                                @unique
+  verifiedAt              DateTime?
+  verifiedById            String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  community Community @relation(fields: [communityId], references: [id])
+  community       Community  @relation(fields: [communityId], references: [id])
+  sourceHousehold Household? @relation("hostShelter", fields: [sourceHouseholdId], references: [id], onDelete: SetNull)
+  verifiedBy      User?      @relation("shelterVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
   @@map("evacuation_site")
 }

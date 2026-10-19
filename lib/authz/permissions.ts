@@ -24,6 +24,8 @@ export const PERMISSIONS = {
   // บันทึกสถานะกลุ่มเปราะบางหลังการสำรวจ (เสียชีวิต/ย้ายออก/ไม่เข้าเกณฑ์/คืนสถานะ)
   // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนถูกจำกัดเฉพาะชุมชนที่ผูกไว้ (docs/34)
   VULNERABLE_STATUS_UPDATE: "vulnerable.status.update",
+  // ยืนยันบ้านที่ยินยอมเป็นจุดพักพิง → เป็นจุดพักพิงจริง (docs/38) — เจ้าหน้าที่ + ADMIN
+  SHELTER_VERIFY: "shelter.verify",
   SETTINGS_VIEW: "settings.view",
   USER_MANAGE: "user.manage",
   // ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS

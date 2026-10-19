@@ -51,6 +51,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconHref: "/community-status",
   },
   {
+    // บ้านที่ติ๊กยินยอมเป็นจุดพักพิง → เจ้าหน้าที่ยืนยันก่อนเป็นจุดพักพิงจริง (docs/38)
+    group: "data",
+    label: "ยืนยันบ้านพักพิง",
+    href: "/shelters",
+    permission: PERMISSIONS.SHELTER_VERIFY,
+    implemented: true,
+    iconHref: "/shelters",
+  },
+  {
     group: "data",
     label: "ถังขยะแบบสอบถาม",
     href: "/admin/sheets",

@@ -73,6 +73,10 @@ const ICONS: Record<string, React.ReactNode> = {
   "/volunteer": (
     <path d="M9 4h6l1 4v9a1 1 0 01-1 1H9a1 1 0 01-1-1V8l1-4zM8 8H5l-1 5h4M16 8h3l1 5h-4M12 8v10" />
   ),
+  // บ้านพร้อมเครื่องหมายถูก — ยืนยันบ้านพักพิง
+  "/shelters": (
+    <path d="M3 11l9-7 9 7M5 10v10h14V10M9 15l2 2 4-4" />
+  ),
   // โซ่ลิงก์ — ลิงก์ระบบภายนอก
   "/admin/links": (
     <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" />

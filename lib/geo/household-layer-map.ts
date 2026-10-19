@@ -125,6 +125,8 @@ export async function getHouseholdLayerMap(
         assistanceNeeds: {
           select: { personCount: true, needType: { select: { nameTh: true } } },
         },
+        // ยืนยันเป็นจุดพักพิงแล้ว → แสดงเป็นจุดสำคัญ "บ้านพักพิง" แทน ไม่ซ้ำในชั้น "เสนอตัว" (docs/38)
+        hostShelter: { select: { isActive: true } },
         floodRiskProfile: {
           select: {
             canBeHostHouse: true,
@@ -156,7 +158,7 @@ export async function getHouseholdLayerMap(
   for (const household of households) {
     const vulnerable = household.vulnerablePersons.length > 0;
     const volunteer = household.volunteerInterests.length > 0;
-    const hostHouse = household.floodRiskProfile?.canBeHostHouse === true;
+    const hostHouse = household.floodRiskProfile?.canBeHostHouse === true && household.hostShelter?.isActive !== true;
     const floodDepthCm = household.floodRiskProfile
       ? calculateFloodDepthCm(
           household.floodRiskProfile.floodDepthMetersRaw,

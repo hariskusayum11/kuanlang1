@@ -50,7 +50,7 @@ export async function getPublicStats(): Promise<PublicStats> {
       prisma.household.count({
         where: { deletedAt: null, sheet: { status: SheetStatus.VERIFIED } },
       }),
-      prisma.evacuationSite.count({ where: { isActive: true } }),
+      prisma.evacuationSite.count({ where: { isActive: true, isPublic: true } }),
     ]);
 
   return {
@@ -124,12 +124,13 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       orderBy: { code: "asc" },
     }),
     getCurrentCommunityBoundaries({ precision: BOUNDARY_PRECISION.public }),
+    // บ้านพักพิงที่เจ้าของไม่ยินยอมเผยแพร่ ต้องไม่ปรากฏบนหน้าสาธารณะ (docs/38)
     prisma.evacuationSite.findMany({
-      where: { isActive: true },
+      where: { isActive: true, isPublic: true },
       select: { id: true, name: true, type: true, latitude: true, longitude: true },
       orderBy: { name: "asc" },
     }),
-    getBoundaryStats(),
+    getBoundaryStats({ publicOnly: true }),
     // นับแบบเดียวกับ Verified Coverage ของแดชบอร์ด (ไม่นับ soft-deleted/ใบสงสัยซ้ำ)
     prisma.household.groupBy({
       by: ["communityId"],
