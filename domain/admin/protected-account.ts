@@ -23,6 +23,8 @@ export const PROTECTED_ACTIONS = [
   "set-roles",
   "reset-password",
   "set-global-scope",
+  // ชุมชนที่หัวหน้าชุมชนดูแล (docs/34) — เปลี่ยนขอบเขตข้อมูลที่บัญชีเห็นได้
+  "set-communities",
 ] as const;
 
 export type ProtectedAction = (typeof PROTECTED_ACTIONS)[number];

@@ -87,13 +87,14 @@ describe("สิทธิ์ตั้งรหัสผ่านให้ผู�
 });
 
 describe("รายการการกระทำที่ต้องถูกคุ้มครอง", () => {
-  it("ครบทั้ง 5 อย่างและไม่มีรายการซ้ำ", () => {
+  it("ครบทั้ง 6 อย่างและไม่มีรายการซ้ำ", () => {
     // รายการนี้เป็นสัญญาที่ integration test ยึดไว้ — เพิ่มการกระทำทำลายล้างใหม่
     // ต้องมาเพิ่มที่นี่ มิฉะนั้นจะไม่มีเทสต์ยืนยันว่า guard ถูกใส่จริง
     expect([...PROTECTED_ACTIONS].sort()).toEqual([
       "delete-user",
       "reset-password",
       "set-active",
+      "set-communities",
       "set-global-scope",
       "set-roles",
     ]);

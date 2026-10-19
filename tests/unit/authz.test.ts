@@ -211,6 +211,7 @@ describe("visibleNavItems", () => {
       "คีย์แบบสอบถาม",
       "รอตรวจสอบ",
       "ข้อมูลครัวเรือน",
+      "สถานะกลุ่มเปราะบาง",
       "ถังขยะแบบสอบถาม",
       "ข้อมูลชุมชน",
       "ข้อมูลสุขภาพและกลุ่มเปราะบาง",
@@ -226,6 +227,7 @@ describe("visibleNavItems", () => {
     ]);
     expect(NAV_ITEMS.map((item) => item.group)).toEqual([
       "overview",
+      "data",
       "data",
       "data",
       "data",
@@ -255,6 +257,19 @@ describe("visibleNavItems", () => {
     expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/volunteer"]);
   });
 
+  it("COMMUNITY_LEADER เห็นเฉพาะหน้าสถานะกลุ่มเปราะบาง — ไม่มีสิทธิ์อื่น (docs/34)", () => {
+    const { permissions } = buildAuthorization([UserRoleEnum.COMMUNITY_LEADER]);
+    expect(permissions).toEqual([PERMISSIONS.VULNERABLE_STATUS_UPDATE]);
+    expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/community-status"]);
+  });
+
+  it("บทบาทอื่นนอกจาก ADMIN/หัวหน้าชุมชน บันทึกสถานะกลุ่มเปราะบางไม่ได้", () => {
+    for (const role of Object.values(UserRoleEnum)) {
+      if (role === UserRoleEnum.ADMIN || role === UserRoleEnum.COMMUNITY_LEADER) continue;
+      expect(buildAuthorization([role]).permissions).not.toContain(PERMISSIONS.VULNERABLE_STATUS_UPDATE);
+    }
+  });
+
   it("EXECUTIVE ไม่เห็นเมนูตั้งค่าระบบ", () => {
     const { permissions } = buildAuthorization([UserRoleEnum.EXECUTIVE]);
     const hrefs = visibleNavItems(permissions).map((i) => i.href);
@@ -272,6 +287,7 @@ describe("visibleNavItems", () => {
       "/surveys",
       "/verification",
       "/households",
+      "/community-status",
       "/admin/sheets",
       "/communities",
       "/medical",

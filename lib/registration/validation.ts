@@ -55,6 +55,10 @@ export const APPROVABLE_ROLES = [
   UserRoleEnum.OFFICER,
   UserRoleEnum.EXECUTIVE,
   UserRoleEnum.VOLUNTEER,
+  // หัวหน้าชุมชน (Owner Decision 2026-10-19) — สมัครเข้ามาตามปกติแล้ว ADMIN มอบให้
+  // ไม่อยู่ในตัวเลือกหน้าสมัคร เพราะเห็นข้อมูลสุขภาพรายบุคคลของชุมชน (docs/34)
+  // ชุมชนที่ผู้สมัครเลือกไว้จะถูกผูกเป็นชุมชนที่ดูแลอัตโนมัติ — แก้ภายหลังได้ที่หน้าผู้ใช้
+  UserRoleEnum.COMMUNITY_LEADER,
 ] as const satisfies readonly UserRoleEnum[];
 
 export type ApprovableRole = (typeof APPROVABLE_ROLES)[number];
@@ -64,6 +68,7 @@ export const APPROVABLE_ROLE_LABELS: Record<ApprovableRole, string> = {
   [UserRoleEnum.OFFICER]: "เจ้าหน้าที่",
   [UserRoleEnum.EXECUTIVE]: "ผู้บริหาร/แพทย์",
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
+  [UserRoleEnum.COMMUNITY_LEADER]: "หัวหน้าชุมชน",
 };
 
 // ช่อง optional จากฟอร์ม: ค่าว่าง ("") ถือว่าไม่กรอก — แปลงเป็น undefined ก่อนตรวจ

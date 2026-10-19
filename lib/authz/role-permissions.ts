@@ -45,6 +45,9 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.REPORT_VIEW,
   ],
   [UserRoleEnum.FIELD_SURVEYOR]: [],
+  // หัวหน้าชุมชน (Owner Decision 2026-10-19) — สิทธิ์เดียว: เปลี่ยนสถานะกลุ่มเปราะบาง
+  // ในชุมชนที่ผูกไว้ ไม่แก้ข้อมูลกระดาษ และเข้าหน้าอื่นไม่ได้ (docs/34)
+  [UserRoleEnum.COMMUNITY_LEADER]: [PERMISSIONS.VULNERABLE_STATUS_UPDATE],
 };
 
 // Community Scope ถูกยกเลิกทั้งระบบแล้ว (Owner Decision 2026-08-03 #R7-B)

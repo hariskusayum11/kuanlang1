@@ -73,6 +73,10 @@ const ICONS: Record<string, React.ReactNode> = {
   "/volunteer": (
     <path d="M9 4h6l1 4v9a1 1 0 01-1 1H9a1 1 0 01-1-1V8l1-4zM8 8H5l-1 5h4M16 8h3l1 5h-4M12 8v10" />
   ),
+  // รายชื่อพร้อมเครื่องหมายถูก — "ทบทวนรายชื่อคนในชุมชน" (หัวหน้าชุมชน)
+  "/community-status": (
+    <path d="M9 11a3 3 0 100-6 3 3 0 000 6zM3 20v-1c0-2.5 2.7-4 6-4s6 1.5 6 4v1M15 5h6M15 9h6M17 13l1.5 1.5L22 11" />
+  ),
 };
 
 function NavIcon({ href }: { href: string }) {

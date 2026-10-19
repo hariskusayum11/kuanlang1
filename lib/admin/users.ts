@@ -37,6 +37,8 @@ export interface AdminUserRow {
   accountStatus: AccountStatus;
   roles: UserRoleEnum[];
   communityNames: string[];
+  /** ชุมชนที่ผูกไว้ — ใช้กับหัวหน้าชุมชน (docs/34) */
+  communityIds: string[];
   /** true = เห็นทุกชุมชนโดยไม่ต้องผูก UserCommunityScope (ธงระดับบัญชี) */
   hasGlobalCommunityScope: boolean;
   /** true = บัญชีคุ้มครอง — ADMIN รายอื่นลบ/ปิด/ถอดบทบาท/ตั้งรหัสผ่านให้ไม่ได้ */
@@ -158,7 +160,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       // 1 คำขอต่อบัญชี (RegistrationRequest.userId เป็น @unique)
       registrationRequest: { select: { status: true } },
       communityScopes: {
-        select: { community: { select: { nameTh: true } } },
+        select: { communityId: true, community: { select: { nameTh: true } } },
       },
     },
   });
@@ -176,6 +178,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
     isProtectedAccount: u.isProtectedAccount,
     roles: u.userRoles.map((r) => r.role),
     communityNames: u.communityScopes.map((s) => s.community.nameTh),
+    communityIds: u.communityScopes.map((s) => s.communityId),
   }));
 }
 
@@ -360,6 +363,77 @@ export async function setUserGlobalScope(
   });
 
   return { ok: true, hasGlobalCommunityScope };
+}
+
+export type SetCommunitiesResult =
+  | { ok: true; communityIds: string[]; changed: boolean }
+  | {
+      ok: false;
+      reason:
+        | "NOT_ALLOWED"
+        | "USER_NOT_FOUND"
+        | "SELF_SCOPE_CHANGE"
+        | "PROTECTED_ACCOUNT"
+        | "INVALID_COMMUNITY"
+        | "ERROR";
+    };
+
+/**
+ * กำหนดชุมชนที่ผู้ใช้ดูแล (แทนที่ทั้งชุด) — ใช้กับบทบาทหัวหน้าชุมชน (docs/34)
+ *
+ * Community Scope ไม่มีผลกับหน้าอื่นแล้ว (#R7-B) ตาราง UserCommunityScope จึงถูกใช้
+ * เป็น "ชุมชนที่หัวหน้าชุมชนเปลี่ยนสถานะได้" เพียงอย่างเดียว · ชุมชนที่เลือกต้องมีอยู่จริง
+ * และยังเปิดใช้งาน — กันส่ง id แปลกปลอมจาก client
+ */
+export async function setUserCommunities(
+  ctx: AuthorizationContext,
+  userId: string,
+  communityIds: string[],
+): Promise<SetCommunitiesResult> {
+  if (!canManage(ctx)) return { ok: false, reason: "NOT_ALLOWED" };
+  if (userId === ctx.userId) return { ok: false, reason: "SELF_SCOPE_CHANGE" };
+  if (await blockedByProtectedAccount(ctx, userId, "set-communities")) {
+    return { ok: false, reason: "PROTECTED_ACCOUNT" };
+  }
+
+  const next = [...new Set(communityIds)].sort();
+  const [target, valid] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, communityScopes: { select: { communityId: true } } },
+    }),
+    prisma.community.count({ where: { id: { in: next }, deletedAt: null, isActive: true } }),
+  ]);
+  if (!target) return { ok: false, reason: "USER_NOT_FOUND" };
+  if (valid !== next.length) return { ok: false, reason: "INVALID_COMMUNITY" };
+
+  const before = target.communityScopes.map((s) => s.communityId).sort();
+  if (before.length === next.length && before.every((id, i) => id === next[i])) {
+    return { ok: true, communityIds: next, changed: false };
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.userCommunityScope.deleteMany({ where: { userId, communityId: { notIn: next } } }),
+      prisma.userCommunityScope.createMany({
+        data: next.map((communityId) => ({ userId, communityId })),
+        skipDuplicates: true,
+      }),
+    ]);
+  } catch {
+    return { ok: false, reason: "ERROR" };
+  }
+
+  await writeAuditLog({
+    userId: ctx.userId,
+    action: AuditAction.UPDATE,
+    entityType: "UserCommunityScope",
+    entityId: userId,
+    changes: { field: "communityIds", before, after: next },
+    reason: "set-leader-communities",
+  });
+
+  return { ok: true, communityIds: next, changed: true };
 }
 
 export type SetActiveResult =

@@ -6,6 +6,7 @@ import {
   deleteUser,
   setProtectedAccount,
   setUserActive,
+  setUserCommunities,
   setUserGlobalScope,
   setUserRoles,
 } from "../../lib/admin/users";
@@ -105,6 +106,7 @@ describe.skipIf(!isLocalDevDb)("Integration: บัญชีคุ้มคร�
       "set-roles": { run: () => setUserRoles(plainCtx, guardedId, [UserRoleEnum.VOLUNTEER]), expected: "PROTECTED_ACCOUNT" },
       "reset-password": { run: () => resetUserPassword(plainCtx, guardedId), expected: "NOT_ALLOWED" },
       "set-global-scope": { run: () => setUserGlobalScope(plainCtx, guardedId, true), expected: "PROTECTED_ACCOUNT" },
+      "set-communities": { run: () => setUserCommunities(plainCtx, guardedId, []), expected: "PROTECTED_ACCOUNT" },
     };
 
     it("รายการเคสครอบคลุมทุกค่าใน PROTECTED_ACTIONS (กันลืมใส่ guard ในอนาคต)", () => {

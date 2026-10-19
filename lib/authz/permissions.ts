@@ -21,6 +21,9 @@ export const PERMISSIONS = {
   // แยกเป็น permission ของตัวเองเพื่อให้ถอด dashboard.view ออกจาก VOLUNTEER ได้
   // (เดิมอาสาสมัครเห็น "แดชบอร์ดผู้บริหาร" ซึ่งขัดกับกฎ "เห็นเฉพาะข้อมูลที่จำเป็นต่อภารกิจ")
   VOLUNTEER_PORTAL_VIEW: "volunteer.portal.view",
+  // บันทึกสถานะกลุ่มเปราะบางหลังการสำรวจ (เสียชีวิต/ย้ายออก/ไม่เข้าเกณฑ์/คืนสถานะ)
+  // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนถูกจำกัดเฉพาะชุมชนที่ผูกไว้ (docs/34)
+  VULNERABLE_STATUS_UPDATE: "vulnerable.status.update",
   SETTINGS_VIEW: "settings.view",
   USER_MANAGE: "user.manage",
   // ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS

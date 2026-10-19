@@ -115,13 +115,15 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     expect(isLegacyRole(UserRoleEnum.VERIFIER)).toBe(true);
   });
 
-  it("Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY", () => {
+  it("Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY / COMMUNITY_LEADER", () => {
     expect([...ACTIVE_ROLES].sort()).toEqual(
       [
         UserRoleEnum.ADMIN,
         UserRoleEnum.EXECUTIVE,
         UserRoleEnum.OFFICER,
         UserRoleEnum.DATA_ENTRY,
+        // หัวหน้าชุมชน (Owner Decision 2026-10-19 · docs/34)
+        UserRoleEnum.COMMUNITY_LEADER,
       ].sort(),
     );
   });

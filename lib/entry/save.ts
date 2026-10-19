@@ -23,6 +23,7 @@ import { writeAuditLog } from "../audit/log";
 import type { AuthorizationContext } from "../authz/types";
 import {
   decryptJson,
+  decryptText,
   encryptJson,
   encryptText,
   phoneBlindIndex,
@@ -33,6 +34,11 @@ import {
   coordinateForStorage,
   parseCoordinateText,
 } from "../../domain/geo/coordinate";
+import {
+  carryOverStatuses,
+  nameKey,
+  type CarriedStatus,
+} from "../../domain/vulnerable/status";
 import { getSheetForEntry } from "./claim";
 import {
   answerBoolean,
@@ -478,6 +484,10 @@ export async function submitEntry(
       //    ผู้คีย์แก้ใบของตนได้ตลอด (#R7-C) → มีของเดิมให้เขียนทับ ไม่ใช่สร้างซ้ำ
       //    การแก้ใบที่ตรวจแล้วต้องล้าง verifiedBy/At ด้วย เพราะใบกลับไปรอตรวจใหม่
       let household: { id: string };
+      // สถานะหลังการสำรวจ (เสียชีวิต/ย้ายออก — docs/34) ไม่ใช่ข้อมูลกระดาษ จึงต้องย้ายข้าม
+      // การสร้างลูกใหม่ทั้งชุด มิฉะนั้นคนที่บันทึกว่าเสียชีวิตจะกลับมานับในรายงานเงียบ ๆ
+      let carriedStatuses = new Map<number, CarriedStatus>();
+      let droppedStatuses = 0;
       if (existing) {
         household = await tx.household.update({
           where: { id: existing.id },
@@ -492,6 +502,40 @@ export async function submitEntry(
           },
           select: { id: true },
         });
+        // ล็อกแถวกลุ่มเปราะบางก่อนอ่านสถานะ — กันหัวหน้าชุมชนบันทึกสถานะแทรกระหว่าง
+        // "อ่าน" กับ "ลบ" (ฝั่งนั้นจะรอล็อกแล้วได้ CONFLICT เพราะแถวถูกลบไปแล้ว)
+        await tx.$queryRaw`SELECT id FROM vulnerable_person WHERE "householdId" = ${existing.id} FOR UPDATE`;
+        const inactivePersons = await tx.vulnerablePerson.findMany({
+          where: { householdId: existing.id, isActive: false },
+          select: {
+            seq: true,
+            firstName: true,
+            lastName: true,
+            isActive: true,
+            deactivatedReason: true,
+            deactivatedAt: true,
+            deactivatedById: true,
+          },
+        });
+        if (inactivePersons.length > 0) {
+          const decryptOrEmpty = (value: string | null): string => {
+            if (!value) return "";
+            try {
+              return decryptText(value, keyring);
+            } catch {
+              return "";
+            }
+          };
+          const carry = carryOverStatuses(
+            inactivePersons.map((p) => ({
+              ...p,
+              nameKey: nameKey(decryptOrEmpty(p.firstName), decryptOrEmpty(p.lastName)),
+            })),
+            vulnerableRows.map((row) => ({ seq: row.seq, nameKey: nameKey(row.firstName, row.lastName) })),
+          );
+          carriedStatuses = carry.carried;
+          droppedStatuses = carry.dropped;
+        }
         // ลูกของ Household ถูกสร้างใหม่ทั้งชุดจาก payload ล่าสุด
         await tx.assistanceNeed.deleteMany({ where: { householdId: existing.id } });
         await tx.personVulnerability.deleteMany({
@@ -547,6 +591,9 @@ export async function submitEntry(
               ? encryptText(row.phone, keyring, CURRENT_KEY_VERSION)
               : null,
             phoneStatus: row.phoneStatus,
+            ...(carriedStatuses.has(row.seq)
+              ? { isActive: false, ...carriedStatuses.get(row.seq) }
+              : {}),
           },
         });
         if (row.vulnerabilities.length > 0) {
@@ -630,6 +677,8 @@ export async function submitEntry(
         householdId: household.id,
         duplicateSuspected: effectiveDuplicateFlag && !preserveDuplicateDecision,
         wasVerified,
+        carriedStatuses: carriedStatuses.size,
+        droppedStatuses,
       };
     });
 
@@ -649,6 +698,18 @@ export async function submitEntry(
           }
         : { sheetStatus: { old: "LOCKED", new: "ENTERED_1" } },
     });
+    // สถานะเสียชีวิต/ย้ายออกที่จับคู่กับแถวใหม่ไม่ได้ (เช่น ผู้คีย์ลบแถวหรือแก้ชื่อ)
+    // ต้องมีร่องรอย — ค่าเดิมอยู่ใน Audit ของการบันทึกสถานะครั้งก่อน
+    if (result.carriedStatuses > 0 || result.droppedStatuses > 0) {
+      await writeAuditLog({
+        userId: ctx.userId,
+        action: AuditAction.UPDATE,
+        entityType: "VulnerablePerson",
+        entityId: result.householdId,
+        changes: { carried: result.carriedStatuses, dropped: result.droppedStatuses },
+        reason: "vulnerable-status-carry-over-on-reedit",
+      });
+    }
     return {
       ok: true,
       householdId: result.householdId,

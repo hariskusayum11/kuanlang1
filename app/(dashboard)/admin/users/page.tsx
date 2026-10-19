@@ -20,6 +20,8 @@ import { UserRecoverButton } from "@/components/admin/user-recover-button";
 import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { UserPasswordResetButton } from "@/components/admin/user-password-reset-button";
 import { ProtectedAccountToggle } from "@/components/admin/protected-account-toggle";
+import { UserCommunityEditor } from "@/components/admin/user-community-editor";
+import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/authz/access";
 import { canResetOthersPassword } from "@/domain/admin/protected-account";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
@@ -30,7 +32,15 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsersPage() {
   // RBAC ฝั่ง server — ไม่มี user.manage → /access-denied
   const ctx = await requirePermission(PERMISSIONS.USER_MANAGE);
-  const users = await listUsers(ctx);
+  const [users, communityOptions] = await Promise.all([
+    listUsers(ctx),
+    // ตัวเลือกชุมชนสำหรับหัวหน้าชุมชน (docs/34)
+    prisma.community.findMany({
+      where: { deletedAt: null, isActive: true },
+      select: { id: true, nameTh: true },
+      orderBy: { code: "asc" },
+    }),
+  ]);
   const activeCount = users.filter((u) => u.isActive).length;
   // การเข้าถึง credential ของผู้อื่นเป็นสิทธิ์แยกจาก user.manage — ซ่อนปุ่มถ้าไม่มี
   // (การซ่อนเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
@@ -161,6 +171,15 @@ export default async function AdminUsersPage() {
                           roleHints={ROLE_HINTS}
                           isSelf={isSelf}
                         />
+                        {u.roles.includes("COMMUNITY_LEADER") && (
+                          <UserCommunityEditor
+                            userId={u.id}
+                            userName={u.name}
+                            currentCommunityIds={u.communityIds}
+                            communityOptions={communityOptions}
+                            isSelf={isSelf}
+                          />
+                        )}
                         {canResetPassword && u.accountStatus === "ACTIVE" && (
                           <UserPasswordResetButton
                             userId={u.id}

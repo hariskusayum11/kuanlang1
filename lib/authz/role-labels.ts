@@ -11,6 +11,7 @@ export const ROLE_LABELS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.FIELD_SURVEYOR]: "ผู้สำรวจภาคสนาม",
   [UserRoleEnum.VOLUNTEER]: "อาสาสมัคร",
   [UserRoleEnum.RESEARCHER]: "นักวิจัย",
+  [UserRoleEnum.COMMUNITY_LEADER]: "หัวหน้าชุมชน",
 };
 
 /**
@@ -22,6 +23,7 @@ export const ACTIVE_ROLES: readonly UserRoleEnum[] = [
   UserRoleEnum.EXECUTIVE,
   UserRoleEnum.OFFICER,
   UserRoleEnum.DATA_ENTRY,
+  UserRoleEnum.COMMUNITY_LEADER,
 ];
 
 /**
@@ -81,6 +83,8 @@ export const ROLE_HINTS: Record<UserRoleEnum, string> = {
     "บทบาทเดิม — ปัจจุบันบันทึกผู้สำรวจเป็นข้อมูลในแบบสอบถาม โดยไม่ต้องมีบัญชีผู้ใช้",
   [UserRoleEnum.VOLUNTEER]: "รอโมดูลเหตุการณ์/ภารกิจกู้ภัย — ปัจจุบันเห็นแค่ภาพรวม",
   [UserRoleEnum.RESEARCHER]: "รอโมดูลรายงาน — ปัจจุบันเห็นแค่ภาพรวม",
+  [UserRoleEnum.COMMUNITY_LEADER]:
+    "เห็นรายชื่อกลุ่มเปราะบางเฉพาะชุมชนที่กำหนด และบันทึกเสียชีวิต/ย้ายออกได้ — ต้องกำหนดชุมชนที่ดูแลด้วย",
 };
 
 /** ลำดับที่แสดงในหน้าจัดการผู้ใช้ — ใช้งานได้จริง → รอโมดูล → บทบาทเดิมที่เลิกใช้ */

@@ -190,6 +190,7 @@ enum UserRoleEnum {
   DATA_ENTRY // เจ้าหน้าที่คีย์ข้อมูล — เห็นทีละใบ ห้าม Query (v3.0)
   RESEARCHER // นักวิจัย — ข้อมูล Anonymized
   FIELD_SURVEYOR // เลิกใช้ (#R6-E) — ผู้สำรวจเป็นข้อมูลในแบบสอบถาม ไม่ต้องมีบัญชี; คง enum ไว้เพื่อประวัติ
+  COMMUNITY_LEADER // หัวหน้าชุมชน — เปลี่ยนสถานะกลุ่มเปราะบางในชุมชนที่ผูกไว้เท่านั้น (docs/34)
 }
 
 /// ระดับความเสี่ยงที่ผู้สำรวจประเมิน (ท้ายเล่ม) — กระดาษมี 3 ตัวเลือก (AMB-05)
@@ -303,10 +304,11 @@ model User {
   answeredQueries          FieldQuery[]              @relation("answeredBy")
 
   // Relations — Household
-  enteredHouseholds           Household[] @relation("enteredBy")
-  verifiedHouseholds          Household[] @relation("verifiedBy")
-  surveyedHouseholds          Household[] @relation("surveyorUser") // FK ที่ขาด (SCH-20)
-  duplicateResolvedHouseholds Household[] @relation("duplicateResolvedBy")
+  enteredHouseholds            Household[]        @relation("enteredBy")
+  verifiedHouseholds           Household[]        @relation("verifiedBy")
+  surveyedHouseholds           Household[]        @relation("surveyorUser") // FK ที่ขาด (SCH-20)
+  duplicateResolvedHouseholds  Household[]        @relation("duplicateResolvedBy")
+  deactivatedVulnerablePersons VulnerablePerson[] @relation("vulnerableDeactivatedBy")
 
   // Relations — Batch
   receivedBatches PaperBatch[] @relation("receivedBy")
@@ -1120,15 +1122,18 @@ model VulnerablePerson {
   triageStale       Boolean      @default(false) /// true = ข้อมูลเก่าเกินจนไม่น่าเชื่อถือ
 
   // --- สถานะ ---
+  // เหตุการณ์หลังการสำรวจ (docs/34) — แยกจากข้อมูลกระดาษ จึงไม่ทำให้ใบกลับไปรอตรวจ
   isActive          Boolean   @default(true)
-  deactivatedAt     DateTime? /// วันที่ Deactivate
-  deactivatedReason String? /// เช่น "ย้ายออก", "เสียชีวิต"
+  deactivatedAt     DateTime? /// วันที่เกิดเหตุการณ์ตามที่ผู้บันทึกแจ้ง (เสียชีวิต/ย้ายออก)
+  deactivatedReason String? /// รหัสสถานะ: DECEASED | MOVED_OUT | NO_LONGER_ELIGIBLE (domain/vulnerable/status.ts)
+  deactivatedById   String? /// ผู้บันทึกสถานะ (หัวหน้าชุมชน/แอดมิน)
   notes             String? /// หมายเหตุเพิ่มเติม
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   household       Household             @relation(fields: [householdId], references: [id])
+  deactivatedBy   User?                 @relation("vulnerableDeactivatedBy", fields: [deactivatedById], references: [id], onDelete: SetNull)
   namePrefix      NamePrefix?           @relation(fields: [namePrefixId], references: [id])
   vulnerabilities PersonVulnerability[]
   rescueTasks     RescueTask[]

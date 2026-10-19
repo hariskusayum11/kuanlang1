@@ -42,6 +42,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: true,
   },
   {
+    // หน้าเดียวของหัวหน้าชุมชน — แอดมินเห็นด้วยเพื่อคืนสถานะที่บันทึกผิด (docs/34)
+    group: "data",
+    label: "สถานะกลุ่มเปราะบาง",
+    href: "/community-status",
+    permission: PERMISSIONS.VULNERABLE_STATUS_UPDATE,
+    implemented: true,
+    iconHref: "/community-status",
+  },
+  {
     group: "data",
     label: "ถังขยะแบบสอบถาม",
     href: "/admin/sheets",

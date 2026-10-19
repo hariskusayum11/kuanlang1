@@ -15,11 +15,13 @@ import {
   recoverUser,
   setProtectedAccount,
   setUserActive,
+  setUserCommunities,
   setUserGlobalScope,
   setUserRoles,
   type DeleteUserResult,
   type RecoverUserResult,
   type SetActiveResult,
+  type SetCommunitiesResult,
   type SetGlobalScopeResult,
   type SetProtectedAccountResult,
   type SetRolesResult,
@@ -168,4 +170,26 @@ export async function recoverUserAction(
   if (!parsed.success) return { ok: false, reason: "INVALID" };
 
   return recoverUser(ctx, parsed.data.userId);
+}
+
+const setCommunitiesSchema = z.object({
+  userId: z.string().min(1).max(64),
+  communityIds: z.array(z.string().min(1).max(64)).max(50),
+});
+
+export type SetUserCommunitiesActionResult =
+  | SetCommunitiesResult
+  | { ok: false; reason: "UNAUTHENTICATED" | "INVALID" };
+
+/** ชุมชนที่หัวหน้าชุมชนดูแล (docs/34) */
+export async function setUserCommunitiesAction(
+  input: unknown,
+): Promise<SetUserCommunitiesActionResult> {
+  const ctx = await getAuthorizationContext();
+  if (!ctx) return { ok: false, reason: "UNAUTHENTICATED" };
+
+  const parsed = setCommunitiesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "INVALID" };
+
+  return setUserCommunities(ctx, parsed.data.userId, parsed.data.communityIds);
 }
