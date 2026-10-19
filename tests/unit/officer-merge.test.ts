@@ -115,17 +115,21 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     expect(isLegacyRole(UserRoleEnum.VERIFIER)).toBe(true);
   });
 
-  it("Role ที่ใช้งานจริง = ADMIN / EXECUTIVE / OFFICER / DATA_ENTRY / COMMUNITY_LEADER", () => {
-    expect([...ACTIVE_ROLES].sort()).toEqual(
-      [
-        UserRoleEnum.ADMIN,
-        UserRoleEnum.EXECUTIVE,
-        UserRoleEnum.OFFICER,
-        UserRoleEnum.DATA_ENTRY,
-        // หัวหน้าชุมชน (Owner Decision 2026-10-19 · docs/34)
-        UserRoleEnum.COMMUNITY_LEADER,
-      ].sort(),
-    );
+  it("Role ที่ใช้งานจริงเรียงตามความสำคัญ — เจ้าหน้าที่คีย์ข้อมูลอยู่ล่างสุด (Owner Decision 2026-10-19)", () => {
+    expect([...ACTIVE_ROLES]).toEqual([
+      UserRoleEnum.ADMIN,
+      UserRoleEnum.EXECUTIVE,
+      UserRoleEnum.OFFICER,
+      // หัวหน้าชุมชน (docs/34)
+      UserRoleEnum.COMMUNITY_LEADER,
+      // อาสาสมัครมีหน้าศูนย์อาสาสมัครแล้ว จึงไม่ใช่ "รอโมดูล" อีกต่อไป
+      UserRoleEnum.VOLUNTEER,
+      UserRoleEnum.DATA_ENTRY,
+    ]);
+  });
+
+  it("คำอธิบายบทบาทไม่มีคำว่า 'ปึก' แล้ว (ยกเลิก Batch #R7-A)", () => {
+    for (const hint of Object.values(ROLE_HINTS)) expect(hint).not.toContain("ปึก");
   });
 
   it("1) FIELD_SURVEYOR ไม่อยู่ในรายการที่มอบหมายได้ (Owner Decision #R6-E)", () => {
@@ -159,11 +163,9 @@ describe("บทบาทเดิมถูกเลิกใช้ในชั�
     );
   });
 
-  it("บทบาทสำรอง VOLUNTEER / RESEARCHER ยังไม่ถูกเปิดใช้งานใน commit นี้", () => {
-    expect([...RESERVED_ROLES].sort()).toEqual(
-      [UserRoleEnum.VOLUNTEER, UserRoleEnum.RESEARCHER].sort(),
-    );
-    expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.VOLUNTEER);
+  it("บทบาทสำรองเหลือ RESEARCHER — VOLUNTEER มีหน้าศูนย์อาสาสมัครแล้วจึงย้ายไปกลุ่มใช้งานจริง (2026-10-19)", () => {
+    expect([...RESERVED_ROLES]).toEqual([UserRoleEnum.RESEARCHER]);
+    expect(ACTIVE_ROLES).toContain(UserRoleEnum.VOLUNTEER);
     expect(ACTIVE_ROLES).not.toContain(UserRoleEnum.RESEARCHER);
   });
 

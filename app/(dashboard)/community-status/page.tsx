@@ -63,7 +63,7 @@ export default async function CommunityStatusPage({
               aside={
                 <span className="badge badge-neutral">
                   {data.rows.length.toLocaleString("th-TH")} คน
-                  {inactiveCount > 0 && ` · ไม่นับแล้ว ${inactiveCount.toLocaleString("th-TH")}`}
+                  {inactiveCount > 0 && ` · เสียชีวิต/ย้ายออก/พ้นเกณฑ์ ${inactiveCount.toLocaleString("th-TH")}`}
                 </span>
               }
             />

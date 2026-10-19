@@ -107,14 +107,15 @@ export function StatusList({
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <div className="flex gap-1" role="group" aria-label="กรองตามสถานะ">
+        {/* ชื่อตัวกรองเป็นภาษาที่หัวหน้าชุมชนใช้จริง (Owner Decision 2026-10-19 — "นับอยู่/ไม่นับแล้ว" อ่านไม่เข้าใจ) */}
+        <div className="flex flex-wrap gap-1" role="group" aria-label="กรองตามสถานะ">
           {(
             [
-              ["ALL", "ทั้งหมด"],
-              ["COUNTED", "นับอยู่"],
-              ["NOT_COUNTED", "ไม่นับแล้ว"],
+              ["ALL", "ทั้งหมด", rows.length],
+              ["COUNTED", "ยังต้องดูแล", rows.filter((r) => r.status === "ACTIVE").length],
+              ["NOT_COUNTED", "เสียชีวิต / ย้ายออก / พ้นเกณฑ์", rows.filter((r) => r.status !== "ACTIVE").length],
             ] as const
-          ).map(([value, label]) => (
+          ).map(([value, label, count]) => (
             <button
               key={value}
               type="button"
@@ -122,7 +123,7 @@ export function StatusList({
               onClick={() => setCountFilter(value)}
               className={`btn btn-sm ${countFilter === value ? "btn-primary" : "btn-ghost"}`}
             >
-              {label}
+              {label} <span className="tabular-nums opacity-80">({count.toLocaleString("th-TH")})</span>
             </button>
           ))}
         </div>

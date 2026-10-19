@@ -17,13 +17,17 @@ export const ROLE_LABELS: Record<UserRoleEnum, string> = {
 /**
  * บทบาทที่ "ใช้งานได้จริงแล้ว" — มี permission และมีหน้าจอรองรับ
  * ใช้จัดกลุ่มในหน้าจัดการผู้ใช้ เพื่อให้แอดมินเลือกถูกโดยไม่ต้องเดา
+ *
+ * **ลำดับ = ความสำคัญ/ระดับสิทธิ์จากมากไปน้อย** (Owner Decision 2026-10-19)
+ * เจ้าหน้าที่คีย์ข้อมูลอยู่ล่างสุด · อาสาสมัครย้ายมากลุ่มนี้เพราะมีหน้าศูนย์อาสาสมัครแล้ว
  */
 export const ACTIVE_ROLES: readonly UserRoleEnum[] = [
   UserRoleEnum.ADMIN,
   UserRoleEnum.EXECUTIVE,
   UserRoleEnum.OFFICER,
-  UserRoleEnum.DATA_ENTRY,
   UserRoleEnum.COMMUNITY_LEADER,
+  UserRoleEnum.VOLUNTEER,
+  UserRoleEnum.DATA_ENTRY,
 ];
 
 /**
@@ -61,12 +65,10 @@ export const LEGACY_ROLE_REPLACEMENT: Record<string, UserRoleEnum | null> = {
 
 /**
  * บทบาทที่ประกาศไว้ตาม requirement แต่ยังไม่มีโมดูลรองรับ (มอบหมายได้แต่ยังทำอะไรไม่ได้)
- *  - VOLUNTEER: รอโมดูล Incident / Rescue Task — ปัจจุบันเห็นได้แค่ภาพรวม
  *  - RESEARCHER: รอโมดูล Reports (ข้อมูล Anonymized)
  * เก็บไว้ในระบบตาม CLAUDE.md §Authentication and roles ที่ระบุว่า "ต้องรองรับอย่างน้อย" 9 บทบาท
  */
 export const RESERVED_ROLES: readonly UserRoleEnum[] = [
-  UserRoleEnum.VOLUNTEER,
   UserRoleEnum.RESEARCHER,
 ];
 
@@ -74,14 +76,14 @@ export const RESERVED_ROLES: readonly UserRoleEnum[] = [
 export const ROLE_HINTS: Record<UserRoleEnum, string> = {
   [UserRoleEnum.ADMIN]: "ทั้งระบบ + จัดการผู้ใช้และบทบาท",
   [UserRoleEnum.EXECUTIVE]: "ดูภาพรวมทั้งระบบและข้อมูลสุขภาพที่ตรวจแล้ว อ่านอย่างเดียว แก้ข้อมูลไม่ได้",
-  [UserRoleEnum.OFFICER]: "จัดการชุมชน/ปึกที่รับผิดชอบ + ตรวจสอบข้อมูลได้",
+  [UserRoleEnum.OFFICER]: "ตรวจสอบและแก้ไขแบบสอบถาม ดูข้อมูลครัวเรือน ชุมชน แผนที่ ความเสี่ยง และรายงาน",
   [UserRoleEnum.COORDINATOR]: "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้",
   [UserRoleEnum.VERIFIER]:
     "บทบาทเดิม — ยุบเข้า “เจ้าหน้าที่” แล้ว มอบหมายใหม่ไม่ได้ (ผู้ที่ต้องเห็นทุกชุมชนให้เปิดสิทธิ์พื้นที่รายบัญชี)",
   [UserRoleEnum.DATA_ENTRY]: "คีย์แบบสอบถาม เปิดใบจากรหัสบนกระดาษได้ทุกชุมชน",
   [UserRoleEnum.FIELD_SURVEYOR]:
     "บทบาทเดิม — ปัจจุบันบันทึกผู้สำรวจเป็นข้อมูลในแบบสอบถาม โดยไม่ต้องมีบัญชีผู้ใช้",
-  [UserRoleEnum.VOLUNTEER]: "รอโมดูลเหตุการณ์/ภารกิจกู้ภัย — ปัจจุบันเห็นแค่ภาพรวม",
+  [UserRoleEnum.VOLUNTEER]: "หน้าศูนย์อาสาสมัคร: ข้อมูลของตนเองและเบอร์ฉุกเฉิน — ไม่เห็นข้อมูลครัวเรือน",
   [UserRoleEnum.RESEARCHER]: "รอโมดูลรายงาน — ปัจจุบันเห็นแค่ภาพรวม",
   [UserRoleEnum.COMMUNITY_LEADER]:
     "เห็นรายชื่อกลุ่มเปราะบางเฉพาะชุมชนที่กำหนด และบันทึกเสียชีวิต/ย้ายออกได้ — ต้องกำหนดชุมชนที่ดูแลด้วย",

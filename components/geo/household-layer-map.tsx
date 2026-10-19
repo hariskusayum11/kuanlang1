@@ -9,6 +9,8 @@ import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
 import { boundaryBounds } from "@/domain/geo/community-boundary";
 import type { CommunityMapSummary } from "@/lib/geo/community-map-summary";
 import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
+import { depthBin, FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
+import { highestUrgency, MAP_URGENCY_LABELS } from "@/domain/geo/map-urgency";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
 
@@ -66,20 +68,14 @@ type MarkerLayerKey = Exclude<HouseholdLayerKey, "heat">;
  * แผงชั้นข้อมูลและคำอธิบายสัญลักษณ์อ่านค่าจากชุดนี้ชุดเดียว เพื่อให้สีตรงกับหมุดเสมอ
  */
 export const HOUSEHOLD_LAYERS: { key: MarkerLayerKey; label: string; shortLabel: string; color: string; iconPath: string }[] = [
-  { key: "vulnerable", label: "มีกลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M12 21s-7-4.35-7-10a4 4 0 017-2.65A4 4 0 0119 11c0 5.65-7 10-7 10z" },
+  // ไอคอนวีลแชร์ (Owner Decision 2026-10-19 แทนรูปหัวใจ) — สีบนหมุดจริงเปลี่ยนตามความเร่งด่วน (.map-urgency-*)
+  { key: "vulnerable", label: "มีกลุ่มเปราะบาง", shortLabel: "เปราะบาง", color: "#dc2626", iconPath: "M3 16a5 5 0 1 0 10 0a5 5 0 1 0 -10 0M17 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M19 17a3 3 0 0 0 -3 -3h-3.4M3 3h1a2 2 0 0 1 2 2v6M6 8h11M15 8v6" },
   { key: "volunteer", label: "สนใจเป็นอาสาสมัคร", shortLabel: "อาสาสมัคร", color: "#2563eb", iconPath: "M12 12a4 4 0 100-8 4 4 0 000 8zM5 21v-1a7 7 0 0114 0v1M18 8V3M15.5 5.5h5" },
   { key: "host", label: "บ้านพักพิงเบื้องต้น", shortLabel: "จุดพักพิง", color: "#059669", iconPath: "M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6" },
 ];
 
 export const HEATMAP_ICON_PATH = "M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M2 20c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M12 3s-4 4.5-4 7a4 4 0 008 0c0-2.5-4-7-4-7z";
 
-/** ระดับสีฮีตแมป — ใช้ทั้งวาด canvas และคำอธิบายสัญลักษณ์ */
-export const FLOOD_DEPTH_SCALE: { minCm: number; rgb: string; label: string }[] = [
-  { minCm: 150, rgb: "185,28,28", label: "1.50 ม. ขึ้นไป" },
-  { minCm: 80, rgb: "234,88,12", label: "0.80–1.49 ม." },
-  { minCm: 30, rgb: "245,158,11", label: "0.30–0.79 ม." },
-  { minCm: 0, rgb: "250,204,21", label: "ต่ำกว่า 0.30 ม." },
-];
 
 export function belongsToLayer(point: HouseholdLayerPoint, layer: HouseholdLayerKey, volunteerSkill = ""): boolean {
   if (layer === "vulnerable") return point.vulnerableCount > 0;
@@ -160,10 +156,17 @@ function visibleSkills(points: HouseholdLayerPoint[], selectedCode: string): Vol
   return [...byCode.values()];
 }
 
-function markerHtml(layers: typeof HOUSEHOLD_LAYERS, skills: VolunteerMapSkill[], count: number): string {
+function markerHtml(layers: typeof HOUSEHOLD_LAYERS, skills: VolunteerMapSkill[], members: HouseholdLayerPoint[]): string {
+  const count = members.length;
   const nonVolunteerLayers = layers.filter((layer) => layer.key !== "volunteer");
+  // บ้านที่มีกลุ่มเปราะบาง: สีตามความเร่งด่วนสูงสุดของกลุ่มบ้านในพิกัดนี้ (วิกฤตมีวงกระเพื่อม)
+  const urgency = highestUrgency(members.map((member) => member.triage));
   return `<div style="position:relative;display:flex;gap:2px;width:max-content;padding:3px;border-radius:16px;background:white;box-shadow:0 2px 9px rgba(15,23,42,.45)">
-    ${nonVolunteerLayers.map((layer) => `<span title="${layer.label}" style="display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:${layer.color};color:white">
+    ${nonVolunteerLayers.map((layer) => layer.key === "vulnerable" && urgency
+      ? `<span title="${MAP_URGENCY_LABELS[urgency]}" class="map-urgency map-urgency-${urgency}">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${layer.iconPath}"/></svg>
+    </span>`
+      : `<span title="${layer.label}" style="display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:${layer.color};color:white">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${layer.iconPath}"/></svg>
     </span>`).join("")}
     ${skills.map((skill) => { const style = skillStyle(skill); return `<span title="${escapeHtml(skill.label)}" style="display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:${style.color};color:white"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${style.iconPath}"/></svg></span>`; }).join("")}
@@ -275,8 +278,13 @@ function addFloodHeatmap(L: typeof import("leaflet"), map: import("leaflet").Map
   const canvas = L.DomUtil.create("canvas", "leaflet-flood-heatmap") as HTMLCanvasElement;
   canvas.style.position = "absolute";
   canvas.style.pointerEvents = "none";
-  canvas.style.mixBlendMode = "multiply";
   map.getPanes().overlayPane.appendChild(canvas);
+  // สีจาก Token (--heat-1..9 ใน globals.css) อ่านครั้งเดียว
+  const rootStyle = getComputedStyle(document.documentElement);
+  const colors = new Map(FLOOD_DEPTH_BINS.map((bin) => [bin.level, rootStyle.getPropertyValue(heatVar(bin.level)).trim()]));
+  // ลึกสุดวาดทีหลัง → ทับบน จุดที่บ้านซ้อนกันจึงแสดงระดับที่ลึกที่สุด ไม่ใช่ความหนาแน่น
+  const ordered = [...heatPoints].sort((a, b) => (a.floodDepthCm ?? 0) - (b.floodDepthCm ?? 0));
+  const offscreen = document.createElement("canvas");
 
   const draw = () => {
     const size = map.getSize();
@@ -289,20 +297,27 @@ function addFloodHeatmap(L: typeof import("leaflet"), map: import("leaflet").Map
     const context = canvas.getContext("2d");
     if (!context) return;
     context.scale(ratio, ratio);
-    context.globalCompositeOperation = "source-over";
-    const radius = Math.max(24, Math.min(58, 28 + (map.getZoom() - 13) * 5));
-    for (const point of heatPoints) {
+    offscreen.width = size.x;
+    offscreen.height = size.y;
+    const layer = offscreen.getContext("2d");
+    if (!layer) return;
+    const radius = Math.max(14, Math.min(40, 18 + (map.getZoom() - 13) * 4));
+    for (const point of ordered) {
+      const bin = depthBin(point.floodDepthCm);
+      const color = bin ? colors.get(bin.level) : undefined;
+      if (!color) continue;
       const pixel = map.latLngToContainerPoint([point.lat, point.lng]);
-      const depth = point.floodDepthCm ?? 0;
-      const color = (FLOOD_DEPTH_SCALE.find((step) => depth >= step.minCm) ?? FLOOD_DEPTH_SCALE[FLOOD_DEPTH_SCALE.length - 1]).rgb;
-      const alpha = Math.min(0.72, 0.24 + depth / 450);
-      const gradient = context.createRadialGradient(pixel.x, pixel.y, 0, pixel.x, pixel.y, radius);
-      gradient.addColorStop(0, `rgba(${color},${alpha})`);
-      gradient.addColorStop(0.45, `rgba(${color},${alpha * 0.55})`);
-      gradient.addColorStop(1, `rgba(${color},0)`);
-      context.fillStyle = gradient;
-      context.fillRect(pixel.x - radius, pixel.y - radius, radius * 2, radius * 2);
+      layer.fillStyle = color;
+      layer.beginPath();
+      layer.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
+      layer.fill();
     }
+    // เบลอขอบให้เป็นแผ่นต่อเนื่อง + โปร่งแสงทีเดียวทั้งชั้น (ไม่สะสมความเข้มตามจำนวนบ้าน)
+    context.globalAlpha = 0.62;
+    context.filter = `blur(${Math.round(radius / 2.5)}px)`;
+    context.drawImage(offscreen, 0, 0);
+    context.filter = "none";
+    context.globalAlpha = 1;
   };
   map.on("moveend zoomend resize", draw);
   draw();
@@ -487,7 +502,7 @@ export function HouseholdLayerMap({
       const iconWidth = 6 + Math.max(1, iconCount) * 27;
       const icon = L.divIcon({
         className: "",
-        html: markerHtml(shown, skills, members.length),
+        html: markerHtml(shown, skills, members),
         iconSize: [iconWidth, 31],
         iconAnchor: [iconWidth / 2, 16],
       });

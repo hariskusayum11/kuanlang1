@@ -44,6 +44,8 @@ export interface AdminUserRow {
   /** true = บัญชีคุ้มครอง — ADMIN รายอื่นลบ/ปิด/ถอดบทบาท/ตั้งรหัสผ่านให้ไม่ได้ */
   isProtectedAccount: boolean;
   lastLoginAt: Date | null;
+  /** วันสมัคร/สร้างบัญชี — ใช้เรียง "สมัครล่าสุดก่อน" */
+  createdAt: Date;
 }
 
 function canManage(ctx: AuthorizationContext): boolean {
@@ -154,6 +156,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       email: true,
       isActive: true,
       lastLoginAt: true,
+      createdAt: true,
       hasGlobalCommunityScope: true,
       isProtectedAccount: true,
       userRoles: { where: { isActive: true }, select: { role: true } },
@@ -174,6 +177,7 @@ export async function listUsers(ctx: AuthorizationContext): Promise<AdminUserRow
       u.registrationRequest?.status ?? null,
     ),
     lastLoginAt: u.lastLoginAt,
+    createdAt: u.createdAt,
     hasGlobalCommunityScope: u.hasGlobalCommunityScope,
     isProtectedAccount: u.isProtectedAccount,
     roles: u.userRoles.map((r) => r.role),

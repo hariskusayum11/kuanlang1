@@ -4,6 +4,7 @@ import {
   ACTIVE_ROLES,
   LEGACY_ROLES,
   RESERVED_ROLES,
+  ROLE_DISPLAY_ORDER,
   ROLE_HINTS,
   ROLE_LABELS,
 } from "@/lib/authz/role-labels";
@@ -21,6 +22,12 @@ import { UserDeleteButton } from "@/components/admin/user-delete-button";
 import { UserPasswordResetButton } from "@/components/admin/user-password-reset-button";
 import { ProtectedAccountToggle } from "@/components/admin/protected-account-toggle";
 import { UserCommunityEditor } from "@/components/admin/user-community-editor";
+import {
+  filterAndSortUsers,
+  parseUserListFilter,
+  USER_SORT_LABELS,
+  type UserListFilter,
+} from "@/domain/admin/user-list-filter";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/authz/access";
 import { canResetOthersPassword } from "@/domain/admin/protected-account";
@@ -29,10 +36,15 @@ import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-her
 export const metadata = { title: "ผู้ใช้และบทบาท" };
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // RBAC ฝั่ง server — ไม่มี user.manage → /access-denied
   const ctx = await requirePermission(PERMISSIONS.USER_MANAGE);
-  const [users, communityOptions] = await Promise.all([
+  const filter = parseUserListFilter(await searchParams, [...ROLE_DISPLAY_ORDER]);
+  const [allUsers, communityOptions] = await Promise.all([
     listUsers(ctx),
     // ตัวเลือกชุมชนสำหรับหัวหน้าชุมชน (docs/34)
     prisma.community.findMany({
@@ -41,7 +53,10 @@ export default async function AdminUsersPage() {
       orderBy: { code: "asc" },
     }),
   ]);
-  const activeCount = users.filter((u) => u.isActive).length;
+  const activeCount = allUsers.filter((u) => u.isActive).length;
+  // ตัวกรองทำงานฝั่ง server จาก URL (Owner Decision 2026-10-19) — จำนวนผู้ใช้ไม่มาก กรองในหน่วยความจำได้
+  const users = filterAndSortUsers(allUsers, filter);
+  const filtered = users.length !== allUsers.length;
   // การเข้าถึง credential ของผู้อื่นเป็นสิทธิ์แยกจาก user.manage — ซ่อนปุ่มถ้าไม่มี
   // (การซ่อนเป็นเพียงความสะดวก ด่านจริงตรวจซ้ำใน resetUserPassword ฝั่ง server)
   // ตั้งรหัสผ่านให้ผู้อื่นต้องเป็นบัญชีคุ้มครองด้วย ไม่ใช่แค่มี permission
@@ -64,7 +79,7 @@ export default async function AdminUsersPage() {
         badge={
           <>
             <span className="live-dot" />
-            ใช้งานอยู่ {activeCount} / {users.length} บัญชี
+            ใช้งานอยู่ {activeCount} / {allUsers.length} บัญชี
           </>
         }
       />
@@ -76,13 +91,22 @@ export default async function AdminUsersPage() {
             tone="brand"
             aside={
               <span className="badge badge-neutral">
-                {users.length.toLocaleString("th-TH")} บัญชี
+                {filtered
+                  ? `แสดง ${users.length.toLocaleString("th-TH")} จาก ${allUsers.length.toLocaleString("th-TH")} บัญชี`
+                  : `${users.length.toLocaleString("th-TH")} บัญชี`}
               </span>
             }
           />
         </div>
 
-        {users.length === 0 ? (
+        <UserFilterBar filter={filter} filtered={filtered} />
+
+        {users.length === 0 && filtered ? (
+          <p className="px-6 py-10 text-center text-sm text-slate-500">
+            ไม่พบผู้ใช้ที่ตรงกับตัวกรอง —{" "}
+            <a href="/admin/users" className="font-semibold text-brand-700 underline underline-offset-2">ล้างตัวกรอง</a>
+          </p>
+        ) : users.length === 0 ? (
           <EmptyState
             role="field"
             mood="sleep"
@@ -120,6 +144,9 @@ export default async function AdminUsersPage() {
                           )}
                         </p>
                         <p className="text-xs text-slate-500">{u.email}</p>
+                        <p className="text-[11px] text-slate-400">
+                          สมัครเมื่อ {u.createdAt.toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" })}
+                        </p>
                       </td>
                       <td className="py-3 pr-4">
                         <AccountStatusBadge status={u.accountStatus} />
@@ -225,6 +252,52 @@ export default async function AdminUsersPage() {
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * แถบค้นหา/กรอง/เรียง — ฟอร์ม GET ธรรมดา ทำงานได้แม้ไม่มี JavaScript และแชร์ลิงก์ผลกรองได้
+ * ค่าทั้งหมดถูกตรวจซ้ำที่ server (parseUserListFilter) ค่าแปลกปลอมกลับเป็นค่าเริ่มต้น
+ */
+function UserFilterBar({ filter, filtered }: { filter: UserListFilter; filtered: boolean }) {
+  const statuses = ["ACTIVE", "PENDING_APPROVAL", "DEACTIVATED", "REJECTED", "CANCELLED"] as const;
+  return (
+    <form method="get" className="flex flex-wrap items-end gap-3 border-b-2 border-slate-100 px-6 py-4">
+      <label className="min-w-[14rem] flex-1">
+        <span className="label">ค้นหา</span>
+        <input className="field" type="search" name="q" defaultValue={filter.q} placeholder="ชื่อหรืออีเมล" />
+      </label>
+      <label>
+        <span className="label">บทบาท</span>
+        <select className="field" name="role" defaultValue={filter.role ?? ""}>
+          <option value="">ทุกบทบาท</option>
+          {ROLE_DISPLAY_ORDER.map((role) => (
+            <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span className="label">สถานะบัญชี</span>
+        <select className="field" name="status" defaultValue={filter.status ?? ""}>
+          <option value="">ทุกสถานะ</option>
+          {statuses.map((status) => (
+            <option key={status} value={status}>{ACCOUNT_STATUS_LABELS[status]}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span className="label">เรียงตาม</span>
+        <select className="field" name="sort" defaultValue={filter.sort}>
+          {Object.entries(USER_SORT_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </label>
+      <button type="submit" className="btn btn-primary btn-md">กรอง</button>
+      {filtered ? (
+        <a href="/admin/users" className="btn btn-ghost btn-md">ล้างตัวกรอง</a>
+      ) : null}
+    </form>
   );
 }
 

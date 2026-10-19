@@ -205,6 +205,17 @@
 @layer base {
   :root {
     color-scheme: light;
+    /* ฮีตแมประดับน้ำ 9 ช่วง (domain/flood/depth-scale.ts) — โทนน้ำ ไม่ชนกับแดงของหมุดวิกฤต
+       canvas อ่านค่าผ่าน getComputedStyle จึงต้องประกาศเป็นตัวแปรที่นี่ ไม่ใช่ใส่สีในคอมโพเนนต์ */
+    --heat-1: var(--color-brand-100);
+    --heat-2: var(--color-brand-200);
+    --heat-3: var(--color-brand-300);
+    --heat-4: var(--color-brand-400);
+    --heat-5: var(--color-brand-500);
+    --heat-6: var(--color-brand-600);
+    --heat-7: var(--color-brand-700);
+    --heat-8: var(--color-brand-800);
+    --heat-9: var(--color-brand-950);
   }
 
   body {
@@ -543,6 +554,35 @@
   }
   .map-boundary-label-dim {
     @apply border-slate-200 text-slate-500;
+  }
+  /* หมุดชุมชนบนแผนที่สาธารณะ — ชื่อเต็ม (เดิมเป็นตัวอักษรตัวเดียว อ่านไม่ออกว่าชุมชนไหน) กดได้ */
+  .map-community-pin {
+    @apply absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-pointer whitespace-nowrap
+      rounded-full border-2 border-white bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-md;
+  }
+
+  /* หมุดบ้านที่มีกลุ่มเปราะบาง (ไอคอนวีลแชร์) — สีตามความเร่งด่วนสูงสุดของบ้าน
+     วิกฤต = แดง (สงวนไว้ให้ Critical) + วงกระเพื่อม · เร่งด่วน = เหลือง (ตัวหนังสือหมึก)
+     · เฝ้าระวัง = น้ำเงิน · ยังไม่ประเมิน = เทา (ไม่มีข้อมูล) */
+  .map-urgency {
+    @apply relative grid place-items-center rounded-full;
+    width: 25px;
+    height: 25px;
+  }
+  .map-urgency-critical { background-color: var(--color-red-600); color: #fff; }
+  .map-urgency-urgent { background-color: var(--color-sun-400); color: var(--color-ink-900); }
+  .map-urgency-watch { background-color: var(--color-brand-600); color: #fff; }
+  .map-urgency-unknown { background-color: var(--color-slate-500); color: #fff; }
+  /* วงกระเพื่อม — เฉพาะหมุดวิกฤต (รอดำเนินการจริง) · ปิดเองภายใต้ prefers-reduced-motion */
+  .map-urgency-critical::before,
+  .map-urgency-critical::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-full border-2;
+    border-color: var(--color-red-500);
+    animation: alert-ring 2.2s var(--ease-out-sharp) infinite;
+  }
+  .map-urgency-critical::after {
+    animation-delay: 1.1s;
   }
 
   /* --- Keyboard hint --- */

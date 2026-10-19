@@ -17,7 +17,6 @@ import {
 import { ThaiDateRangeFields } from "@/components/report/thai-date-range-filter";
 import {
   belongsToLayer,
-  FLOOD_DEPTH_SCALE,
   HEATMAP_ICON_PATH,
   HOUSEHOLD_LAYERS,
   HouseholdLayerMap,
@@ -27,6 +26,8 @@ import {
   skillStyle,
 } from "./household-layer-map";
 import { ImportantSiteManager, SiteSymbol, type SiteManagerResult } from "./important-site-manager";
+import { FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
+import { MAP_URGENCY_LABELS, MAP_URGENCY_ORDER } from "@/domain/geo/map-urgency";
 
 type Option = { id: string; label: string };
 type SiteTypeOption = { value: string; label: string };
@@ -34,7 +35,7 @@ type Totals = { vulnerable: number; volunteer: number; hostHouse: number; floodD
 type Missing = Totals & { uniqueHouseholds: number };
 
 // ไอคอนฮีตแมปใช้สีระดับกลางของสเกลเดียวกับที่วาดบนแผนที่
-const HEAT_LAYER = { key: "heat" as const, label: "ฮีตแมประดับน้ำสูงสุด", color: `rgb(${FLOOD_DEPTH_SCALE[1].rgb})`, iconPath: HEATMAP_ICON_PATH };
+const HEAT_LAYER = { key: "heat" as const, label: "ฮีตแมประดับน้ำสูงสุด", color: "var(--heat-6)", iconPath: HEATMAP_ICON_PATH };
 
 const nf = (value: number) => value.toLocaleString("th-TH");
 
@@ -619,7 +620,22 @@ function Legend({
                     เส้นขอบชุมชน{boundary.draft ? " (เส้นประ = ร่าง ยังไม่รับรอง)" : ""}
                   </li>
                 ) : null}
-                {shownLayers.filter((layer) => layer.key !== "volunteer").map((layer) => (
+                {shownLayers.filter((layer) => layer.key !== "volunteer").map((layer) => layer.key === "vulnerable" ? (
+                  // หมุดเปราะบางเปลี่ยนสีตามความเร่งด่วน — อธิบายด้วยคำไทย ไม่ใช้รหัส P1–P3
+                  <li key={layer.key}>
+                    <p className="mb-1 font-semibold text-slate-700">{layer.label} (สีตามความเร่งด่วน)</p>
+                    <ul className="space-y-1 pl-1">
+                      {MAP_URGENCY_ORDER.map((level) => (
+                        <li key={level} className="flex items-center gap-2">
+                          <span className={`map-urgency map-urgency-${level} shrink-0 scale-75`} aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={layer.iconPath} /></svg>
+                          </span>
+                          {MAP_URGENCY_LABELS[level]}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ) : (
                   <li key={layer.key} className="flex items-center gap-2"><LayerIcon path={layer.iconPath} color={layer.color} size="sm" />{layer.label}</li>
                 ))}
                 {layers.includes("volunteer") ? (
@@ -643,16 +659,17 @@ function Legend({
 
             {heatOn ? (
               <div>
-                <p className="mb-1 font-bold text-slate-700">ระดับน้ำสูงสุด (ฮีตแมป)</p>
+                <p className="mb-1 font-bold text-slate-700">ระดับน้ำสูงสุดที่ครัวเรือนเคยเจอ (ฮีตแมป)</p>
                 <div className="grid grid-cols-2 gap-1">
-                  {[...FLOOD_DEPTH_SCALE].reverse().map((step) => (
-                    <span key={step.minCm} className="flex items-center gap-1.5">
-                      {/* สีเดียวกับที่วาดบน canvas */}
-                      <i className="h-3 w-5 shrink-0 rounded" style={{ backgroundColor: `rgb(${step.rgb})` }} aria-hidden="true" />
-                      {step.label}
+                  {[...FLOOD_DEPTH_BINS].reverse().map((bin) => (
+                    <span key={bin.level} className="flex items-center gap-1.5">
+                      {/* สีเดียวกับที่วาดบน canvas (ตัวแปร --heat-* ใน globals.css) */}
+                      <i className="h-3 w-5 shrink-0 rounded" style={{ backgroundColor: `var(${heatVar(bin.level)})` }} aria-hidden="true" />
+                      {bin.label}
                     </span>
                   ))}
                 </div>
+                <p className="mt-1 text-[11px] text-slate-400">บ้านหลายหลังซ้อนกัน แสดงระดับที่ลึกที่สุด</p>
               </div>
             ) : null}
           </div>

@@ -101,11 +101,11 @@ export function PublicMap({
         }
 
         for (const c of communities) {
+          // ชื่อชุมชนเต็ม (Owner Decision 2026-10-19) — สไตล์ .map-community-pin ใน globals.css
           const icon = L.divIcon({
             className: "",
-            html: `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;background:#2563eb;color:#fff;font-weight:700;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.3);border:2px solid #fff">${escapeHtml(c.nameTh.replace(/^ชุมชน/, "").trim().slice(0, 1))}</span>`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
+            html: `<span class="map-community-pin">${escapeHtml(c.nameTh)}</span>`,
+            iconSize: [0, 0],
           });
           L.marker([c.lat, c.lng], { icon })
             .addTo(map)

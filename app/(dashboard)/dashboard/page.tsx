@@ -272,8 +272,15 @@ export default async function DashboardPage({
             tone="alert"
           />
         </AnalyticsPanel>
-        <AnalyticsPanel title="ประเภทความช่วยเหลือ" description="จำนวนคนที่ระบุในแต่ละประเภท">
-          <BarList rows={analytics.assistance.map((r) => ({ ...r, count: r.people ?? 0 }))} tone="brand" empty="ยังไม่มีการระบุความช่วยเหลือ" />
+        {/* แสดงทั้งครัวเรือนและคน เหมือนตารางในเอกสาร (Owner Decision 2026-10-19) —
+            ความยาวแท่ง = จำนวนครัวเรือน (หนึ่งบ้านนับครั้งเดียวต่อประเภท) */}
+        <AnalyticsPanel title="ประเภทความช่วยเหลือ" description="แท่ง = จำนวนครัวเรือนที่ต้องการ · ตัวเลขด้านขวาบอกทั้งครัวเรือนและจำนวนคน">
+          <BarList
+            rows={analytics.assistance}
+            tone="brand"
+            empty="ยังไม่มีการระบุความช่วยเหลือ"
+            valueLabel={(row) => `${row.count.toLocaleString("th-TH")} ครัวเรือน · ${(row.people ?? 0).toLocaleString("th-TH")} คน`}
+          />
         </AnalyticsPanel>
         <AnalyticsPanel title="ประวัติและความพร้อมรับน้ำท่วม" description="สรุปจากข้อมูลระดับครัวเรือน">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -595,7 +602,7 @@ function AnalyticsPanel({ title, description, children }: { title: string; descr
   );
 }
 
-function BarList({ rows, tone, empty = "ยังไม่มีข้อมูล", rowAction }: { rows: NamedCount[]; tone: Tone; empty?: string; rowAction?: (row: NamedCount) => React.ReactNode }) {
+function BarList({ rows, tone, empty = "ยังไม่มีข้อมูล", rowAction, valueLabel }: { rows: NamedCount[]; tone: Tone; empty?: string; rowAction?: (row: NamedCount) => React.ReactNode; valueLabel?: (row: NamedCount) => string }) {
   if (rows.length === 0 || rows.every((row) => row.count === 0)) {
     return <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">{empty}</p>;
   }
@@ -608,7 +615,7 @@ function BarList({ rows, tone, empty = "ยังไม่มีข้อมู�
             <span className="min-w-0 break-words font-semibold leading-5 text-slate-600">{row.label}</span>
             <span className="flex shrink-0 items-center gap-2">
               {rowAction ? rowAction(row) : null}
-              <span className="font-bold tabular-nums text-slate-800">{row.count.toLocaleString("th-TH")}</span>
+              <span className="font-bold tabular-nums text-slate-800">{valueLabel ? valueLabel(row) : row.count.toLocaleString("th-TH")}</span>
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
