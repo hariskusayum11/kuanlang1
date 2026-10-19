@@ -118,7 +118,12 @@ describe.skipIf(!isLocalDevDb)("Integration: ขอบเขตชุมชน�
 
   it("4) payload สาธารณะ: whitelist ฟิลด์ (ไม่มี source/version/รายบ้าน/กลุ่มเปราะบาง) และทศนิยมไม่เกิน 5 ตำแหน่ง", async () => {
     const data = await getPublicMapData();
-    expect(Object.keys(data).sort()).toEqual(["communities", "generatedAt", "sites"]);
+    expect(Object.keys(data).sort()).toEqual(["communities", "floodGrid", "generatedAt", "sites"]);
+    // ช่องความรุนแรงน้ำท่วม: ต้องมีอย่างน้อย 5 หลังทุกช่อง และไม่มีพิกัดรายบ้าน (docs/39)
+    for (const cell of data.floodGrid) {
+      expect(cell.households).toBeGreaterThanOrEqual(5);
+      expect(Object.keys(cell)).not.toContain("lat");
+    }
     for (const c of data.communities) {
       expect(Object.keys(c).sort()).toEqual(["boundary", "boundaryApproved", "id", "lat", "lng", "nameTh", "positionSource", "summary"]);
       // กล่องข้อมูลฝั่งประชาชน: ห้ามมีตัวเลขกลุ่มเปราะบาง/สุขภาพ (docs/35)

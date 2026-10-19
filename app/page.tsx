@@ -389,7 +389,7 @@ export default async function PublicHomePage() {
           <SectionTitle id="map-title" tone="mint" title="แผนที่ชุมชนและจุดพักพิง" />
           {hasMapPoints ? (
             <div className="card mt-4 overflow-hidden p-3">
-              <PublicMap communities={mapData.communities} sites={mapData.sites} generatedAt={mapData.generatedAt} />
+              <PublicMap communities={mapData.communities} sites={mapData.sites} generatedAt={mapData.generatedAt} floodGrid={mapData.floodGrid} />
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-2 py-3 text-xs font-medium text-slate-600">
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 rounded-full border-2 border-white bg-brand-600 shadow" />

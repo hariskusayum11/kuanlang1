@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { prisma } from "@/lib/prisma";
-import { getPublicEmergencyContacts } from "@/lib/public/stats";
+import { getPublicEmergencyContacts, getPublicMapData } from "@/lib/public/stats";
+import { PublicMap } from "@/components/public/public-map";
 import { PageHero, SectionTitle } from "@/components/layout/page-hero";
 
 export const metadata = { title: "ศูนย์อาสาสมัคร" };
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function VolunteerPage() {
   const ctx = await requirePermission(PERMISSIONS.VOLUNTEER_PORTAL_VIEW);
 
-  const [me, contacts] = await Promise.all([
+  const [me, contacts, mapData] = await Promise.all([
     prisma.user.findUnique({
       where: { id: ctx.userId },
       select: {
@@ -34,6 +35,9 @@ export default async function VolunteerPage() {
       },
     }),
     getPublicEmergencyContacts(),
+    // แผนที่ชุดเดียวกับหน้าสาธารณะ (Owner Decision 2026-10-19 ข้อ 6) — ไม่มีข้อมูลรายบ้าน
+    // ตามกฎ "Volunteer เห็นเฉพาะข้อมูลที่จำเป็นต่อภารกิจ"
+    getPublicMapData(),
   ]);
 
   return (
@@ -102,6 +106,14 @@ export default async function VolunteerPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="card p-6">
+        <SectionTitle title="แผนที่พื้นที่และจุดพักพิง" tone="brand" />
+        <p className="mb-4 mt-2 text-sm leading-relaxed text-slate-600">
+          เขตชุมชน จุดอพยพ/พักพิงพร้อมปุ่มนำทาง และพื้นที่ที่เคยน้ำท่วมรุนแรง — ใช้วางแผนเส้นทางเมื่อได้รับภารกิจ
+        </p>
+        <PublicMap communities={mapData.communities} sites={mapData.sites} generatedAt={mapData.generatedAt} floodGrid={mapData.floodGrid} />
       </section>
 
       <section className="card-mist p-6">

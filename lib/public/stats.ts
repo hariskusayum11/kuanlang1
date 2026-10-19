@@ -6,6 +6,9 @@ import { SheetStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { BOUNDARY_PRECISION, getBoundaryStats, getCurrentCommunityBoundaries } from "../geo/community-boundaries";
 import { squareMetersToRai } from "../../domain/geo/community-summary";
+import { buildFloodGrid, type FloodGridCell } from "../../domain/geo/flood-grid";
+import { calculateFloodDepthCm } from "../../domain/flood/depth";
+import { buildUsableHouseholdWhere } from "../household/trusted-where";
 import { communityMarkerPosition, type LngLat } from "../../domain/geo/community-boundary";
 
 /**
@@ -106,6 +109,8 @@ export interface PublicMapSite {
 export interface PublicMapData {
   communities: PublicMapCommunity[];
   sites: PublicMapSite[];
+  /** ช่องพื้นที่ ~200 ม. ที่มีครัวเรือน ≥ 5 หลัง — ไม่มีพิกัดรายบ้าน (docs/39) */
+  floodGrid: FloodGridCell[];
   /** เวลาที่ดึงข้อมูล — แสดง "ข้อมูล ณ วันที่" */
   generatedAt: string;
 }
@@ -117,7 +122,7 @@ export interface PublicMapData {
  *  - จุดอพยพ/พักพิง: ชื่อ + ประเภท + พิกัด (ไม่คืนชื่อ/เบอร์ผู้ประสานงาน = ไม่มี PII)
  */
 export async function getPublicMapData(): Promise<PublicMapData> {
-  const [communities, boundaries, sites, boundaryStats, verifiedGroups] = await Promise.all([
+  const [communities, boundaries, sites, boundaryStats, verifiedGroups, floodRows] = await Promise.all([
     prisma.community.findMany({
       where: { deletedAt: null, isActive: true },
       select: { id: true, nameTh: true, centroidLat: true, centroidLng: true },
@@ -137,7 +142,42 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       where: { deletedAt: null, hasDuplicateFlag: false, sheet: { status: SheetStatus.VERIFIED } },
       _count: { _all: true },
     }),
+    // แผนที่ความรุนแรง: ดึงพิกัดมาคำนวณฝั่ง server เท่านั้น — ส่งออกแค่กรอบช่องและค่าเฉลี่ย (docs/39)
+    prisma.household.findMany({
+      where: {
+        AND: [
+          buildUsableHouseholdWhere({ status: "VERIFIED" }),
+          { latitude: { not: null } },
+          { longitude: { not: null } },
+        ],
+      },
+      select: {
+        latitude: true,
+        longitude: true,
+        floodRiskProfile: {
+          select: {
+            floorLevelVsRoad: true,
+            floodDepthMetersRaw: true,
+            floodDepthCmRaw: true,
+            maxFloodDepthCm: true,
+            lastFloodDurationDays: true,
+          },
+        },
+      },
+    }),
   ]);
+  const floodGrid = buildFloodGrid(
+    floodRows.map((h) => {
+      const p = h.floodRiskProfile;
+      return {
+        lat: Number(h.latitude),
+        lng: Number(h.longitude),
+        depthCm: p ? (calculateFloodDepthCm(p.floodDepthMetersRaw, p.floodDepthCmRaw) ?? p.maxFloodDepthCm) : null,
+        belowRoad: p?.floorLevelVsRoad ? p.floorLevelVsRoad === "BELOW_ROAD" : null,
+        durationDays: p?.lastFloodDurationDays ?? null,
+      };
+    }),
+  );
   const verifiedBy = new Map(verifiedGroups.map((g) => [g.communityId, g._count._all]));
 
   const boundaryById = new Map(boundaries.map((b) => [b.communityId, b]));
@@ -174,6 +214,7 @@ export async function getPublicMapData(): Promise<PublicMapData> {
       lat: Number(s.latitude),
       lng: Number(s.longitude),
     })),
+    floodGrid,
     generatedAt: new Date().toISOString(),
   };
 }
