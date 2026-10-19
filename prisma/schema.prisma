@@ -1728,3 +1728,22 @@ model CriticalFieldConfig {
   @@index([isActive, isCritical, sortOrder])
   @@map("critical_field_config")
 }
+
+/// ลิงก์ระบบภายนอกบนหน้าสาธารณะ (Owner Decision 2026-10-19 · docs/37)
+/// เช่น เรดาร์กรมอุตุฯ Windy เฝ้าดูน้ำหาดใหญ่ — แอดมินเพิ่ม/แก้/ปิดได้ ไม่ฝังในโค้ด
+model ExternalLink {
+  id          String   @id @default(cuid())
+  code        String?  @unique /// รหัสจาก seed (null = แอดมินเพิ่มเอง) — seed สร้างครั้งเดียว ไม่เขียนทับที่แอดมินแก้
+  title       String
+  description String?
+  url         String /// https:// เท่านั้น (CHECK ck_external_link_https)
+  category    String /// RAIN | WATER | SATELLITE | RESPONSE | OTHER (lib/external-links/validation.ts)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("external_link")
+}

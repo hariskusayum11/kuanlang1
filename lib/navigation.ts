@@ -128,6 +128,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconHref: "/admin/registrations",
   },
   {
+    // การ์ดลิงก์ระบบภายนอกบนหน้าสาธารณะ (docs/37)
+    group: "system",
+    label: "ลิงก์ระบบภายนอก",
+    href: "/admin/links",
+    permission: PERMISSIONS.SETTINGS_VIEW,
+    implemented: true,
+    iconHref: "/admin/links",
+  },
+  {
     group: "system",
     label: "ตั้งค่าระบบ",
     href: "/settings",

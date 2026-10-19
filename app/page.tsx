@@ -8,6 +8,8 @@ import {
   getPublicMapData,
 } from "@/lib/public/stats";
 import { PublicMap } from "@/components/public/public-map";
+import { ExternalLinkCards } from "@/components/public/external-link-cards";
+import { listPublicExternalLinks } from "@/lib/external-links/core";
 
 // Public Home — เปิดได้โดยไม่ login (CLAUDE.md: Public Portal mobile-first)
 // แสดงเฉพาะ aggregate + ข้อมูลราชการ — ไม่มี PII / พิกัดรายบ้าน / Sheet ID
@@ -104,10 +106,11 @@ const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }
 ];
 
 export default async function PublicHomePage() {
-  const [stats, contacts, mapData] = await Promise.all([
+  const [stats, contacts, mapData, externalLinks] = await Promise.all([
     getPublicStats(),
     getPublicEmergencyContacts(),
     getPublicMapData(),
+    listPublicExternalLinks(),
   ]);
   const hasMapPoints = mapData.communities.length + mapData.sites.length > 0;
   const boundaryCount = mapData.communities.filter((c) => c.boundary).length;
@@ -252,6 +255,15 @@ export default async function PublicHomePage() {
             </ul>
           )}
         </section>
+
+        {/* ลิงก์ระบบภายนอก (docs/37) — ต่อจากเบอร์ฉุกเฉิน เพราะเป็นสิ่งที่ประชาชนใช้ตามสถานการณ์ */}
+        {externalLinks.length > 0 ? (
+          <section aria-labelledby="links-title" className="mt-10">
+            <SectionTitle id="links-title" tone="brand" title="ติดตามสถานการณ์ฝนและน้ำ" />
+            <p className="mb-4 mt-1 text-sm text-slate-500">ลิงก์ไปยังระบบของหน่วยงานอื่น — เปิดในแท็บใหม่</p>
+            <ExternalLinkCards links={externalLinks} />
+          </section>
+        ) : null}
 
         {/* สถิติภาพรวม — aggregate เท่านั้น */}
         <section aria-labelledby="stats-title" className="mt-10">

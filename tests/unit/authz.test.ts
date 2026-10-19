@@ -223,6 +223,7 @@ describe("visibleNavItems", () => {
       "ศูนย์อาสาสมัคร",
       "ผู้ใช้และสิทธิ์",
       "คำขอลงทะเบียน",
+      "ลิงก์ระบบภายนอก",
       "ตั้งค่าระบบ",
     ]);
     expect(NAV_ITEMS.map((item) => item.group)).toEqual([
@@ -239,6 +240,7 @@ describe("visibleNavItems", () => {
       "analysis",
       "analysis",
       "overview",
+      "system",
       "system",
       "system",
       "system",
@@ -298,6 +300,7 @@ describe("visibleNavItems", () => {
       "/volunteer",
       "/admin/users",
       "/admin/registrations",
+      "/admin/links",
       "/settings",
     ]);
   });

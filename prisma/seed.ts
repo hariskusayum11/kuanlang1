@@ -321,6 +321,25 @@ async function main() {
     });
   }
 
+  // =========================================================================
+  // 13. ลิงก์ระบบภายนอกบนหน้าสาธารณะ (Owner Decision 2026-10-19 · docs/37)
+  //     สร้างครั้งเดียว (update: {}) — แอดมินแก้ชื่อ/ลำดับ/ซ่อนแล้ว seed ซ้ำต้องไม่เขียนทับ
+  //     ทุกลิงก์ตรวจแล้วว่าเปิดได้ (19 ต.ค. 2569) · เว็บศูนย์อุทกวิทยาภาคใต้เปิดไม่ได้ จึงยังไม่ใส่
+  // =========================================================================
+  const externalLinks = [
+    { code: "TMD_HATYAI_RADAR", title: "เรดาร์ตรวจอากาศหาดใหญ่", description: "ดูกลุ่มฝนที่กำลังเคลื่อนเข้าพื้นที่ (กรมอุตุนิยมวิทยา)", url: "https://weather.tmd.go.th/hyiloop.php", category: "RAIN", sortOrder: 10 },
+    { code: "WINDY", title: "Windy แผนที่ลมและฝน", description: "พยากรณ์ฝน ลม และพายุแบบภาพเคลื่อนไหว", url: "https://www.windy.com/?7.006,100.474,9", category: "RAIN", sortOrder: 20 },
+    { code: "TMD_HOME", title: "กรมอุตุนิยมวิทยา", description: "ประกาศเตือนภัยและพยากรณ์อากาศอย่างเป็นทางการ", url: "https://www.tmd.go.th", category: "RAIN", sortOrder: 30 },
+    { code: "HATYAI_WATER_WATCH", title: "เฝ้าดูน้ำหาดใหญ่ (ควนลัง)", description: "ระดับน้ำคลองในพื้นที่แบบเรียลไทม์", url: "https://hatyaicityclimate.org/zone/kuanlang", category: "WATER", sortOrder: 40 },
+    { code: "THAIWATER", title: "ThaiWater คลังข้อมูลน้ำแห่งชาติ", description: "ระดับน้ำ ปริมาณฝน และสถานการณ์น้ำทั่วประเทศ", url: "https://www.thaiwater.net", category: "WATER", sortOrder: 50 },
+    { code: "GISTDA_DISASTER", title: "GISTDA ติดตามภัยพิบัติ", description: "ภาพดาวเทียมพื้นที่น้ำท่วม (แอป เช็กน้ำ)", url: "https://disaster.gistda.or.th", category: "SATELLITE", sortOrder: 60 },
+    { code: "DDPM", title: "กรมป้องกันและบรรเทาสาธารณภัย", description: "ประกาศสถานการณ์และการช่วยเหลือ (สายด่วน 1784)", url: "https://www.disaster.go.th", category: "RESPONSE", sortOrder: 70 },
+    { code: "HATYAI_CITY", title: "เทศบาลนครหาดใหญ่", description: "ข่าวสารและศูนย์บัญชาการเหตุการณ์ของเทศบาล", url: "https://www.hatyaicity.go.th", category: "RESPONSE", sortOrder: 80 },
+  ];
+  for (const link of externalLinks) {
+    await prisma.externalLink.upsert({ where: { code: link.code }, update: {}, create: link });
+  }
+
   console.log("✅ Production Seed เสร็จสิ้น");
   console.log("   - จังหวัดสงขลา(90)/อำเภอหาดใหญ่(9011)/ตำบลหาดใหญ่(901101)/ตำบลควนลัง(901102)");
   console.log("   - ชุมชน 5 แห่ง: TK01/PM01/KS01(2 ตำบล)/PW01/NK01 — totalHouseholds=null");
