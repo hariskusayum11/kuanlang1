@@ -10,10 +10,12 @@
 //   - totalHouseholds = null (ยังไม่ทราบ), targetCoveragePercent = 60
 //   - ลบ Loop หมู่ตัวอย่างออกจาก Production (ย้ายไป seed.dev.ts)
 //   - Risk Weight = DRAFT/UNAPPROVED (ย้ายไป seed.dev.ts, ห้ามเป็น Active Production)
+//   - กฎการจัดลำดับ v1 (priority_rule_version) = ค่าร่าง isDraft=true — ใช้ได้แต่ติดป้าย "ร่าง" (docs/40)
 //   - Idempotent + รองรับเปลี่ยนชื่อผ่าน update
 // =============================================================================
 
 import { PrismaClient, TriageLevel } from "@prisma/client";
+import { DRAFT_RISK_CONFIG_V1 } from "../domain/risk/weights";
 
 const prisma = new PrismaClient();
 
@@ -340,11 +342,29 @@ async function main() {
     await prisma.externalLink.upsert({ where: { code: link.code }, update: {}, create: link });
   }
 
+  // =========================================================================
+  // 14. กฎการจัดลำดับ เวอร์ชัน 1 = ค่าร่างเดิมในโค้ด (docs/40) — ฐานของประวัติการแก้กฎ
+  //     ยังเป็น "ร่าง" (isDraft = true) จนกว่าเจ้าของระบบรับรอง · สร้างครั้งเดียว (update: {})
+  //     แอดมินแก้กฎ = เวอร์ชัน 2, 3 … seed ซ้ำต้องไม่เขียนทับและไม่ย้อนกฎที่ใช้งานอยู่
+  // =========================================================================
+  await prisma.priorityRuleVersion.upsert({
+    where: { versionNo: 1 },
+    update: {},
+    create: {
+      versionNo: 1,
+      isDraft: true,
+      riskConfig: JSON.parse(JSON.stringify(DRAFT_RISK_CONFIG_V1)),
+      triageMap: Object.fromEntries(vulnTypes.map((vt) => [vt.code, vt.basePriority])),
+      reason: "ค่าตั้งต้น (ร่าง v1.0) จาก docs/29 — รอเจ้าของระบบรับรอง",
+    },
+  });
+
   console.log("✅ Production Seed เสร็จสิ้น");
   console.log("   - จังหวัดสงขลา(90)/อำเภอหาดใหญ่(9011)/ตำบลหาดใหญ่(901101)/ตำบลควนลัง(901102)");
   console.log("   - ชุมชน 5 แห่ง: TK01/PM01/KS01(2 ตำบล)/PW01/NK01 — totalHouseholds=null");
   console.log("   - Master Data: อาคาร 6 / กรรมสิทธิ์ 4 / เปราะบาง 9 / ช่วยเหลือ 6 / ทรัพยากร 7 / เตือนภัย 8 / อาสา 8");
-  console.log("   - ⚠️ ไม่ Seed: หมู่ (รอยืนยัน), Risk Weight (รอ BR — ดู seed.dev.ts), Risk Formula");
+  console.log("   - กฎการจัดลำดับ v1 (ร่าง ยังไม่รับรอง — docs/40)");
+  console.log("   - ⚠️ ไม่ Seed: หมู่ (รอยืนยัน), RiskWeightConfig แบบเก่า (รอ BR — ดู seed.dev.ts)");
 }
 
 main()

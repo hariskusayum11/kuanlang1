@@ -97,6 +97,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     implemented: true,
   },
   {
+    // กฎความเร่งด่วน/ความเสี่ยงเป็นภาษาไทย — ทุกฝ่ายเห็นก่อน แก้ได้เฉพาะ ADMIN (docs/40)
+    group: "analysis",
+    label: "กฎการจัดลำดับ",
+    href: "/priority-rules",
+    permission: PERMISSIONS.DASHBOARD_VIEW,
+    implemented: true,
+    iconHref: "/risk",
+  },
+  {
     group: "analysis",
     label: "รายงานและส่งออก",
     href: "/reports",
