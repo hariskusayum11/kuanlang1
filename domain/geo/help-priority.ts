@@ -4,10 +4,26 @@
 //        → คะแนนความเสี่ยงสัมบูรณ์ (มาก → น้อย) → ความมั่นใจ (มาก → น้อย) → รหัสใบ (คงที่ทุกครั้ง)
 // ครัวเรือนที่ไม่มีกลุ่มเปราะบางยังอยู่ในรายการ (ต่อท้ายตามคะแนนความเสี่ยง) — ไม่มีบ้านหายเงียบ
 
-import type { MapUrgency } from "./map-urgency";
+import { MAP_URGENCY_LABELS, type MapUrgency } from "./map-urgency";
 
 /** "none" = บ้านไม่มีกลุ่มเปราะบางที่ยัง active */
 export type HelpUrgency = MapUrgency | "none";
+
+export const HELP_URGENCY_ORDER: readonly HelpUrgency[] = ["critical", "urgent", "watch", "unknown", "none"];
+
+/** คำไทยในคำอธิบายสัญลักษณ์/รายการ — ไม่ใช้รหัส P1–P3 (Owner Decision 2026-10-19) */
+export const HELP_URGENCY_LABELS: Record<HelpUrgency, string> = {
+  ...MAP_URGENCY_LABELS,
+  none: "ไม่มีกลุ่มเปราะบาง — เรียงตามความเสี่ยงบ้าน",
+};
+
+export const HELP_URGENCY_WORD: Record<HelpUrgency, string> = {
+  critical: "วิกฤต",
+  urgent: "เร่งด่วน",
+  watch: "เฝ้าระวัง",
+  unknown: "ยังไม่ประเมิน",
+  none: "ไม่มีกลุ่มเปราะบาง",
+};
 
 const URGENCY_RANK: Record<HelpUrgency, number> = {
   critical: 4,

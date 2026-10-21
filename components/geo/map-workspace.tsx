@@ -28,6 +28,9 @@ import {
 import { ImportantSiteManager, SiteSymbol, type SiteManagerResult } from "./important-site-manager";
 import { FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
 import { MAP_URGENCY_LABELS, MAP_URGENCY_ORDER } from "@/domain/geo/map-urgency";
+import { HELP_URGENCY_LABELS, HELP_URGENCY_ORDER } from "@/domain/geo/help-priority";
+import type { HelpPriorityResult } from "@/lib/risk/help-priority";
+import { HelpCaseList } from "./help-case-list";
 
 type Option = { id: string; label: string };
 type SiteTypeOption = { value: string; label: string };
@@ -66,6 +69,7 @@ export function MapWorkspace({
   defaultZoom,
   filterError,
   canManageSites,
+  helpPriority,
 }: {
   view: MapViewState;
   siteTypeOptions: SiteTypeOption[];
@@ -83,6 +87,8 @@ export function MapWorkspace({
   defaultZoom: number;
   filterError: string | null;
   canManageSites: boolean;
+  /** ลำดับการช่วยเหลือ (docs/40) — null = ไม่มีสิทธิ์ household.view จึงไม่แสดงชั้นนี้ */
+  helpPriority: HelpPriorityResult | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -95,6 +101,10 @@ export function MapWorkspace({
   const [skill, setSkill] = useState(view.skill ?? "");
   const [siteTypes, setSiteTypes] = useState<string[]>(view.siteTypes);
   const [showBoundaries, setShowBoundaries] = useState(view.boundaries);
+  const helpAvailable = helpPriority !== null;
+  const [help, setHelp] = useState(view.help && helpAvailable);
+  const [panelTab, setPanelTab] = useState<"layers" | "help">(view.help && helpAvailable ? "help" : "layers");
+  const [focusCase, setFocusCase] = useState<{ id: string; nonce: number } | null>(null);
   const hasDraftBoundary = boundaries.some((boundary) => !boundary.isApproved);
 
   // พื้นที่: แสดงค่าที่เพิ่งเลือกทันทีระหว่างรอ server แล้วกลับไปเชื่อค่าจาก server เมื่อมาถึง
@@ -142,9 +152,10 @@ export function MapWorkspace({
       skill: skill || undefined,
       siteTypes,
       boundaries: showBoundaries,
+      help,
       ...patch,
     }),
-    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, base, layers, skill, siteTypes, showBoundaries],
+    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, base, layers, skill, siteTypes, showBoundaries, help],
   );
 
   // เขียนชั้นข้อมูลลง URL โดยไม่โหลดหน้าใหม่
@@ -226,6 +237,9 @@ export function MapWorkspace({
         selectedCommunityId={view.communityId}
         fitKey={fitKey}
         onCenterChange={(value) => { mapCenterRef.current = value; }}
+        helpCases={helpPriority?.cases ?? null}
+        helpOn={help}
+        focusCase={focusCase}
       />
 
       {/* ปุ่มลอย: เพิ่ม/จัดการจุดสำคัญ (เฉพาะผู้มีสิทธิ์ — server ตรวจซ้ำทุกครั้ง) */}
@@ -270,6 +284,7 @@ export function MapWorkspace({
         totals={totals}
         missing={missingCoordinates}
         layers={layers}
+        help={help}
         boundary={showBoundaries && boundaries.length ? { draft: hasDraftBoundary } : null}
         skills={visibleSkillList}
         siteTypes={siteTypeOptions.filter((type) => siteTypes.includes(type.value) && (siteCounts.get(type.value) ?? 0) > 0)}
@@ -328,9 +343,42 @@ export function MapWorkspace({
           </button>
         </div>
 
+        {helpAvailable ? (
+          <div className="grid shrink-0 grid-cols-2 gap-1 border-b-2 border-slate-100 bg-white p-2" role="tablist" aria-label="เลือกแผง" inert={!isDesktop && !sheetOpen}>
+            {([["layers", "ชั้นข้อมูล"], ["help", "ลำดับการช่วยเหลือ"]] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={panelTab === key}
+                onClick={() => setPanelTab(key)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-bold transition-colors ${panelTab === key ? "bg-brand-50 text-brand-700" : "text-slate-500 hover:text-slate-800"}`}
+              >
+                {label}
+                {key === "help" && helpPriority ? <span className="ml-1 text-xs font-semibold tabular-nums text-slate-400">{nf(helpPriority.cases.length)}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {helpPriority && panelTab === "help" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" inert={!isDesktop && !sheetOpen}>
+            <HelpCaseList
+              result={helpPriority}
+              on={help}
+              onToggle={setHelp}
+              onPick={(item) => {
+                if (!help) setHelp(true);
+                if (!isDesktop) setSheetOpen(false);
+                setFocusCase({ id: item.householdId, nonce: Date.now() });
+              }}
+            />
+          </div>
+        ) : null}
+
         <div
           id="map-layer-panel-body"
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-4 pb-4 md:pt-2"
+          className={`min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-4 pb-4 md:pt-2 ${helpAvailable && panelTab === "help" ? "hidden" : ""}`}
           // แผ่นที่ยุบอยู่บนมือถือไม่ควรรับ Tab ไปยังช่องที่มองไม่เห็น
           inert={!isDesktop && !sheetOpen}
         >
@@ -461,6 +509,19 @@ export function MapWorkspace({
             </div>
           </Group>
 
+          {helpPriority ? (
+            <Group title="การช่วยเหลือ">
+              <LayerRow
+                checked={help}
+                onChange={(on) => { setHelp(on); if (on) setPanelTab("help"); }}
+                icon={<span className="map-urgency map-urgency-critical map-help-rank map-help-static shrink-0 scale-90" aria-hidden="true">1</span>}
+                label="ลำดับการช่วยเหลือ"
+                count={helpPriority.cases.length}
+              />
+              {help ? <p className="ml-9 text-[11px] leading-snug text-slate-500">หมุดชั้นครัวเรือนซ่อนชั่วคราวระหว่างเปิดชั้นนี้</p> : null}
+            </Group>
+          ) : null}
+
           <Group
             title="จุดสำคัญ"
             aside={<SelectAll onAll={() => setSiteTypes([...allSiteTypes])} onNone={() => setSiteTypes([])} />}
@@ -571,6 +632,7 @@ function Legend({
   totals,
   missing,
   layers,
+  help,
   boundary,
   skills,
   siteTypes,
@@ -580,11 +642,13 @@ function Legend({
   totals: Totals;
   missing: Missing;
   layers: HouseholdLayerKey[];
+  help: boolean;
   boundary: { draft: boolean } | null;
   skills: VolunteerMapSkill[];
   siteTypes: SiteTypeOption[];
 }) {
-  const shownLayers = HOUSEHOLD_LAYERS.filter((layer) => layers.includes(layer.key));
+  // เปิดลำดับการช่วยเหลือ → หมุดชั้นครัวเรือนซ่อนอยู่ จึงไม่อธิบายสัญลักษณ์ของชั้นเหล่านั้น
+  const shownLayers = help ? [] : HOUSEHOLD_LAYERS.filter((layer) => layers.includes(layer.key));
   const heatOn = layers.includes("heat");
   return (
     // มือถือ: วางเหนือแถบหัวของแผ่นด้านล่าง (3.5rem) และแถบ attribution ของแผนที่
@@ -611,6 +675,20 @@ function Legend({
                 <> · <span className="font-semibold text-sun-800">ไม่มีพิกัด {nf(missing.uniqueHouseholds)} หลัง</span> (เปราะบาง {nf(missing.vulnerable)} · อาสา {nf(missing.volunteer)} · พักพิง {nf(missing.hostHouse)}) จึงไม่ปรากฏบนแผนที่</>
               ) : null}
             </p>
+
+            {help ? (
+              <div>
+                <p className="mb-1 font-bold text-slate-700">ลำดับการช่วยเหลือ (ตัวเลข = ลำดับในรายการ)</p>
+                <ul className="space-y-1 pl-1">
+                  {HELP_URGENCY_ORDER.map((level) => (
+                    <li key={level} className="flex items-center gap-2">
+                      <span className={`${level === "none" ? "map-help-none" : `map-urgency map-urgency-${level}`} map-help-rank map-help-static shrink-0 scale-75`} aria-hidden="true">1</span>
+                      {HELP_URGENCY_LABELS[level]}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {boundary || shownLayers.length || heatOn || siteTypes.length ? (
               <ul className="space-y-1.5">
@@ -648,12 +726,14 @@ function Legend({
                   const style = SITE_STYLE[type.value] ?? SITE_STYLE.OTHER;
                   return <li key={type.value} className="flex items-center gap-2"><SiteSymbol color={style.color} symbol={style.symbol} size="sm" />{type.label}</li>;
                 })}
-                <li className="flex items-center gap-2 text-slate-500">
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-ink-900 px-1 text-[10px] font-bold text-white" aria-hidden="true">3</span>
-                  ตัวเลขบนหมุด = หลายครัวเรือนในพิกัดเดียวกัน
-                </li>
+                {shownLayers.length ? (
+                  <li className="flex items-center gap-2 text-slate-500">
+                    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-ink-900 px-1 text-[10px] font-bold text-white" aria-hidden="true">3</span>
+                    ตัวเลขบนหมุด = หลายครัวเรือนในพิกัดเดียวกัน
+                  </li>
+                ) : null}
               </ul>
-            ) : (
+            ) : help ? null : (
               <p className="text-slate-400">ยังไม่ได้เปิดชั้นข้อมูล — เลือกได้ที่แผง “ชั้นข้อมูล”</p>
             )}
 
