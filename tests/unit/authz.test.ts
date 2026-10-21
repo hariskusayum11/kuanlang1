@@ -218,7 +218,7 @@ describe("visibleNavItems", () => {
       "ข้อมูลสุขภาพและกลุ่มเปราะบาง",
       "แผนที่ข้อมูลสำรวจ",
       "ความเสี่ยงและการช่วยเหลือ",
-      "กฎการจัดลำดับ",
+      // "กฎการจัดลำดับ" ไม่มีเมนูแยกแล้ว — เกณฑ์อยู่บนหน้า /medical และ /risk (docs/40)
       "รายงานและส่งออก",
       "ผลงานผู้กรอก",
       // หน้าเดียวของอาสาสมัคร — อยู่หมวด overview เพราะเป็นหน้าแรกของเขา
@@ -236,7 +236,6 @@ describe("visibleNavItems", () => {
       "data",
       "data",
       "data",
-      "analysis",
       "analysis",
       "analysis",
       "analysis",
@@ -300,7 +299,6 @@ describe("visibleNavItems", () => {
       "/medical",
       "/map",
       "/risk",
-      "/priority-rules",
       "/reports",
       "/keyer-performance",
       "/volunteer",

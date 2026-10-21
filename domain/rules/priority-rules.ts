@@ -101,6 +101,22 @@ export type RuleChange = { field: string; old: string | number | boolean; new: s
 
 const TRIAGE_WORD: Record<TriageCode, string> = { P1: "วิกฤต", P2: "เร่งด่วน", P3: "เฝ้าระวัง" };
 
+// ชื่อปัจจัยที่เก็บใน config (รวมเวอร์ชันใน DB) ยังมีรหัส P1/P2 — หน้าจอใช้คำไทยแทนเสมอ (ที่ประชุม 2026-10-19)
+const FACTOR_DISPLAY: Partial<Record<string, { nameTh: string; source: string }>> = {
+  HAS_P1: { nameTh: "มีคนระดับวิกฤตในบ้าน", source: "ส่วน 2 (คำนวณจากกลุ่มเปราะบาง)" },
+  HAS_P2: { nameTh: "มีคนระดับเร่งด่วนในบ้าน", source: "ส่วน 2 (คำนวณจากกลุ่มเปราะบาง)" },
+};
+
+/** ชื่อปัจจัยสำหรับแสดงผล (ไม่มีรหัส P1–P3) */
+export function factorLabel(factor: { code: string; nameTh: string }): string {
+  return FACTOR_DISPLAY[factor.code]?.nameTh ?? factor.nameTh;
+}
+
+/** แหล่งข้อมูลของปัจจัยสำหรับแสดงผล */
+export function factorSource(factor: { code: string; source: string }): string {
+  return FACTOR_DISPLAY[factor.code]?.source ?? factor.source;
+}
+
 /** อธิบายรายการที่เปลี่ยนเป็นภาษาไทย เช่น "น้ำหนัก ระดับพื้นเทียบถนน: 20 → 25" (ไม่ใช้รหัส P1–P3) */
 export function describeRuleChange(
   change: RuleChange,

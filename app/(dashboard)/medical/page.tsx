@@ -4,6 +4,8 @@ import { TRIAGE_EXAMPLE, type TriageCode } from "@/domain/triage";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getMedicalCases, type MedicalCaseRow } from "@/lib/medical/cases";
+import { getRulesPageData } from "@/lib/rules/core";
+import { TriageRulesPanel } from "@/components/rules/page-rules-panels";
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 
 export const metadata = { title: "ข้อมูลสุขภาพและกลุ่มเปราะบาง" };
@@ -34,7 +36,7 @@ export default async function MedicalCasesPage({
     vulnerabilityTypeId: sp.type || undefined,
     triage,
   };
-  const result = await getMedicalCases(ctx, filters, sp.page, sp.size);
+  const [result, rules] = await Promise.all([getMedicalCases(ctx, filters, sp.page, sp.size), getRulesPageData(ctx)]);
   if (!result) return null;
 
   const filterActive = Boolean(
@@ -86,6 +88,9 @@ export default async function MedicalCasesPage({
         <StatCard label="ยังไม่ประเมิน" value={result.summary.unassessed} tone="neutral" />
         <StatCard label="ต้องการดูแลใจ" value={result.summary.mentalHealth} tone="violet" />
       </div>
+
+      {/* เกณฑ์ที่ใช้จัดระดับ — เห็นบนหน้าที่ใช้จริง แก้ได้เฉพาะ ADMIN (docs/40) */}
+      {rules ? <TriageRulesPanel data={rules} /> : null}
 
       <form className="card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-6">
         <input type="hidden" name="size" value={result.pageSize} />

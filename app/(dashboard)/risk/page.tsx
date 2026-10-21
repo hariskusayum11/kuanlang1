@@ -3,17 +3,19 @@ import { requirePermission } from "@/lib/authz/context";
 import { hasPermission } from "@/lib/authz/access";
 import { PERMISSIONS } from "@/lib/authz/permissions";
 import { getRiskList, type RiskRow } from "@/lib/risk/list";
+import { getRulesPageData } from "@/lib/rules/core";
 import type { RiskLevel } from "@/domain/risk";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
+import { RiskRulesPanel } from "@/components/rules/page-rules-panels";
 
 export const metadata = { title: "ความเสี่ยงน้ำท่วม" };
 export const dynamic = "force-dynamic";
 
 // จัดลำดับความเสี่ยงครัวเรือน (VERIFIED ทุกหลัง) — คำนวณสด ไม่เขียนลง DB
-// ใช้กฎเวอร์ชันที่ใช้งานอยู่ (docs/40) — แอดมินแก้กฎที่ /priority-rules แล้วอัปเดตทันที
+// ใช้กฎเวอร์ชันที่ใช้งานอยู่ (docs/40) — เกณฑ์แสดงบนหน้านี้ แอดมินแก้ได้ในที่ (Modal) แล้วอัปเดตทันที
 export default async function RiskPage() {
   const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
-  const result = await getRiskList(ctx);
+  const [result, rules] = await Promise.all([getRiskList(ctx), getRulesPageData(ctx)]);
   const canOpen = hasPermission(ctx, PERMISSIONS.VERIFICATION_VIEW);
   const { counts } = result;
   const mappablePct = Math.round((result.mappableWeight / result.systemWeight) * 100);
@@ -41,17 +43,19 @@ export default async function RiskPage() {
           <p className="text-sm leading-relaxed text-ink-900">
             <b>ตัวเลขทดลอง (กฎเวอร์ชัน {result.config.versionNo || "ตั้งต้น"} · v{result.config.weightVersion}) — ยังไม่ได้รับการรับรอง</b>{" "}
             น้ำหนักและเกณฑ์การจัดระดับยังรอเจ้าของระบบรับรอง ·{" "}
-            <Link href="/priority-rules" className="font-semibold underline underline-offset-2">ดูกฎทั้งหมด</Link> ·
+            {rules ? <><a href="#priority-rules" className="font-semibold underline underline-offset-2">ดูเกณฑ์ด้านล่าง</a> ·</> : null}
             ระบบคำนวณสดทุกครั้งที่เปิดหน้า <b>ไม่ได้บันทึกคะแนนลงฐานข้อมูล</b> · ปัจจุบัน map ได้ {mappablePct}% ของน้ำหนัก
             (ปัจจัยพาหนะ/ทรัพยากร/ช่องทางดิจิทัล/ระยะทาง GIS ยังไม่พร้อม จึงยังไม่ถูกนับ)
           </p>
         </div>
       ) : (
         <p className="px-1 text-sm text-slate-600">
-          คำนวณด้วยกฎเวอร์ชัน {result.config.versionNo} (รับรองแล้ว) ·{" "}
-          <Link href="/priority-rules" className="font-semibold text-brand-700 underline underline-offset-2">ดูกฎทั้งหมด</Link>
+          คำนวณด้วยกฎเวอร์ชัน {result.config.versionNo} (รับรองแล้ว)
         </p>
       )}
+
+      {/* เกณฑ์ที่ใช้คำนวณ — เห็นบนหน้าที่ใช้จริง แก้ได้เฉพาะ ADMIN (docs/40) */}
+      {rules ? <RiskRulesPanel data={rules} /> : null}
 
       {/* สรุปตามระดับ */}
       <div className="stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -109,7 +113,7 @@ export default async function RiskPage() {
       <p className="px-1 text-xs leading-relaxed text-slate-500">
         หมายเหตุ: ใช้ <b>คะแนนสัมบูรณ์</b> (คะแนนดิบ ÷ น้ำหนักรวมทั้งระบบ) ในการจัดระดับ
         เพื่อให้บ้านที่ข้อมูลไม่ครบไม่ถูกดันเป็นความเสี่ยงสูงลวง ·
-        ครัวเรือนที่มีผู้ป่วยติดเตียง/ฟอกไตจะถูกยกเป็น &quot;สูง&quot; ขั้นต่ำเสมอ ·
+        ครัวเรือนที่มีผู้ป่วยติดเตียง/ฟอกไตจะถูกยกระดับขั้นต่ำตามกฎบังคับในเกณฑ์ด้านบนเสมอ ·
         &quot;ความมั่นใจ&quot; ต่ำหมายถึงข้อมูลยังไม่ครบ ควรลงไปเก็บเพิ่ม
       </p>
     </div>

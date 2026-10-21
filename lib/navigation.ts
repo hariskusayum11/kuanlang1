@@ -96,15 +96,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
     permission: PERMISSIONS.HOUSEHOLD_VIEW,
     implemented: true,
   },
-  {
-    // กฎความเร่งด่วน/ความเสี่ยงเป็นภาษาไทย — ทุกฝ่ายเห็นก่อน แก้ได้เฉพาะ ADMIN (docs/40)
-    group: "analysis",
-    label: "กฎการจัดลำดับ",
-    href: "/priority-rules",
-    permission: PERMISSIONS.DASHBOARD_VIEW,
-    implemented: true,
-    iconHref: "/risk",
-  },
+  // "กฎการจัดลำดับ" (/priority-rules) ไม่มีเมนูแยกแล้ว (2026-10-21) — เกณฑ์แสดงบนหน้าที่ใช้จริง
+  // /medical และ /risk พร้อมปุ่มแก้ของ ADMIN · หน้าเดิมยังเปิดได้จากลิงก์ "ฉบับเต็ม" (docs/40)
   {
     group: "analysis",
     label: "รายงานและส่งออก",

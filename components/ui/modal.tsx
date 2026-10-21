@@ -22,8 +22,8 @@ export function Modal({
   /** ไม่ส่ง = ปิดด้วย Esc/คลิกพื้นหลังไม่ได้ (ใช้กับกล่องที่ต้องตัดสินใจเท่านั้น) */
   onClose?: () => void;
   labelledBy?: string;
-  /** ความกว้างกล่อง — ค่าเริ่มต้น md สำหรับกล่องยืนยัน, lg สำหรับฟอร์มหลายช่อง */
-  size?: "md" | "lg";
+  /** ความกว้างกล่อง — ค่าเริ่มต้น md สำหรับกล่องยืนยัน, lg สำหรับฟอร์มหลายช่อง, xl สำหรับฟอร์มสองคอลัมน์ (ตัวแก้กฎ) */
+  size?: "md" | "lg" | "xl";
   children: ReactNode;
 }) {
   // ปิดด้วย Esc + ล็อกการเลื่อนพื้นหลังระหว่างเปิด
@@ -55,7 +55,7 @@ export function Modal({
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div className={`my-auto w-full ${size === "lg" ? "max-w-2xl" : "max-w-md"}`}>{children}</div>
+      <div className={`my-auto w-full ${size === "xl" ? "max-w-4xl" : size === "lg" ? "max-w-2xl" : "max-w-md"}`}>{children}</div>
     </div>
     </Portal>
   );

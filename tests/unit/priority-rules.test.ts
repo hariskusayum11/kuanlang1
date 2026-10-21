@@ -4,6 +4,8 @@ import {
   applyRiskEdit,
   describeRuleChange,
   diffRules,
+  factorLabel,
+  factorSource,
   toEditValues,
   weightVersionLabel,
   type ActiveRuleSet,
@@ -200,5 +202,19 @@ describe("Zod — ค่าที่แอดมินส่งมา", () => {
   it("ค่าร่างในโค้ดผ่าน schema ที่ใช้อ่านจากฐานข้อมูล", () => {
     expect(storedRiskConfigSchema.safeParse(JSON.parse(JSON.stringify(DRAFT_RISK_CONFIG_V1))).success).toBe(true);
     expect(storedRiskConfigSchema.safeParse({ ...DRAFT_RISK_CONFIG_V1, factors: [] }).success).toBe(false);
+  });
+});
+
+describe("ชื่อปัจจัยบนหน้าจอ (ไม่มีรหัส P1–P3 · docs/40)", () => {
+  it("ทุกปัจจัยในค่าตั้งต้นแสดงเป็นคำไทยล้วน", () => {
+    for (const f of DRAFT_RISK_CONFIG_V1.factors) {
+      expect(factorLabel(f)).not.toMatch(/P[1-4]/);
+      expect(factorSource(f)).not.toMatch(/derived/);
+    }
+    expect(factorLabel({ code: "HAS_P1", nameTh: "มีกลุ่มเปราะบาง P1" })).toBe("มีคนระดับวิกฤตในบ้าน");
+  });
+
+  it("ปัจจัยอื่นใช้ชื่อที่เก็บไว้ตามเดิม", () => {
+    expect(factorLabel({ code: "FLOOR_LEVEL", nameTh: "ระดับพื้นเทียบถนน" })).toBe("ระดับพื้นเทียบถนน");
   });
 });
