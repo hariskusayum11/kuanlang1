@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Thai } from "next/font/google";
 import { APP_NAME, APP_DESCRIPTION_TH } from "@/lib/app-config";
+import { PageViewBeacon } from "@/components/usage/page-view-beacon";
 import "./globals.css";
 
 // ฟอนต์ระดับ enterprise — self-host ตอน build (ไม่มี runtime request ออกภายนอก)
@@ -26,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           หลัง SSR ทำให้ attribute ฝั่ง client ไม่ตรง server — ไม่ใช่บั๊กแอป ปิด warning เฉพาะจุดนี้ */}
       <body className="min-h-screen antialiased" suppressHydrationWarning>
         {children}
+        {/* นับยอดเปิดหน้าแบบรวม ไม่มี IP/UA/ตัวตน — docs/36 */}
+        <PageViewBeacon />
       </body>
     </html>
   );

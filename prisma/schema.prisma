@@ -1640,6 +1640,27 @@ model EntryStats {
   @@map("entry_stats")
 }
 
+/// ผู้เข้าชมหน้าเว็บ — แยกเพียง "ไม่ได้ Login" กับ "Login แล้ว" (docs/36)
+enum PageViewAudience {
+  PUBLIC // ไม่ได้ Login
+  SIGNED_IN // Login แล้ว (ไม่เก็บว่าใคร)
+}
+
+/// ยอดเปิดหน้าเว็บรายวันแบบรวม (Owner Decision 2026-10-19 — docs/36)
+/// ⚠️ ตั้งใจไม่มี IP / User Agent / userId / เวลารายครั้ง — นับเป็นตัวเลขรวมเท่านั้น
+/// path เป็น "รูปแบบเส้นทาง" ที่ผ่าน whitelist แล้ว (เช่น /verification/[householdId])
+/// จึงไม่มีรหัสครัวเรือน/ใบ/query string ใด ๆ หลุดเข้ามา
+/// เพิ่มยอดด้วย INSERT … ON CONFLICT DO UPDATE SET count = count + 1 (lib/usage/page-view.ts)
+model PageViewDaily {
+  day      DateTime         @db.Date /// วันตามเวลาไทย (Asia/Bangkok, UTC+7)
+  path     String           @db.VarChar(80) /// รูปแบบเส้นทาง (domain/usage/page-path.ts)
+  audience PageViewAudience
+  count    Int              @default(0)
+
+  @@id([day, path, audience])
+  @@map("page_view_daily")
+}
+
 // =============================================================================
 // 🔷 กลุ่ม 16: v3.1 STRUCTURE_ONLY — โครงสร้างใหม่ (ยังไม่เดิน Logic)
 // =============================================================================
