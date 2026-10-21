@@ -10,6 +10,7 @@ const isLocalDevDb = /@(localhost|127\.0\.0\.1)[:/]/.test(dbUrl);
 const prisma = new PrismaClient();
 const email = "test-map-sites@test.invalid";
 const communityCode = "TMAPSITE";
+const GLOBAL = { isGlobalScope: true, communityIds: [] };
 
 describe.skipIf(!isLocalDevDb)("Integration: important map sites", () => {
   let ctx: AuthorizationContext;
@@ -53,17 +54,17 @@ describe.skipIf(!isLocalDevDb)("Integration: important map sites", () => {
       latitude: 7.01, longitude: 100.42, capacity: 120,
     })).toEqual({ ok: true });
 
-    const created = (await getImportantSites(communityId))[0];
+    const created = (await getImportantSites(GLOBAL, communityId))[0];
     expect(created).toEqual(expect.objectContaining({ name: "โรงเรียนทดสอบ", capacity: 120 }));
 
     expect(await saveImportantSite(ctx, {
       id: created.id, communityId, name: "ศูนย์อพยพทดสอบ", type: "COMMUNITY_CENTER",
       latitude: 7.02, longitude: 100.43, capacity: 200,
     })).toEqual({ ok: true });
-    expect((await getImportantSites(communityId))[0].name).toBe("ศูนย์อพยพทดสอบ");
+    expect((await getImportantSites(GLOBAL, communityId))[0].name).toBe("ศูนย์อพยพทดสอบ");
 
     expect(await deleteImportantSite(ctx, created.id)).toEqual({ ok: true });
-    expect(await getImportantSites(communityId)).toEqual([]);
+    expect(await getImportantSites(GLOBAL, communityId)).toEqual([]);
     expect(await prisma.auditLog.count({ where: { userId: ctx.userId, entityType: "EvacuationSite" } })).toBe(3);
   });
 

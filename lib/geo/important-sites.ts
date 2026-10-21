@@ -28,9 +28,20 @@ export function canManageImportantSites(ctx: AuthorizationContext): boolean {
   return ctx.roles.includes(UserRoleEnum.ADMIN);
 }
 
-export async function getImportantSites(communityId?: string): Promise<ImportantSitePoint[]> {
+/** จุดสำคัญบนแผนที่ภายใน — เคารพขอบเขตชุมชน (หัวหน้าชุมชนเห็นเฉพาะชุมชนที่ผูกไว้ · docs/41) */
+export async function getImportantSites(
+  scope: Pick<AuthorizationContext, "isGlobalScope" | "communityIds">,
+  communityId?: string,
+): Promise<ImportantSitePoint[]> {
+  if (!scope.isGlobalScope && scope.communityIds.length === 0) return [];
   const rows = await prisma.evacuationSite.findMany({
-    where: { isActive: true, ...(communityId ? { communityId } : {}) },
+    where: {
+      isActive: true,
+      AND: [
+        ...(scope.isGlobalScope ? [] : [{ communityId: { in: scope.communityIds } }]),
+        ...(communityId ? [{ communityId }] : []),
+      ],
+    },
     select: {
       id: true, communityId: true, name: true, type: true, address: true,
       latitude: true, longitude: true, capacity: true,

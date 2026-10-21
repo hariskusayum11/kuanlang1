@@ -5,6 +5,7 @@ import {
   canAccessCommunity,
   hasAnyPermission,
   hasPermission,
+  isCommunityScopedAccount,
 } from "../../lib/authz/access";
 import { ALL_PERMISSIONS, PERMISSIONS } from "../../lib/authz/permissions";
 import {
@@ -52,9 +53,9 @@ describe("permissions constants", () => {
     }
   });
 
-  it("ทุก role เห็นทุกชุมชน — Community Scope ถูกยกเลิกทั้งระบบ (#R7-B)", () => {
+  it("ทุก role เห็นทุกชุมชน ยกเว้นหัวหน้าชุมชน (#R7-B + docs/41)", () => {
     for (const role of ACTIVE_ROLES) {
-      expect(buildAuthorization([role]).isGlobalScope).toBe(true);
+      expect(buildAuthorization([role]).isGlobalScope).toBe(role !== UserRoleEnum.COMMUNITY_LEADER);
     }
   });
 });
@@ -119,11 +120,26 @@ describe("buildAuthorization", () => {
 
 
 
-  it("ทุก role เป็น global scope — Community Scope ถูกยกเลิก (#R7-B)", () => {
+  it("ทุก role เป็น global scope ยกเว้นหัวหน้าชุมชน — Community Scope ถูกยกเลิก (#R7-B)", () => {
     for (const role of Object.values(UserRoleEnum)) {
-      expect(buildAuthorization([role]).isGlobalScope).toBe(true);
+      expect(buildAuthorization([role]).isGlobalScope).toBe(role !== UserRoleEnum.COMMUNITY_LEADER);
     }
     expect(buildAuthorization([]).isGlobalScope).toBe(true);
+  });
+
+  it("หัวหน้าชุมชนถูกจำกัดขอบเขต เว้นแต่ถือ Role ที่เห็นทั้งระบบอยู่แล้ว (docs/41)", () => {
+    const L = UserRoleEnum.COMMUNITY_LEADER;
+    expect(isCommunityScopedAccount([L])).toBe(true);
+    // Role ที่ไม่มีหน้าข้อมูลชุมชนของตัวเอง ห้ามปลดขอบเขต (ไม่งั้นได้แดชบอร์ดทั้งระบบผ่านสิทธิ์หัวหน้า)
+    expect(isCommunityScopedAccount([L, UserRoleEnum.VOLUNTEER])).toBe(true);
+    expect(isCommunityScopedAccount([L, UserRoleEnum.DATA_ENTRY])).toBe(true);
+    expect(isCommunityScopedAccount([L, UserRoleEnum.FIELD_SURVEYOR])).toBe(true);
+    for (const role of [UserRoleEnum.ADMIN, UserRoleEnum.EXECUTIVE, UserRoleEnum.OFFICER, UserRoleEnum.COORDINATOR, UserRoleEnum.RESEARCHER, UserRoleEnum.VERIFIER]) {
+      expect(isCommunityScopedAccount([L, role])).toBe(false);
+      expect(buildAuthorization([L, role]).isGlobalScope).toBe(true);
+    }
+    // ธงเดิมยกระดับขอบเขตไม่ได้
+    expect(buildAuthorization([L], { hasGlobalCommunityScope: true }).isGlobalScope).toBe(false);
   });
 
   it("ธง hasGlobalCommunityScope ไม่มีผลอีกแล้ว — ทุกค่าให้ผลเหมือนกัน", () => {
@@ -262,10 +278,35 @@ describe("visibleNavItems", () => {
     expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/volunteer"]);
   });
 
-  it("COMMUNITY_LEADER เห็นเฉพาะหน้าสถานะกลุ่มเปราะบาง — ไม่มีสิทธิ์อื่น (docs/34)", () => {
+  it("COMMUNITY_LEADER เห็นสถานะกลุ่มเปราะบาง + แดชบอร์ด/ชุมชน/แผนที่ เท่านั้น (docs/34, docs/41)", () => {
     const { permissions } = buildAuthorization([UserRoleEnum.COMMUNITY_LEADER]);
-    expect(permissions).toEqual([PERMISSIONS.VULNERABLE_STATUS_UPDATE]);
-    expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/community-status"]);
+    expect([...permissions].sort()).toEqual(
+      [
+        PERMISSIONS.VULNERABLE_STATUS_UPDATE,
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.COMMUNITY_VIEW,
+        PERMISSIONS.MAP_VIEW,
+      ].sort(),
+    );
+    expect(visibleNavItems(permissions).map((i) => i.href)).toEqual([
+      "/dashboard",
+      "/community-status",
+      "/communities",
+      "/map",
+    ]);
+    // ห้ามได้สิทธิ์ข้อมูลรายบ้าน/สุขภาพ/รายงาน/ส่งออก/ตั้งค่า
+    for (const forbidden of [
+      PERMISSIONS.HOUSEHOLD_VIEW,
+      PERMISSIONS.MEDICAL_CASE_VIEW,
+      PERMISSIONS.MEDICAL_DASHBOARD_VIEW,
+      PERMISSIONS.MEDICAL_MAP_VIEW,
+      PERMISSIONS.REPORT_VIEW,
+      PERMISSIONS.REPORT_SEGMENT_EXPORT,
+      PERMISSIONS.COMMUNITY_MANAGE,
+      PERMISSIONS.SETTINGS_VIEW,
+    ]) {
+      expect(permissions).not.toContain(forbidden);
+    }
   });
 
   it("บทบาทอื่นนอกจาก ADMIN/หัวหน้าชุมชน บันทึกสถานะกลุ่มเปราะบางไม่ได้", () => {

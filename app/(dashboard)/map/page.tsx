@@ -1,5 +1,6 @@
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
+import { scopedCommunityIds } from "@/lib/authz/access";
 import { getHouseholdLayerMap, type HouseholdMapFilters } from "@/lib/geo/household-layer-map";
 import { MapWorkspace } from "@/components/geo/map-workspace";
 import { getSystemPreferences } from "@/lib/settings/core";
@@ -37,9 +38,10 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
   const [householdMap, preferences, sites, boundaries, communitySummary, helpPriority] = await Promise.all([
     getHouseholdLayerMap(ctx, filters),
     getSystemPreferences(),
-    getImportantSites(filters.communityId),
+    getImportantSites(ctx, filters.communityId),
     // ขอบเขตทุกชุมชนเป็นบริบทเสมอ (ชุมชนที่เลือกถูกเน้นฝั่ง client) — ระดับชุมชน ไม่ใช่รายบ้าน
-    getCurrentCommunityBoundaries({ communityIds: ctx.isGlobalScope ? undefined : ctx.communityIds }),
+    // หัวหน้าชุมชนเห็นเฉพาะขอบเขตชุมชนของตน (docs/41)
+    getCurrentCommunityBoundaries({ communityIds: scopedCommunityIds(ctx) }),
     // กล่องข้อมูลเมื่อกดชุมชน — ตัวเลขรวมระดับชุมชน (docs/35)
     getCommunityMapSummaries(ctx),
     // ลำดับการช่วยเหลือ (docs/40) — ทุกบ้านที่ตรวจแล้วตามตัวกรองเดียวกัน · null = ไม่มีสิทธิ์ household.view
