@@ -33,6 +33,9 @@ export const PERMISSIONS = {
   // credential ของผู้อื่น เป็นคนละระดับความเสี่ยง และอาจต้องแยกมอบสิทธิ์ในอนาคต
   USER_PASSWORD_RESET: "user.password-reset",
   REGISTRATION_MANAGE: "registration.manage",
+  // แก้กฎการจัดลำดับ (ความเร่งด่วน/ความเสี่ยง) เป็นเวอร์ชันใหม่ — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS
+  // การ "ดู" กฎใช้ dashboard.view (docs/40) เพื่อให้ทุกฝ่ายเห็นกฎก่อนมีคนแก้
+  PRIORITY_RULES_MANAGE: "priority-rules.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

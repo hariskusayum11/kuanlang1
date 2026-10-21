@@ -1,32 +1,23 @@
 // Risk List core — จัดลำดับความเสี่ยงครัวเรือน (คำนวณสด ไม่เขียนลง DB)
 // ---------------------------------------------------------------------------
-// กติกาสำคัญ (CLAUDE.md + docs/08):
+// กติกาสำคัญ (CLAUDE.md + docs/08 + docs/40):
 // - RBAC ฝั่ง server (household.view)
 // - คำนวณเฉพาะครัวเรือน VERIFIED เท่านั้น — "ห้ามใช้ข้อมูล Unverified คำนวณ Risk"
-// - ⚠️ ค่าน้ำหนัก/เกณฑ์เป็น v1.0-draft (ยังไม่รับรอง — docs/29) → คำนวณ on-the-fly
-//   ไม่ persist ลง FloodRiskProfile (สคีมายัง WAITING_FOR_BUSINESS_RULE) → แก้ config
-//   ที่เดียวแล้วทุกหน้าคำนวณใหม่ ย้อนกลับได้ 100% ไม่มีคะแนนกำพร้าค้าง (เลี่ยง RISK-06/10)
+// - ใช้กฎเวอร์ชันที่ใช้งานอยู่ (priority_rule_version ล่าสุด · ไม่มี → ค่าร่างในโค้ด)
+//   คำนวณ on-the-fly ไม่ persist ลง FloodRiskProfile → แก้กฎแล้วทุกหน้าคำนวณใหม่ทันที
+// - ไม่มีเพดานจำนวน (เดิม 500 หลัง — บ้านที่เกินหายจากรายการและตัวเลขสรุปโดยไม่มีใครรู้)
 // - Privacy: คืนเฉพาะฟิลด์โครงสร้าง (รหัสใบ, ชุมชน, ระดับ/คะแนน/ความมั่นใจ) ไม่มี PII
 // - Audit READ ทุกครั้งที่เปิดดู
 
-import { AuditAction, SheetStatus } from "@prisma/client";
-import { prisma } from "../prisma";
+import { AuditAction } from "@prisma/client";
 import { writeAuditLog } from "../audit/log";
 import { hasPermission } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
-import {
-  DRAFT_RISK_CONFIG_V1,
-  computeRiskProfile,
-  householdToRiskInput,
-  totalSystemWeight,
-  type RiskLevel,
-} from "@/domain/risk";
-import { effectiveTriage, type TriageCode } from "@/domain/triage";
-import { calculateFloodDepthCm } from "@/domain/flood/depth";
-
-/** เพดานจำนวนครัวเรือนที่ดึงมาคำนวณต่อครั้ง — กันโหลดทั้งฐานในคำขอเดียว */
-export const RISK_LIST_LIMIT = 500;
+import { totalSystemWeight, type RiskLevel } from "../../domain/risk";
+import { emptyRiskTally, evaluateHousehold, type RiskTally } from "../../domain/rules/impact";
+import { getActiveRuleSet } from "../rules/core";
+import { loadRiskHouseholds } from "./household-risk";
 
 export function canViewRisk(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.HOUSEHOLD_VIEW);
@@ -49,8 +40,8 @@ export interface RiskListResult {
   allowed: boolean;
   rows: RiskRow[];
   /** สรุปจำนวนตามระดับ (รวม insufficient) */
-  counts: Record<"CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT", number>;
-  config: { weightVersion: string; formulaVersion: string; draft: boolean };
+  counts: RiskTally;
+  config: { weightVersion: string; formulaVersion: string; draft: boolean; versionNo: number };
   /** เพดานน้ำหนักที่ map ได้จริง / น้ำหนักทั้งระบบ — บอกว่าเดโมยัง map ไม่ครบ */
   mappableWeight: number;
   systemWeight: number;
@@ -58,42 +49,41 @@ export interface RiskListResult {
 
 const LEVEL_ORDER: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
 
-function emptyCounts(): RiskListResult["counts"] {
-  return { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INSUFFICIENT: 0 };
-}
+// ปัจจัยที่ map จากแบบสอบถามได้จริง (domain/risk/factors.ts) — ที่เหลือยัง BLANK ทั้งระบบ
+const MAPPABLE_CODES = new Set([
+  "FLOOR_LEVEL",
+  "HAS_FLOODED",
+  "FLOOD_DEPTH",
+  "FLOOD_DURATION",
+  "HAS_P1",
+  "HAS_P2",
+  "NO_SURVIVAL_KIT",
+  "UNKNOWN_EVAC_SITE",
+]);
 
 /**
- * ดึงครัวเรือน VERIFIED มาคำนวณความเสี่ยงสด ๆ แล้วจัดลำดับ (เร่งด่วนสุดก่อน)
+ * ดึงครัวเรือน VERIFIED ทั้งหมดมาคำนวณความเสี่ยงสด ๆ แล้วจัดลำดับ (เร่งด่วนสุดก่อน)
  * คืน allowed=false เมื่อไม่มีสิทธิ์
  */
 export async function getRiskList(
   ctx: AuthorizationContext,
 ): Promise<RiskListResult> {
-  const config = DRAFT_RISK_CONFIG_V1;
+  const rules = await getActiveRuleSet();
+  const config = rules.risk;
   const systemWeight = totalSystemWeight(config);
-  // น้ำหนักที่ map ได้จริง (8 ปัจจัย) — ที่เหลือยัง BLANK ทั้งระบบ
-  const mappableCodes = new Set([
-    "FLOOR_LEVEL",
-    "HAS_FLOODED",
-    "FLOOD_DEPTH",
-    "FLOOD_DURATION",
-    "HAS_P1",
-    "HAS_P2",
-    "NO_SURVIVAL_KIT",
-    "UNKNOWN_EVAC_SITE",
-  ]);
   const mappableWeight = config.factors
-    .filter((f) => mappableCodes.has(f.code))
+    .filter((f) => MAPPABLE_CODES.has(f.code))
     .reduce((s, f) => s + f.weight, 0);
 
   const base = {
     allowed: false as boolean,
     rows: [] as RiskRow[],
-    counts: emptyCounts(),
+    counts: emptyRiskTally(),
     config: {
       weightVersion: config.weightVersion,
       formulaVersion: config.formulaVersion,
-      draft: config.draft,
+      draft: rules.isDraft,
+      versionNo: rules.versionNo,
     },
     mappableWeight,
     systemWeight,
@@ -101,71 +91,13 @@ export async function getRiskList(
 
   if (!canViewRisk(ctx)) return base;
 
-  const households = await prisma.household.findMany({
-    where: {
-      deletedAt: null,
-      hasDuplicateFlag: false,
-      sheet: { status: SheetStatus.VERIFIED },
-    },
-    take: RISK_LIST_LIMIT,
-    select: {
-      id: true,
-      sheet: { select: { sheetNo: true } },
-      community: { select: { nameTh: true } },
-      floodRiskProfile: {
-        select: {
-          floorLevelVsRoad: true,
-          hasFloodedBefore: true,
-          floodDepthMetersRaw: true,
-          floodDepthCmRaw: true,
-          maxFloodDepthCm: true,
-          lastFloodDurationDays: true,
-          hasSurvivalKit: true,
-          nearestEvacSiteType: true,
-        },
-      },
-      vulnerablePersons: {
-        where: { isActive: true },
-        select: {
-          triageLevel: true,
-          vulnerabilities: {
-            select: { vulnerabilityType: { select: { code: true, basePriority: true } } },
-          },
-        },
-      },
-    },
-  });
-
+  const households = await loadRiskHouseholds({}, ctx.isGlobalScope ? undefined : ctx.communityIds);
   const rows: RiskRow[] = households.map((h) => {
-    const p = h.floodRiskProfile;
-    const triages = h.vulnerablePersons
-      .map((v) => effectiveTriage(
-        v.triageLevel as TriageCode | null,
-        v.vulnerabilities.map((item) => item.vulnerabilityType.basePriority as TriageCode),
-      ))
-      .filter((t): t is NonNullable<typeof t> => t !== null);
-    const codes = h.vulnerablePersons.flatMap((v) =>
-      v.vulnerabilities.map((pv) => pv.vulnerabilityType.code),
-    );
-
-    const input = householdToRiskInput({
-      floorLevelVsRoad: p?.floorLevelVsRoad ?? null,
-      hasFloodedBefore: p?.hasFloodedBefore ?? null,
-      maxFloodDepthCm: p
-        ? calculateFloodDepthCm(p.floodDepthMetersRaw, p.floodDepthCmRaw) ?? p.maxFloodDepthCm
-        : null,
-      lastFloodDurationDays: p?.lastFloodDurationDays ?? null,
-      hasSurvivalKit: p?.hasSurvivalKit ?? null,
-      nearestEvacSiteType: p?.nearestEvacSiteType ?? null,
-      vulnerableTriages: triages,
-      vulnerabilityCodes: codes,
-    });
-    const r = computeRiskProfile(input, config);
-
+    const { risk: r } = evaluateHousehold(h, rules.triage, config);
     return {
       householdId: h.id,
-      sheetNo: h.sheet.sheetNo,
-      communityTh: h.community.nameTh,
+      sheetNo: h.sheetNo,
+      communityTh: h.communityTh,
       level: r.riskLevelAuto,
       absoluteScore: r.absoluteScore,
       confidence: r.riskConfidence,
@@ -183,7 +115,7 @@ export async function getRiskList(
     return b.absoluteScore - a.absoluteScore;
   });
 
-  const counts = emptyCounts();
+  const counts = emptyRiskTally();
   for (const r of rows) counts[r.level ?? "INSUFFICIENT"] += 1;
 
   await writeAuditLog({

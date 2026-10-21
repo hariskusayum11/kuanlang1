@@ -11,6 +11,9 @@ import type { CommunityMapSummary } from "@/lib/geo/community-map-summary";
 import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
 import { depthBin, FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
 import { highestUrgency, MAP_URGENCY_LABELS } from "@/domain/geo/map-urgency";
+import { HELP_URGENCY_LABELS, HELP_URGENCY_WORD } from "@/domain/geo/help-priority";
+import { RISK_LEVEL_LABEL } from "@/domain/rules/priority-rules";
+import type { HelpCase } from "@/lib/risk/help-priority";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
 
@@ -180,6 +183,38 @@ function groupedPopup(points: HouseholdLayerPoint[]): string {
   return `<div style="font-family:system-ui;min-width:270px;max-height:380px;overflow:auto;line-height:1.5">
     <div style="position:sticky;top:0;z-index:1;padding:8px;background:white;border-bottom:2px solid #cbd5e1;font-weight:800">พิกัดนี้มี ${points.length.toLocaleString("th-TH")} ครัวเรือน</div>
     ${points.map((point, index) => `<div style="margin-top:10px;padding:8px;border:1px solid #e2e8f0;border-radius:10px"><div style="margin-bottom:6px;color:#2563eb;font-size:12px;font-weight:800">ครัวเรือนที่ ${index + 1}</div>${popup(point)}</div>`).join("")}
+  </div>`;
+}
+
+/** หมุดลำดับการช่วยเหลือ — ตัวเลข = ลำดับในรายการ · สีตามความเร่งด่วน (คลาสใน globals.css) */
+export function helpMarkerHtml(item: Pick<HelpCase, "rank" | "urgency">): string {
+  const tone = item.urgency === "none" ? "map-help-none" : `map-urgency map-urgency-${item.urgency}`;
+  return `<span class="${tone} map-help-rank" title="${HELP_URGENCY_LABELS[item.urgency]}">${item.rank.toLocaleString("th-TH")}</span>`;
+}
+
+function helpPopup(item: HelpCase): string {
+  const t = item.triage;
+  const people = t.P1 + t.P2 + t.P3 + t.UNASSESSED;
+  const address = [item.houseNo ? `บ้านเลขที่ ${item.houseNo}` : "ไม่ระบุบ้านเลขที่", item.mooNo ? `หมู่ ${item.mooNo}` : null].filter(Boolean).join(" · ");
+  const rows = [
+    popupRow("ความเร่งด่วน", escapeHtml(HELP_URGENCY_LABELS[item.urgency])),
+    people
+      ? popupRow("กลุ่มเปราะบาง", `<b>${people.toLocaleString("th-TH")}</b> คน<br/><span style="font-weight:400;color:#475569">วิกฤต ${t.P1} · เร่งด่วน ${t.P2} · เฝ้าระวัง ${t.P3}${t.UNASSESSED ? ` · ยังไม่ประเมิน ${t.UNASSESSED}` : ""}</span>`)
+      : "",
+    popupRow(
+      "ความเสี่ยงบ้าน",
+      `${item.riskLevel ? RISK_LEVEL_LABEL[item.riskLevel] : "ข้อมูลไม่พอประเมิน"} · คะแนน ${item.absoluteScore.toLocaleString("th-TH")}<br/><span style="font-weight:400;color:#475569">ความมั่นใจ ${Math.round(item.confidence * 100)}%${item.hardRule ? " · เข้ากฎบังคับ (ผู้ป่วยติดเตียง/ฟอกไต)" : ""}</span>`,
+    ),
+  ];
+  const googleMapsUrl = item.lat != null && item.lng != null ? `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}` : null;
+  return `<div style="font-family:system-ui;min-width:250px;max-width:320px;line-height:1.45">
+    <div style="padding-bottom:8px;border-bottom:2px solid #dbeafe">
+      <div style="font-size:12px;font-weight:800;color:#2563eb">ลำดับที่ ${item.rank.toLocaleString("th-TH")}</div>
+      <div style="font-size:15px;font-weight:800;color:#0f172a">${escapeHtml(address)}</div>
+      <div style="margin-top:3px;font-size:12px;color:#64748b">${escapeHtml(item.communityName)} · รหัสใบ ${escapeHtml(item.sheetNo)}</div>
+    </div>
+    <div>${rows.join("")}</div>
+    ${googleMapsUrl ? `<a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:10px;padding:8px 12px;border-radius:8px;background:#2563eb;color:white;text-align:center;text-decoration:none;font-size:12px;font-weight:700">เปิดเส้นทางใน Google Maps ↗</a>` : ""}
   </div>`;
 }
 
@@ -355,6 +390,9 @@ export function HouseholdLayerMap({
   selectedCommunityId,
   fitKey,
   onCenterChange,
+  helpCases = null,
+  helpOn = false,
+  focusCase = null,
 }: {
   points: HouseholdLayerPoint[];
   sites: ImportantSitePoint[];
@@ -376,6 +414,12 @@ export function HouseholdLayerMap({
   selectedCommunityId?: string;
   fitKey: string;
   onCenterChange?: (center: { lat: number; lng: number }) => void;
+  /** ลำดับการช่วยเหลือ (docs/40) — null = ผู้ใช้ไม่มีสิทธิ์ */
+  helpCases?: HelpCase[] | null;
+  /** เปิดชั้นลำดับการช่วยเหลือ — ซ่อนหมุดชั้นครัวเรือนชั่วคราวไม่ให้ซ้อนกัน */
+  helpOn?: boolean;
+  /** กดรายการ → ซูมไปบ้านนั้นและเปิดกล่องข้อมูล (nonce ให้กดซ้ำบ้านเดิมได้) */
+  focusCase?: { id: string; nonce: number } | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<LeafletHandle | null>(null);
@@ -483,9 +527,9 @@ export function HouseholdLayerMap({
     return () => { group.remove(); };
   }, [handle, boundaries, showBoundaries, selectedCommunityId, communitySummaries, summaryGeneratedAt]);
 
-  // จุดครัวเรือน (รวมจุดที่พิกัดซ้ำเป็นหมุดเดียว)
+  // จุดครัวเรือน (รวมจุดที่พิกัดซ้ำเป็นหมุดเดียว) — ซ่อนเมื่อเปิดลำดับการช่วยเหลือ
   useEffect(() => {
-    if (!handle) return;
+    if (!handle || helpOn) return;
     const { L, map } = handle;
     const group = L.layerGroup().addTo(map);
     const markerKeys = HOUSEHOLD_LAYERS.filter((layer) => layers.includes(layer.key));
@@ -514,7 +558,39 @@ export function HouseholdLayerMap({
         .bindPopup(groupedPopup(members), { maxWidth: 340 });
     }
     return () => { group.remove(); };
-  }, [handle, points, layers, volunteerSkill]);
+  }, [handle, points, layers, volunteerSkill, helpOn]);
+
+  // ลำดับการช่วยเหลือ — หมุดตัวเลขตามลำดับ (ลำดับต้นอยู่บนสุดเมื่อซ้อนกัน)
+  const helpMarkersRef = useRef(new Map<string, import("leaflet").Marker>());
+  useEffect(() => {
+    if (!handle || !helpOn || !helpCases) return;
+    const { L, map } = handle;
+    const group = L.layerGroup().addTo(map);
+    const markers = helpMarkersRef.current;
+    markers.clear();
+    for (const item of helpCases) {
+      if (item.lat == null || item.lng == null) continue;
+      const width = 18 + String(item.rank).length * 7;
+      const marker = L.marker([item.lat, item.lng], {
+        icon: L.divIcon({ className: "", html: helpMarkerHtml(item), iconSize: [width, 26], iconAnchor: [width / 2, 13] }),
+        zIndexOffset: 1000 + Math.max(0, 9000 - item.rank),
+        title: `ลำดับ ${item.rank} · ${HELP_URGENCY_WORD[item.urgency]}`,
+      })
+        .addTo(group)
+        .bindTooltip(`ลำดับ ${item.rank.toLocaleString("th-TH")} · ${HELP_URGENCY_WORD[item.urgency]}`, { direction: "top", offset: [0, -12] })
+        .bindPopup(helpPopup(item), { maxWidth: 340 });
+      markers.set(item.householdId, marker);
+    }
+    return () => { markers.clear(); group.remove(); };
+  }, [handle, helpCases, helpOn]);
+
+  useEffect(() => {
+    if (!handle || !focusCase) return;
+    const marker = helpMarkersRef.current.get(focusCase.id);
+    if (!marker) return;
+    handle.map.setView(marker.getLatLng(), Math.max(handle.map.getZoom(), 18), { animate: true });
+    marker.openPopup();
+  }, [handle, focusCase]);
 
   // จุดสำคัญ แยกตามประเภท
   useEffect(() => {

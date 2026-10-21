@@ -41,6 +41,7 @@ describe("map view state (URL query)", () => {
       skill: "RESCUE",
       siteTypes: ["OTHER", "SCHOOL"],
       boundaries: false,
+      help: true,
     };
     const query = serializeMapViewState(original, SITE_TYPES);
     const reparsed = parseMapViewState(Object.fromEntries(new URLSearchParams(query)), SITE_TYPES);
@@ -71,6 +72,7 @@ describe("map view state (URL query)", () => {
       skill: undefined,
       siteTypes: ["SCHOOL"],
       boundaries: true,
+      help: false,
     });
   });
 
@@ -93,5 +95,13 @@ describe("map view state (URL query)", () => {
     expect(parseMapViewState({ boundary: "none" }, SITE_TYPES).boundaries).toBe(false);
     expect(parseMapViewState({ boundary: "OFF" }, SITE_TYPES).boundaries).toBe(false);
     expect(parseMapViewState({ boundary: "<x>" }, SITE_TYPES).boundaries).toBe(true);
+  });
+
+  it("ลำดับการช่วยเหลือ: ปิดเป็นค่าเริ่มต้น · เปิดเขียนเป็น help=on รูปเดียว (docs/40)", () => {
+    expect(parseMapViewState({}, SITE_TYPES).help).toBe(false);
+    const on = parseMapViewState({ help: "1" }, SITE_TYPES);
+    expect(on.help).toBe(true);
+    expect(serializeMapViewState(on, SITE_TYPES)).toBe("help=on");
+    expect(parseMapViewState({ help: "<x>" }, SITE_TYPES).help).toBe(false);
   });
 });

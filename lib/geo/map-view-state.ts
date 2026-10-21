@@ -35,10 +35,14 @@ export interface MapViewState {
   siteTypes: string[];
   /** ชั้นเส้นขอบชุมชน (ค่าเริ่มต้น = เปิด · ปิดเขียนเป็น `boundary=off`) */
   boundaries: boolean;
+  /** ชั้น "ลำดับการช่วยเหลือ" (ค่าเริ่มต้น = ปิด · เปิดเขียนเป็น `help=on`) — docs/40 */
+  help: boolean;
 }
 
 /** ค่าที่หมายถึง "ปิดชั้นเส้นขอบชุมชน" ใน URL — เขียนออกเป็น `off` เสมอ */
 const BOUNDARY_OFF_VALUES = new Set(["off", NONE_TOKEN, "0", "false"]);
+/** ค่าที่หมายถึง "เปิดลำดับการช่วยเหลือ" — เขียนออกเป็น `on` เสมอ */
+const HELP_ON_VALUES = new Set(["on", "1", "true"]);
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -94,6 +98,7 @@ export function parseMapViewState(
     skill: cleanId(first(params.skill)),
     siteTypes: parseList(first(params.sites), allSiteTypes, allSiteTypes),
     boundaries: !BOUNDARY_OFF_VALUES.has(first(params.boundary)?.trim().toLowerCase() ?? ""),
+    help: HELP_ON_VALUES.has(first(params.help)?.trim().toLowerCase() ?? ""),
   };
 }
 
@@ -125,6 +130,7 @@ export function serializeMapViewState(
     params.set("sites", listValue(state.siteTypes, allSiteTypes));
   }
   if (!state.boundaries) params.set("boundary", "off");
+  if (state.help) params.set("help", "on");
   // จุลภาคใช้ใน query ได้ตามมาตรฐาน — ไม่ encode เป็น %2C เพื่อให้ลิงก์ที่ส่งต่อกันอ่านออก
   return params.toString().replace(/%2C/gi, ",");
 }

@@ -9,8 +9,8 @@ import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-her
 export const metadata = { title: "ความเสี่ยงน้ำท่วม" };
 export const dynamic = "force-dynamic";
 
-// จัดลำดับความเสี่ยงครัวเรือน (VERIFIED) — คำนวณสด ไม่เขียนลง DB
-// ⚠️ ค่าน้ำหนัก/เกณฑ์เป็น v1.0-draft ยังไม่รับรอง (docs/29) — แก้ config แล้วอัปเดตทันที
+// จัดลำดับความเสี่ยงครัวเรือน (VERIFIED ทุกหลัง) — คำนวณสด ไม่เขียนลง DB
+// ใช้กฎเวอร์ชันที่ใช้งานอยู่ (docs/40) — แอดมินแก้กฎที่ /priority-rules แล้วอัปเดตทันที
 export default async function RiskPage() {
   const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
   const result = await getRiskList(ctx);
@@ -32,19 +32,26 @@ export default async function RiskPage() {
         }
       />
 
-      {/* แบนเนอร์เตือน — ตัวเลขยังไม่รับรอง */}
-      <div className="flex items-start gap-3 rounded-xl border border-sun-400 bg-sun-100 px-4 py-3">
-        <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-sun-400 font-black text-ink-900">
-          !
-        </span>
-        <p className="text-sm leading-relaxed text-ink-900">
-          <b>ตัวเลขทดลอง (v{result.config.weightVersion}) — ยังไม่ได้รับการรับรอง</b>{" "}
-          น้ำหนักและเกณฑ์การจัดระดับยังรอเจ้าของระบบ/อาจารย์เคาะ (ดู docs/29) ·
-          ระบบคำนวณสดทุกครั้งที่เปิดหน้า <b>ไม่ได้บันทึกคะแนนลงฐานข้อมูล</b> —
-          เมื่อปรับค่าที่รับรองแล้วตัวเลขจะอัปเดตทันที · ปัจจุบัน map ได้ {mappablePct}% ของน้ำหนัก
-          (ปัจจัยพาหนะ/ทรัพยากร/ช่องทางดิจิทัล/ระยะทาง GIS ยังไม่พร้อม จึงยังไม่ถูกนับ)
+      {/* แบนเนอร์เตือน — กฎยังไม่รับรอง (docs/40) */}
+      {result.config.draft ? (
+        <div className="flex items-start gap-3 rounded-xl border border-sun-400 bg-sun-100 px-4 py-3">
+          <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-sun-400 font-black text-ink-900">
+            !
+          </span>
+          <p className="text-sm leading-relaxed text-ink-900">
+            <b>ตัวเลขทดลอง (กฎเวอร์ชัน {result.config.versionNo || "ตั้งต้น"} · v{result.config.weightVersion}) — ยังไม่ได้รับการรับรอง</b>{" "}
+            น้ำหนักและเกณฑ์การจัดระดับยังรอเจ้าของระบบรับรอง ·{" "}
+            <Link href="/priority-rules" className="font-semibold underline underline-offset-2">ดูกฎทั้งหมด</Link> ·
+            ระบบคำนวณสดทุกครั้งที่เปิดหน้า <b>ไม่ได้บันทึกคะแนนลงฐานข้อมูล</b> · ปัจจุบัน map ได้ {mappablePct}% ของน้ำหนัก
+            (ปัจจัยพาหนะ/ทรัพยากร/ช่องทางดิจิทัล/ระยะทาง GIS ยังไม่พร้อม จึงยังไม่ถูกนับ)
+          </p>
+        </div>
+      ) : (
+        <p className="px-1 text-sm text-slate-600">
+          คำนวณด้วยกฎเวอร์ชัน {result.config.versionNo} (รับรองแล้ว) ·{" "}
+          <Link href="/priority-rules" className="font-semibold text-brand-700 underline underline-offset-2">ดูกฎทั้งหมด</Link>
         </p>
-      </div>
+      )}
 
       {/* สรุปตามระดับ */}
       <div className="stagger grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">

@@ -304,12 +304,13 @@ model User {
   answeredQueries          FieldQuery[]              @relation("answeredBy")
 
   // Relations — Household
-  enteredHouseholds            Household[]        @relation("enteredBy")
-  verifiedHouseholds           Household[]        @relation("verifiedBy")
-  surveyedHouseholds           Household[]        @relation("surveyorUser") // FK ที่ขาด (SCH-20)
-  duplicateResolvedHouseholds  Household[]        @relation("duplicateResolvedBy")
-  deactivatedVulnerablePersons VulnerablePerson[] @relation("vulnerableDeactivatedBy")
-  verifiedShelters             EvacuationSite[]   @relation("shelterVerifiedBy")
+  enteredHouseholds            Household[]           @relation("enteredBy")
+  verifiedHouseholds           Household[]           @relation("verifiedBy")
+  surveyedHouseholds           Household[]           @relation("surveyorUser") // FK ที่ขาด (SCH-20)
+  duplicateResolvedHouseholds  Household[]           @relation("duplicateResolvedBy")
+  deactivatedVulnerablePersons VulnerablePerson[]    @relation("vulnerableDeactivatedBy")
+  verifiedShelters             EvacuationSite[]      @relation("shelterVerifiedBy")
+  priorityRuleVersions         PriorityRuleVersion[] @relation("priorityRuleCreatedBy")
 
   // Relations — Batch
   receivedBatches PaperBatch[] @relation("receivedBy")
@@ -1394,6 +1395,26 @@ model RiskWeightConfig {
   updatedBy     String? /// ใครปรับล่าสุด
 
   @@map("risk_weight_config")
+}
+
+/// กฎการจัดลำดับ (ความเร่งด่วนรายบุคคล + ความเสี่ยงครัวเรือน) แบบมีเวอร์ชัน — docs/40
+/// ⚠️ Append-only: แก้กฎ = เพิ่มแถวใหม่ (versionNo + 1) ห้าม UPDATE/DELETE แถวเดิม
+/// เวอร์ชันที่ใช้งาน = versionNo สูงสุด · ไม่มีแถวเลย → ใช้ค่าร่างในโค้ด (DRAFT_RISK_CONFIG_V1)
+model PriorityRuleVersion {
+  id          String   @id @default(cuid())
+  versionNo   Int      @unique /// 1, 2, 3 … (unique กันสองคนบันทึกชนกัน)
+  isDraft     Boolean  @default(true) /// true = ยังไม่ได้รับการรับรองจากเจ้าของระบบ
+  /// RiskWeightConfig ทั้งชุด (ปัจจัย/น้ำหนัก/เกณฑ์/ความมั่นใจ/กฎบังคับ) — ตรวจด้วย Zod ตอนอ่าน
+  riskConfig  Json
+  /// สำเนาการจับคู่ประเภทความเปราะบาง → P1/P2/P3 ณ เวอร์ชันนี้ (ค่าใช้งานจริงอยู่ที่ VulnerabilityType.basePriority)
+  triageMap   Json
+  reason      String /// เหตุผลการแก้ (บังคับ)
+  createdById String? /// null = seed
+  createdAt   DateTime @default(now())
+
+  createdBy User? @relation("priorityRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("priority_rule_version")
 }
 
 // =============================================================================

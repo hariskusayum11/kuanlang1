@@ -8,6 +8,7 @@ import { parseMapViewState, type RawSearchParams } from "@/lib/geo/map-view-stat
 import { dateRangeError } from "@/lib/household/trusted-where";
 import { getCurrentCommunityBoundaries } from "@/lib/geo/community-boundaries";
 import { getCommunityMapSummaries } from "@/lib/geo/community-map-summary";
+import { getHelpPriority } from "@/lib/risk/help-priority";
 
 export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
     dateTo: view.dateTo,
   };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
-  const [householdMap, preferences, sites, boundaries, communitySummary] = await Promise.all([
+  const [householdMap, preferences, sites, boundaries, communitySummary, helpPriority] = await Promise.all([
     getHouseholdLayerMap(ctx, filters),
     getSystemPreferences(),
     getImportantSites(filters.communityId),
@@ -41,6 +42,8 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
     getCurrentCommunityBoundaries({ communityIds: ctx.isGlobalScope ? undefined : ctx.communityIds }),
     // กล่องข้อมูลเมื่อกดชุมชน — ตัวเลขรวมระดับชุมชน (docs/35)
     getCommunityMapSummaries(ctx),
+    // ลำดับการช่วยเหลือ (docs/40) — ทุกบ้านที่ตรวจแล้วตามตัวกรองเดียวกัน · null = ไม่มีสิทธิ์ household.view
+    getHelpPriority(ctx, filters),
   ]);
   const labelPoints = boundaries.flatMap((boundary) => (boundary.labelPoint ? [boundary.labelPoint] : []));
   const average = (items: { lat: number; lng: number }[]) => ({
@@ -73,6 +76,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
       defaultZoom={preferences.mapDefaultZoom}
       filterError={filterError}
       canManageSites={canManageImportantSites(ctx)}
+      helpPriority={helpPriority}
     />
   );
 }
