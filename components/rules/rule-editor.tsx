@@ -12,6 +12,16 @@ import type { TriageCode } from "@/domain/triage";
 
 type Names = { factors: Record<string, string>; hardRules: Record<string, string>; types: Record<string, string> };
 
+/** ค่าล้วน — server component สร้างแล้วส่งให้ client ได้ (components/rules/rule-sections.tsx → ruleEditorProps) */
+export interface RuleEditorProps {
+  baseVersionNo: number;
+  initial: RuleEditValues;
+  factors: { code: string; nameTh: string; collected: boolean }[];
+  hardRules: { code: string; nameTh: string }[];
+  types: { code: string; nameTh: string; isActive: boolean }[];
+  names: Names;
+}
+
 const TRIAGE_OPTIONS: { value: TriageCode; label: string }[] = [
   { value: "P1", label: "วิกฤต — ภายใน 30 นาที" },
   { value: "P2", label: "เร่งด่วน — ภายใน 2 ชั่วโมง" },
@@ -67,7 +77,10 @@ function toPayload(form: Form, baseVersionNo: number) {
 
 const nf = (n: number) => n.toLocaleString("th-TH");
 
-/** ตัวแก้กฎ (ADMIN) — แก้ → ดูผลกระทบ → ระบุเหตุผล → บันทึกเป็นเวอร์ชันใหม่ (server ตรวจสิทธิ์ซ้ำ) */
+/**
+ * ตัวแก้กฎ (ADMIN) — แก้ → ดูผลกระทบ → ระบุเหตุผล → บันทึกเป็นเวอร์ชันใหม่ (server ตรวจสิทธิ์ซ้ำ)
+ * `onDone` = ฝังในกล่อง Modal (หน้า /medical /risk): เปิดฟอร์มทันที ยกเลิก/บันทึกแล้วเรียก onDone แทนการพับ
+ */
 export function RuleEditor({
   baseVersionNo,
   initial,
@@ -75,16 +88,12 @@ export function RuleEditor({
   hardRules,
   types,
   names,
-}: {
-  baseVersionNo: number;
-  initial: RuleEditValues;
-  factors: { code: string; nameTh: string; collected: boolean }[];
-  hardRules: { code: string; nameTh: string }[];
-  types: { code: string; nameTh: string; isActive: boolean }[];
-  names: Names;
-}) {
+  titleId,
+  onDone,
+}: RuleEditorProps & { titleId?: string; onDone?: (savedMessage: string | null) => void }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const embedded = onDone !== undefined;
+  const [open, setOpen] = useState(embedded);
   const [form, setForm] = useState<Form>(() => toForm(initial));
   const [busy, setBusy] = useState<"preview" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,10 +133,12 @@ export function RuleEditor({
     try {
       const result = await saveRuleVersionAction(payload);
       if (result.ok) {
-        setSaved(`บันทึกเป็นเวอร์ชัน ${result.versionNo} แล้ว${result.triageUpdated ? ` · ปรับระดับความเร่งด่วน ${nf(result.triageUpdated)} คน` : ""}`);
+        const message = `บันทึกเป็นเวอร์ชัน ${result.versionNo} แล้ว${result.triageUpdated ? ` · ปรับระดับความเร่งด่วน ${nf(result.triageUpdated)} คน` : ""}`;
+        setSaved(message);
         setPreview(null);
         setOpen(false);
         router.refresh();
+        onDone?.(message);
       } else {
         setError(("message" in result && result.message) || ERRORS[result.reason] || ERRORS.ERROR);
       }
@@ -141,8 +152,10 @@ export function RuleEditor({
   return (
     <section className="card overflow-hidden border-alert-200">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 bg-slate-50/70 px-6 py-4">
-        <SectionTitle title="แก้กฎ (เฉพาะผู้ดูแลระบบ)" tone="alert" />
-        {!open ? (
+        <SectionTitle id={titleId} title={embedded ? `แก้เกณฑ์ → สร้างเวอร์ชัน ${baseVersionNo + 1}` : "แก้กฎ (เฉพาะผู้ดูแลระบบ)"} tone="alert" />
+        {embedded ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDone(null)} disabled={busy !== null}>ปิด</button>
+        ) : !open ? (
           <button type="button" className="btn btn-accent btn-sm" onClick={() => { setForm(toForm(initial)); setPreview(null); setError(null); setOpen(true); }}>
             แก้กฎ → สร้างเวอร์ชัน {baseVersionNo + 1}
           </button>
@@ -274,7 +287,7 @@ export function RuleEditor({
 
           {error ? <p role="alert" className="text-sm font-medium text-red-700">{error}</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" className="btn btn-ghost btn-md" onClick={() => setOpen(false)} disabled={busy !== null}>ยกเลิก</button>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => (embedded ? onDone(null) : setOpen(false))} disabled={busy !== null}>ยกเลิก</button>
             <button type="submit" className="btn btn-primary btn-md" disabled={busy !== null || !previewFresh}>
               {busy === "save" ? "กำลังบันทึก…" : `บันทึกเป็นเวอร์ชัน ${baseVersionNo + 1}`}
             </button>

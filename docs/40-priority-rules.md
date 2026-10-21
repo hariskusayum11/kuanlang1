@@ -3,7 +3,8 @@
 **Owner Decision 2026-10-19** (ประชุม ข้อ 7–8) · สถานะ: **บังคับใช้แล้ว — ค่าในกฎยังเป็นร่าง รอเจ้าของระบบรับรอง**
 
 ## สิ่งที่เจ้าของระบบตัดสิน
-1. **ทุกฝ่ายต้องเห็นกฎปัจจุบันก่อน** แล้ว ADMIN จึงแก้ได้ — หน้า `/priority-rules` เป็นภาษาไทยล้วน
+1. **ทุกฝ่ายต้องเห็นกฎปัจจุบันก่อน** แล้ว ADMIN จึงแก้ได้ — ภาษาไทยล้วน
+   · **2026-10-21:** อาจารย์ขอให้เห็นเกณฑ์ **บนหน้าที่ใช้จริง** — ดู "กล่องเกณฑ์บนหน้า /medical และ /risk" ด้านล่าง
 2. การแก้ **ไม่เขียนทับ**: ทุกครั้งเป็นเวอร์ชันใหม่ พร้อมผู้แก้ เวลา เหตุผล และ Audit Log ค่าก่อน/หลัง
 3. ต้อง **ดูผลกระทบก่อนบันทึก** (เช่น "วิกฤต 82 → 95 คน", "บ้านสูงมาก 40 → 52 หลัง")
 4. **ห้ามมีรหัส P1/P2/P3 บนหมุด** — ใช้คำไทย (วิกฤต / เร่งด่วน / เฝ้าระวัง) ในคำอธิบายสัญลักษณ์และรายการ
@@ -12,9 +13,26 @@
 ## สิทธิ์
 | การกระทำ | Permission | บทบาท |
 |---|---|---|
-| ดูหน้ากฎ | `dashboard.view` | ADMIN, EXECUTIVE, OFFICER, COORDINATOR, RESEARCHER |
+| ดูกฎ (หน้า `/priority-rules` และกล่องเกณฑ์บน `/medical` `/risk`) | `dashboard.view` | ADMIN, EXECUTIVE, OFFICER, COORDINATOR, RESEARCHER |
 | แก้กฎ / ดูผลกระทบ | `priority-rules.manage` (ใหม่) | ADMIN เท่านั้น (ผ่าน `ALL_PERMISSIONS`) — ตรวจฝั่ง server ทุกครั้ง |
 | ชั้น "ลำดับการช่วยเหลือ" บน `/map` | `map.view` **และ** `household.view` | ADMIN, OFFICER (EXECUTIVE เห็นแผนที่แต่ไม่เห็นชั้นนี้ — เหมือนหน้า `/risk`) |
+
+## กล่องเกณฑ์บนหน้า /medical และ /risk (Owner Decision 2026-10-21)
+แทนเมนู "กฎการจัดลำดับ" แยก — เกณฑ์แสดงตรงหน้าที่ตัวเลขถูกใช้:
+
+| หน้า | สรุปที่เห็นทันที | "ดูเกณฑ์ทั้งหมด" (กางในที่) |
+|---|---|---|
+| `/medical` ข้อมูลสุขภาพและกลุ่มเปราะบาง | วิกฤต / เร่งด่วน / เฝ้าระวัง + ภายใน 30 นาที / 2 ชม. / 6 ชม. + ลักษณะความเปราะบางที่ใช้งานในแต่ละระดับ · ป้ายร่าง | วิธีให้ระดับรายคน · ลักษณะที่ปิดใช้งาน · ลำดับช่วยเหลือบนแผนที่ · ประวัติ 5 เวอร์ชันล่าสุด |
+| `/risk` ความเสี่ยงและการช่วยเหลือ | ปัจจัย + น้ำหนัก (คะแนนเต็ม) · ปัจจัยที่ยังไม่มีข้อมูล · เกณฑ์ ต่ำ/ปานกลาง/สูง/สูงมาก · ความมั่นใจขั้นต่ำ · กฎบังคับ · รุ่นสูตร/น้ำหนัก | ตารางปัจจัยเต็ม · ข้อมูลขาด · สูตรความมั่นใจ · ลำดับช่วยเหลือ · ประวัติ |
+
+- หัวกล่องแสดง **เวอร์ชัน + ร่าง/รับรองแล้ว** เสมอ · ทุกคำเป็นภาษาไทย (ชื่อปัจจัย `HAS_P1`/`HAS_P2` ที่เก็บใน config
+  ยังมีรหัส P — หน้าจอแปลงเป็น "มีคนระดับวิกฤต/เร่งด่วนในบ้าน" ผ่าน `factorLabel()` โดยไม่แก้ข้อมูลที่เก็บ)
+- **ADMIN** เห็นปุ่ม "แก้เกณฑ์" → เปิด `RuleEditor` เดิม (แก้ → ดูผลกระทบ → เหตุผล → บันทึกเวอร์ชันใหม่) ใน `Modal` (portal)
+  บันทึกแล้วปิดกล่อง แสดงผลบันทึก และ `router.refresh()` · บทบาทอื่นไม่ได้รับ props ของตัวแก้เลย และ server action ตรวจ
+  `priority-rules.manage` ซ้ำทุกครั้ง (การซ่อนปุ่มไม่ใช่การกันสิทธิ์)
+- กล่องแสดงเมื่อบัญชีดูกฎได้ (`canViewRules`) — บัญชีที่เปิด `/medical` หรือ `/risk` ได้แต่ไม่มี `dashboard.view` จะไม่เห็นกล่อง
+- **หน้า `/priority-rules` ยังเปิดได้** (ลิงก์ "เปิดหน้ากฎการจัดลำดับฉบับเต็ม" ในกล่อง และจากแผงลำดับช่วยเหลือบนแผนที่)
+  แต่ **ไม่มีเมนูใน Sidebar แล้ว** — ส่วนแสดงผลทั้งสามที่ใช้ชิ้นเดียวกันอยู่ที่ `components/rules/rule-sections.tsx`
 
 ## โครงสร้างข้อมูล
 ตารางใหม่ `priority_rule_version` (migration `20261020030000_priority_rule_version` — เพิ่มอย่างเดียว ย้อนกลับด้วย `DROP TABLE`)
@@ -65,7 +83,8 @@
 ## ไฟล์
 `domain/rules/priority-rules.ts` · `domain/rules/impact.ts` · `domain/geo/help-priority.ts` (Pure) ·
 `lib/rules/{core,actions,validation}.ts` · `lib/risk/{household-risk,help-priority,list}.ts` ·
-`app/(dashboard)/priority-rules/` · `components/rules/rule-editor.tsx` · `components/geo/help-case-list.tsx` ·
+`app/(dashboard)/priority-rules/` · `components/rules/{rule-editor,rule-sections,rules-panel,page-rules-panels}.tsx` ·
+`app/(dashboard)/{medical,risk}/page.tsx` · `components/geo/help-case-list.tsx` ·
 `components/geo/{map-workspace,household-layer-map}.tsx` · เทสต์ `tests/unit/priority-rules.test.ts`,
 `tests/integration/priority-rules.test.ts`
 
