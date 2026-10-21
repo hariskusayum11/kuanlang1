@@ -34,8 +34,8 @@
 
 | | |
 |---|---|
-| Permission | `vulnerable.status.update` **อย่างเดียว** — เข้าหน้าอื่นไม่ได้ · ADMIN ได้ด้วยผ่าน `ALL_PERMISSIONS` |
-| หน้า | `/community-status` (หน้าแรกหลังเข้าระบบ) |
+| Permission | `vulnerable.status.update` + (ตั้งแต่ 2026-10-21) `dashboard.view` · `community.view` · `map.view` เฉพาะชุมชนที่ผูกไว้ — ดู [41](41-community-leader-scope.md) · ADMIN ได้ด้วยผ่าน `ALL_PERMISSIONS` |
+| หน้า | `/community-status` · `/dashboard` (หน้าแรกหลังเข้าระบบ) · `/communities` · `/map` |
 | เห็น | ชื่อ · อายุ · บ้านเลขที่/หมู่ · **ชื่อประเภท**ความเปราะบาง (เช่น "ผู้ป่วยติดเตียง") · รหัสแบบสอบถาม |
 | **ไม่เห็น** | รายละเอียดโรค (`PersonVulnerability.detail`) · เบอร์โทร · พิกัด · ระดับความเร่งด่วน — **ไม่ select ออกจากฐานข้อมูลเลย** ไม่ใช่แค่ซ่อน (เทสต์ตรวจว่าไม่อยู่ใน payload) |
 | ทำได้ | เปลี่ยนสถานะตามตารางข้อ 2 · แก้ข้อมูลกระดาษไม่ได้ |
@@ -44,10 +44,12 @@
 
 ### ข้อยกเว้นของ #R7-B (ยกเลิก Community Scope)
 
-Community Scope ยังยกเลิกทั้งระบบตามเดิม — **หน้านี้หน้าเดียว**ที่อ่าน `UserCommunityScope`
+Community Scope ยังยกเลิกทั้งระบบตามเดิมสำหรับบทบาทอื่น — หน้านี้อ่าน `UserCommunityScope`
 ผ่าน `resolveStatusScope()` (`domain/vulnerable/status.ts`) เพราะหัวหน้าชุมชนเห็นข้อมูลสุขภาพ
-รายบุคคล · ไม่ได้แก้ `buildAuthorization()` และ `isGlobalScope` ยังเป็น `true` เสมอ
-· ไม่ดูธง `hasGlobalCommunityScope` โดยตั้งใจ (ธงนั้นไม่มีความหมายแล้วและอาจค้างค่าเดิม)
+รายบุคคล · ไม่ดูธง `hasGlobalCommunityScope` โดยตั้งใจ (ธงนั้นไม่มีความหมายแล้วและอาจค้างค่าเดิม)
+
+**ปรับ 2026-10-21 (เฟส 4):** `buildAuthorization()` ให้บัญชีหัวหน้าชุมชน `isGlobalScope: false`
+แล้ว — แดชบอร์ด หน้าชุมชน และแผนที่จึงกรองตาม `UserCommunityScope` เดียวกัน ดู [41](41-community-leader-scope.md)
 
 การกำหนดชุมชน (`setUserCommunities`) อยู่ใน `PROTECTED_ACTIONS` (`set-communities`) — ADMIN ทั่วไปแก้ให้บัญชีคุ้มครองไม่ได้
 

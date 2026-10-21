@@ -142,8 +142,10 @@ Redis, BullMQ และ MinIO/S3 ให้ใช้เมื่อมีคว�
 ก่อนเริ่มพัฒนา ต้องตรวจสอบและกำหนดชื่อ Role ให้เป็นมาตรฐานเดียวกันทั้งเอกสาร Schema และ Code
 
 Community Scope ถูกยกเลิกทั้งระบบแล้ว (Owner Decision 2026-08-03 #R7-B) — ทุก Role เห็นทุกชุมชน
-ข้อยกเว้นเดียว: บทบาท `COMMUNITY_LEADER` (หัวหน้าชุมชน, Owner Decision 2026-10-19) ที่หน้า
-`/community-status` เห็นเฉพาะชุมชนที่ผูกใน `UserCommunityScope` — ดู `docs/34-community-leader-status.md`
+ข้อยกเว้นเดียว: บัญชีหัวหน้าชุมชน (`COMMUNITY_LEADER`, Owner Decision 2026-10-19) ได้ `isGlobalScope=false`
+จาก `buildAuthorization()` — หน้า `/community-status` `/dashboard` `/communities` `/map` เห็นเฉพาะชุมชนที่ผูกใน
+`UserCommunityScope` (ไม่ผูก = ไม่เห็นอะไร) · ถือ Role ที่เห็นทั้งระบบร่วมด้วยจะเป็นทั้งระบบ
+— ดู `docs/34-community-leader-status.md` และ `docs/41-community-leader-scope.md`
 การจำกัดการเข้าถึงที่ยังใช้อยู่คือ Permission และกฎ "ผู้คีย์เห็นเฉพาะใบที่ตนคีย์เอง"
 
 ## Privacy and security rules
@@ -158,11 +160,13 @@ Community Scope ถูกยกเลิกทั้งระบบแล้ว 
 * DATA_ENTRY เห็นเฉพาะใบที่ **ตนเป็นผู้คีย์เอง** (กรองด้วย `enteredById` ฝั่ง server) — ค้นหาครัวเรือนของผู้อื่นหรือ Export ไม่ได้
 * EXECUTIVE ดูข้อมูลภาพรวมได้ แต่แก้ข้อมูลไม่ได้
 * COMMUNITY_LEADER เห็นรายชื่อกลุ่มเปราะบาง (ชื่อ อายุ บ้านเลขที่ ชื่อประเภท) **เฉพาะชุมชนที่ผูกไว้**
-  และบันทึกสถานะ เสียชีวิต/ย้ายออก/ไม่เข้าเกณฑ์/คืนสถานะ ได้อย่างเดียว — ไม่เห็นรายละเอียดโรค เบอร์ พิกัด
+  และบันทึกสถานะ เสียชีวิต/ย้ายออก/ไม่เข้าเกณฑ์/คืนสถานะ ได้อย่างเดียว — ไม่เห็นรายละเอียดโรค เบอร์
+  · เห็นแดชบอร์ด ข้อมูลชุมชน และแผนที่ (รวมจุดรายบ้าน) **เฉพาะชุมชนที่ผูกไว้** — ไม่มี household.view/medical/report/export
+  (เทสต์ `tests/integration/leader-scope.test.ts`)
   และแก้ข้อมูลกระดาษไม่ได้ · สถานะเป็น "เหตุการณ์หลังการสำรวจ" ไม่ทำให้ใบกลับไปรอตรวจ
   · การแก้ใบต้องย้ายสถานะข้ามการสร้างลูกใหม่ (`carryOverStatuses`) — เทสต์ `tests/integration/vulnerable-status.test.ts`
 * **Community Scope ถูกยกเลิกทั้งระบบ (Owner Decision 2026-08-03, #R7-B)** — ทุกบัญชี
-  เห็นข้อมูลทุกชุมชน `isGlobalScope` เป็น `true` เสมอ · สิ่งที่ยังจำกัดคือ **Permission**
+  เห็นข้อมูลทุกชุมชน `isGlobalScope` เป็น `true` (ยกเว้นบัญชีหัวหน้าชุมชน — docs/41) · สิ่งที่ยังจำกัดคือ **Permission**
   และกฎ **ผู้คีย์เห็นเฉพาะใบที่ตนคีย์เอง** (กรองด้วย `enteredById` ไม่ใช่ชุมชน)
 * มาตรการชดเชยที่ต้องคงไว้เสมอ: Audit Log ทุกการเข้าดู/แก้ไขข้อมูลอ่อนไหว ·
   Public Portal ยังห้ามเปิดเผยข้อมูลรายบ้าน · ตาราง `UserCommunityScope` และธง
