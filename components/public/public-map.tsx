@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type { PublicMapCommunity, PublicMapSite } from "@/lib/public/stats";
 import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
@@ -64,6 +64,35 @@ function communityPopup(c: PublicMapCommunity, generatedAt: string): string {
 type LeafletHandle = { L: typeof import("leaflet"); map: import("leaflet").Map };
 type MetricChoice = GridMetric | "off";
 
+const METRIC_CHOICES: { value: MetricChoice; label: string }[] = [
+  { value: "depth", label: GRID_METRIC_LABELS.depth },
+  { value: "belowRoad", label: GRID_METRIC_LABELS.belowRoad },
+  { value: "duration", label: GRID_METRIC_LABELS.duration },
+  { value: "off", label: "ไม่แสดงความรุนแรง" },
+];
+
+// ปุ่มบนแผนที่ — ขนาด 44px ตามเป้าสัมผัสขั้นต่ำ (Public portal = mobile-first)
+const MAP_BUTTON =
+  "flex h-11 w-11 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-ink-900 shadow-md transition-colors hover:bg-mist focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-300 aria-expanded:border-brand-600 aria-expanded:bg-brand-50";
+
+function LayersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3 2.5 8 12 13l9.5-5L12 3Z" />
+      <path d="m2.5 12.5 9.5 5 9.5-5" />
+      <path d="m2.5 17 9.5 5 9.5-5" />
+    </svg>
+  );
+}
+
+function FullscreenIcon({ exit }: { exit: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {exit ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+    </svg>
+  );
+}
+
 function gridPopup(cell: FloodGridCell): string {
   const depth = cell.avgDepthCm == null ? "ไม่มีคำตอบ" : `${(cell.avgDepthCm / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })} ม. <span class="text-slate-400">(ตอบ ${cell.depthAnswered} หลัง)</span>`;
   const floor = cell.belowRoadPercent == null ? "ไม่มีคำตอบ" : `${cell.belowRoadPercent}% <span class="text-slate-400">(ตอบ ${cell.floorAnswered} หลัง)</span>`;
@@ -100,8 +129,11 @@ export function PublicMap({
   const [handle, setHandle] = useState<LeafletHandle | null>(null);
   const [metric, setMetric] = useState<MetricChoice>(floodGrid.length ? "depth" : "off");
   const [expanded, setExpanded] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
   const [communityId, setCommunityId] = useState("");
   const overviewBounds = useRef<import("leaflet").LatLngBounds | null>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
 
   // สร้างแผนที่ครั้งเดียว
   useEffect(() => {
@@ -201,16 +233,35 @@ export function PublicMap({
     if (!handle) return;
     const timer = window.setTimeout(() => handle.map.invalidateSize(), 50);
     if (!expanded) return () => window.clearTimeout(timer);
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setExpanded(false); };
-    window.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       window.clearTimeout(timer);
-      window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
     };
   }, [handle, expanded]);
+
+  // Esc ปิดแผงชั้นข้อมูลก่อน แล้วจึงออกจากเต็มจอ
+  useEffect(() => {
+    if (!expanded && !layersOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (layersOpen) setLayersOpen(false);
+      else setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded, layersOpen]);
+
+  // แตะนอกแผง (เช่น บนแผนที่) = ปิดแผง — ฟังช่วง capture เพราะ Leaflet หยุดการส่งต่อเหตุการณ์บนแผนที่
+  useEffect(() => {
+    if (!layersOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (controlsRef.current && !controlsRef.current.contains(event.target as Node)) setLayersOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [layersOpen]);
 
   function focusCommunity(id: string) {
     setCommunityId(id);
@@ -239,35 +290,10 @@ export function PublicMap({
 
   const legend = metric === "off" ? [] : gridLegend(metric, FLOOD_DEPTH_BINS.map((b) => ({ level: b.level, label: b.label })));
 
+  const focused = communities.find((c) => c.id === communityId);
+
   return (
     <div className={expanded ? "fixed inset-0 z-[2000] flex flex-col bg-canvas p-3" : "space-y-3"}>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-[10rem]">
-          <span className="label">ชุมชน</span>
-          <select className="field" value={communityId} onChange={(e) => focusCommunity(e.target.value)}>
-            <option value="">ทุกชุมชน</option>
-            {communities.map((c) => <option key={c.id} value={c.id}>{c.nameTh}</option>)}
-          </select>
-        </label>
-        <div role="group" aria-label="แสดงความรุนแรงน้ำท่วมตาม" className="flex flex-wrap gap-1">
-          {(["depth", "belowRoad", "duration", "off"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={metric === value}
-              disabled={value !== "off" && floodGrid.length === 0}
-              onClick={() => setMetric(value)}
-              className={`btn btn-sm ${metric === value ? "btn-primary" : "btn-secondary"}`}
-            >
-              {value === "depth" ? "ระดับน้ำ" : value === "belowRoad" ? "บ้านพื้นต่ำ" : value === "duration" ? "ท่วมนาน" : "ปิดชั้นความรุนแรง"}
-            </button>
-          ))}
-        </div>
-        <button type="button" className="btn btn-secondary btn-sm ml-auto" onClick={() => setExpanded((v) => !v)} aria-pressed={expanded}>
-          {expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
-        </button>
-      </div>
-
       {/* ขนาดอยู่ที่กล่องครอบเท่านั้น — className ของ div แผนที่ต้องคงที่
           มิฉะนั้น React จะเขียนทับคลาสที่ Leaflet ใส่ไว้ (leaflet-container ฯลฯ) แล้วภาพแผนที่ฐานหาย */}
       <div className={`relative ${expanded ? "min-h-0 flex-1" : "h-[360px] md:h-[460px]"}`}>
@@ -277,6 +303,83 @@ export function PublicMap({
           role="application"
           aria-label="แผนที่ชุมชน จุดพักพิง และความรุนแรงน้ำท่วม"
         />
+
+        {/* ปุ่มบนแผนที่ (มุมขวาบน · ซูมของ Leaflet อยู่มุมซ้ายบน) — เป็น element ของ React ข้างกล่องแผนที่
+            ไม่ใช่ลูกของ Leaflet จึงไม่ส่งคลิก/ลาก/เลื่อนต่อไปที่แผนที่ · z-[1000] เท่าชั้นปุ่มของ Leaflet และมาทีหลังใน DOM จึงอยู่บน */}
+        <div ref={controlsRef} className="absolute right-3 top-3 z-[1000] flex max-h-[calc(100%-1.5rem)] items-start gap-2">
+          {layersOpen ? (
+            <div
+              id={panelId}
+              role="group"
+              aria-label="ชั้นข้อมูลและชุมชน"
+              className="animate-pop max-h-full w-[min(17rem,calc(100vw-7.5rem))] space-y-3 overflow-y-auto rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-lg"
+            >
+              <label className="block">
+                <span className="label">ชุมชน</span>
+                <select className="field" value={communityId} onChange={(e) => focusCommunity(e.target.value)}>
+                  <option value="">ทุกชุมชน</option>
+                  {communities.map((c) => <option key={c.id} value={c.id}>{c.nameTh}</option>)}
+                </select>
+              </label>
+              <fieldset>
+                <legend className="label">แสดงความรุนแรงน้ำท่วมตาม</legend>
+                <div className="space-y-1">
+                  {METRIC_CHOICES.map((choice) => {
+                    const disabled = choice.value !== "off" && floodGrid.length === 0;
+                    return (
+                      <label
+                        key={choice.value}
+                        className={`flex min-h-11 items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-sm font-semibold ${
+                          metric === choice.value ? "border-brand-600 bg-brand-50 text-ink-900" : "border-slate-100 text-slate-700"
+                        } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-mist"}`}
+                      >
+                        <input
+                          type="radio"
+                          name={`${panelId}-metric`}
+                          className="h-4 w-4 shrink-0 accent-brand-600"
+                          checked={metric === choice.value}
+                          disabled={disabled}
+                          onChange={() => setMetric(choice.value)}
+                        />
+                        {choice.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            </div>
+          ) : null}
+          <div className="flex shrink-0 flex-col gap-2">
+            <button
+              type="button"
+              className={MAP_BUTTON}
+              aria-expanded={layersOpen}
+              aria-controls={layersOpen ? panelId : undefined}
+              aria-label="ชั้นข้อมูลและเลือกชุมชน"
+              title="ชั้นข้อมูลและเลือกชุมชน"
+              onClick={() => setLayersOpen((v) => !v)}
+            >
+              <LayersIcon />
+            </button>
+            <button
+              type="button"
+              className={MAP_BUTTON}
+              aria-pressed={expanded}
+              aria-label={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
+              title={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              <FullscreenIcon exit={expanded} />
+            </button>
+          </div>
+        </div>
+
+        {/* ชุมชนที่เลือกอยู่ — เห็นได้แม้แผงปิด (ข้างปุ่มซูม) */}
+        {focused ? (
+          <div className="pointer-events-none absolute left-14 top-3 z-[1000] max-w-[calc(100%-8.5rem)] truncate rounded-full border-2 border-slate-200 bg-white/95 px-3 py-1 text-xs font-bold text-ink-900 shadow-md">
+            {focused.nameTh}
+          </div>
+        ) : null}
         {legend.length > 0 && metric !== "off" ? (
           <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-[14rem] rounded-xl border-2 border-slate-200 bg-white/95 px-3 py-2 text-[11px] text-slate-600 shadow-md">
             <p className="mb-1 font-bold text-slate-800">{GRID_METRIC_LABELS[metric]}</p>
