@@ -47,9 +47,15 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.REPORT_VIEW,
   ],
   [UserRoleEnum.FIELD_SURVEYOR]: [],
-  // หัวหน้าชุมชน (Owner Decision 2026-10-19) — สิทธิ์เดียว: เปลี่ยนสถานะกลุ่มเปราะบาง
-  // ในชุมชนที่ผูกไว้ ไม่แก้ข้อมูลกระดาษ และเข้าหน้าอื่นไม่ได้ (docs/34)
-  [UserRoleEnum.COMMUNITY_LEADER]: [PERMISSIONS.VULNERABLE_STATUS_UPDATE],
+  // หัวหน้าชุมชน (Owner Decision 2026-10-19) — เปลี่ยนสถานะกลุ่มเปราะบาง (docs/34)
+  // + ดูแดชบอร์ด ข้อมูลชุมชน และแผนที่ภายใน (docs/41) — ทั้งหมดเฉพาะชุมชนที่ผูกไว้
+  // (isGlobalScope=false จาก buildAuthorization) · ไม่มี household.view / medical / report / export
+  [UserRoleEnum.COMMUNITY_LEADER]: [
+    PERMISSIONS.VULNERABLE_STATUS_UPDATE,
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.COMMUNITY_VIEW,
+    PERMISSIONS.MAP_VIEW,
+  ],
 };
 
 // Community Scope ถูกยกเลิกทั้งระบบแล้ว (Owner Decision 2026-08-03 #R7-B)

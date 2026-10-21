@@ -135,8 +135,8 @@ describe("defaultLandingPath — ครบทุก role ใน UserRoleEnum", (
     [UserRoleEnum.VERIFIER]: "/verification",
     // ยังไม่มีหน้า implemented ในสิทธิ์ → null (ผู้เรียกส่งไป /access-denied — ไม่เกิด loop)
     [UserRoleEnum.FIELD_SURVEYOR]: null,
-    // หัวหน้าชุมชนมีหน้าเดียว — บันทึกสถานะกลุ่มเปราะบาง (docs/34)
-    [UserRoleEnum.COMMUNITY_LEADER]: "/community-status",
+    // หัวหน้าชุมชนเห็นแดชบอร์ดเฉพาะชุมชนตน (docs/41) — /community-status อยู่ในเมนูถัดไป
+    [UserRoleEnum.COMMUNITY_LEADER]: "/dashboard",
   };
 
   for (const role of Object.values(UserRoleEnum)) {
