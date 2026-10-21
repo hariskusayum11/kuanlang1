@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import "leaflet/dist/leaflet.css";
 import type { PublicMapCommunity, PublicMapSite } from "@/lib/public/stats";
 import { formatRai, thaiShortDate } from "@/domain/geo/community-summary";
@@ -71,25 +71,33 @@ const METRIC_CHOICES: { value: MetricChoice; label: string }[] = [
   { value: "off", label: "ไม่แสดงความรุนแรง" },
 ];
 
-// ปุ่มบนแผนที่ — ขนาด 44px ตามเป้าสัมผัสขั้นต่ำ (Public portal = mobile-first)
-const MAP_BUTTON =
-  "flex h-11 w-11 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-ink-900 shadow-md transition-colors hover:bg-mist focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-300 aria-expanded:border-brand-600 aria-expanded:bg-brand-50";
+// ปุ่มเต็มจอ — หน้าตาเดียวกับแถบซูมของ Leaflet (.leaflet-bar) และวางใต้แถบซูม
+const FULLSCREEN_BUTTON =
+  "absolute left-[10px] top-[84px] z-[1000] flex h-[34px] w-[34px] items-center justify-center rounded border-2 border-black/20 bg-white bg-clip-padding text-ink-900 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-300";
 
-function LayersIcon() {
+function LayersGlyph() {
   return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 3 2.5 8 12 13l9.5-5L12 3Z" />
-      <path d="m2.5 12.5 9.5 5 9.5-5" />
-      <path d="m2.5 17 9.5 5 9.5-5" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4 w-4 text-brand-600" aria-hidden="true">
+      <path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
 function FullscreenIcon({ exit }: { exit: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {exit ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
     </svg>
+  );
+}
+
+/** หัวข้อย่อยในแผงชั้นข้อมูล — สไตล์เดียวกับแผงของหน้า /map */
+function PanelGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-b-2 border-slate-100 py-3 last:border-b-0">
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{title}</p>
+      {children}
+    </section>
   );
 }
 
@@ -129,10 +137,10 @@ export function PublicMap({
   const [handle, setHandle] = useState<LeafletHandle | null>(null);
   const [metric, setMetric] = useState<MetricChoice>(floodGrid.length ? "depth" : "off");
   const [expanded, setExpanded] = useState(false);
-  const [layersOpen, setLayersOpen] = useState(false);
+  // แผงชั้นข้อมูล: เดสก์ท็อปเปิดไว้ (เหมือนหน้า /map) · มือถือพับไว้ก่อนเพราะแผนที่สูงแค่ 360px
+  const [panelOpen, setPanelOpen] = useState(false);
   const [communityId, setCommunityId] = useState("");
   const overviewBounds = useRef<import("leaflet").LatLngBounds | null>(null);
-  const controlsRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   // สร้างแผนที่ครั้งเดียว
@@ -241,27 +249,18 @@ export function PublicMap({
     };
   }, [handle, expanded]);
 
-  // Esc ปิดแผงชั้นข้อมูลก่อน แล้วจึงออกจากเต็มจอ
+  // เปิดแผงตั้งต้นบนจอกว้างเท่านั้น (อ่านขนาดจอหลัง mount — ตอน SSR ไม่รู้ขนาดจอ)
   useEffect(() => {
-    if (!expanded && !layersOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (layersOpen) setLayersOpen(false);
-      else setExpanded(false);
-    };
+    if (window.matchMedia("(min-width: 768px)").matches) setPanelOpen(true);
+  }, []);
+
+  // Esc = ออกจากเต็มจอ
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setExpanded(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, layersOpen]);
-
-  // แตะนอกแผง (เช่น บนแผนที่) = ปิดแผง — ฟังช่วง capture เพราะ Leaflet หยุดการส่งต่อเหตุการณ์บนแผนที่
-  useEffect(() => {
-    if (!layersOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (controlsRef.current && !controlsRef.current.contains(event.target as Node)) setLayersOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [layersOpen]);
+  }, [expanded]);
 
   function focusCommunity(id: string) {
     setCommunityId(id);
@@ -304,82 +303,92 @@ export function PublicMap({
           aria-label="แผนที่ชุมชน จุดพักพิง และความรุนแรงน้ำท่วม"
         />
 
-        {/* ปุ่มบนแผนที่ (มุมขวาบน · ซูมของ Leaflet อยู่มุมซ้ายบน) — เป็น element ของ React ข้างกล่องแผนที่
-            ไม่ใช่ลูกของ Leaflet จึงไม่ส่งคลิก/ลาก/เลื่อนต่อไปที่แผนที่ · z-[1000] เท่าชั้นปุ่มของ Leaflet และมาทีหลังใน DOM จึงอยู่บน */}
-        <div ref={controlsRef} className="absolute right-3 top-3 z-[1000] flex max-h-[calc(100%-1.5rem)] items-start gap-2">
-          {layersOpen ? (
-            <div
-              id={panelId}
-              role="group"
-              aria-label="ชั้นข้อมูลและชุมชน"
-              className="animate-pop max-h-full w-[min(17rem,calc(100vw-7.5rem))] space-y-3 overflow-y-auto rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-lg"
-            >
-              <label className="block">
-                <span className="label">ชุมชน</span>
-                <select className="field" value={communityId} onChange={(e) => focusCommunity(e.target.value)}>
+        {/* ปุ่มเต็มจอ (ไอคอนอย่างเดียว) ใต้ปุ่มซูม */}
+        <button
+          type="button"
+          className={FULLSCREEN_BUTTON}
+          aria-pressed={expanded}
+          aria-label={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
+          title={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <FullscreenIcon exit={expanded} />
+        </button>
+
+        {/* แผง "ชั้นข้อมูล" ลอยด้านขวา — หน้าตาเดียวกับแผงของหน้า /map (หลังล็อกอิน)
+            เป็น element ของ React ข้างกล่องแผนที่ ไม่ใช่ลูกของ Leaflet จึงไม่ส่งคลิก/ลาก/เลื่อนต่อไปที่แผนที่
+            z-[1000] เท่าชั้นปุ่มของ Leaflet และมาทีหลังใน DOM จึงอยู่บน */}
+        {panelOpen ? (
+          <aside
+            id={panelId}
+            aria-label="ชั้นข้อมูลแผนที่"
+            className="absolute right-3 top-3 z-[1000] flex max-h-[calc(100%-1.5rem)] w-[min(300px,calc(100%-4.5rem))] flex-col overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-lg"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b-2 border-slate-100 bg-mist px-4 py-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 font-bold text-slate-900"><LayersGlyph /> ชั้นข้อมูล</p>
+                <p className="mt-0.5 truncate text-xs text-slate-500">
+                  {focused ? focused.nameTh : "ทุกชุมชน"} · {metric === "off" ? "ไม่แสดงความรุนแรง" : GRID_METRIC_LABELS[metric]}
+                </p>
+              </div>
+              <button type="button" onClick={() => setPanelOpen(false)} className="btn btn-ghost btn-sm shrink-0" aria-label="พับแผงชั้นข้อมูล" title="พับแผง">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true"><path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                พับ
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
+              <PanelGroup title="ชุมชน">
+                <select className="field" aria-label="เลือกชุมชน" value={communityId} onChange={(e) => focusCommunity(e.target.value)}>
                   <option value="">ทุกชุมชน</option>
                   {communities.map((c) => <option key={c.id} value={c.id}>{c.nameTh}</option>)}
                 </select>
-              </label>
-              <fieldset>
-                <legend className="label">แสดงความรุนแรงน้ำท่วมตาม</legend>
-                <div className="space-y-1">
-                  {METRIC_CHOICES.map((choice) => {
-                    const disabled = choice.value !== "off" && floodGrid.length === 0;
-                    return (
-                      <label
-                        key={choice.value}
-                        className={`flex min-h-11 items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-sm font-semibold ${
-                          metric === choice.value ? "border-brand-600 bg-brand-50 text-ink-900" : "border-slate-100 text-slate-700"
-                        } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-mist"}`}
-                      >
-                        <input
-                          type="radio"
-                          name={`${panelId}-metric`}
-                          className="h-4 w-4 shrink-0 accent-brand-600"
-                          checked={metric === choice.value}
-                          disabled={disabled}
-                          onChange={() => setMetric(choice.value)}
-                        />
-                        {choice.label}
-                      </label>
-                    );
-                  })}
+              </PanelGroup>
+              <PanelGroup title="ความรุนแรงน้ำท่วม">
+                <div className="grid gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="แสดงความรุนแรงน้ำท่วมตาม">
+                  {METRIC_CHOICES.map((choice) => (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      aria-pressed={metric === choice.value}
+                      disabled={choice.value !== "off" && floodGrid.length === 0}
+                      onClick={() => setMetric(choice.value)}
+                      className={`rounded-lg px-3 py-2 text-left text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        metric === choice.value ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
                 </div>
-              </fieldset>
+                {floodGrid.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    ยังไม่มีพื้นที่ที่มีแบบสำรวจพร้อมพิกัดมากพอจะแสดงความรุนแรง (ต้องมีอย่างน้อย {GRID_MIN_HOUSEHOLDS} หลังต่อช่อง)
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">ช่องละประมาณ 200 × 200 ม. · ค่าเฉลี่ยจากคำบอกเล่าของครัวเรือนที่ตรวจแล้ว</p>
+                )}
+              </PanelGroup>
             </div>
-          ) : null}
-          <div className="flex shrink-0 flex-col gap-2">
-            <button
-              type="button"
-              className={MAP_BUTTON}
-              aria-expanded={layersOpen}
-              aria-controls={layersOpen ? panelId : undefined}
-              aria-label="ชั้นข้อมูลและเลือกชุมชน"
-              title="ชั้นข้อมูลและเลือกชุมชน"
-              onClick={() => setLayersOpen((v) => !v)}
-            >
-              <LayersIcon />
-            </button>
-            <button
-              type="button"
-              className={MAP_BUTTON}
-              aria-pressed={expanded}
-              aria-label={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
-              title={expanded ? "ย่อแผนที่ (Esc)" : "ขยายเต็มจอ"}
-              onClick={() => setExpanded((v) => !v)}
-            >
-              <FullscreenIcon exit={expanded} />
-            </button>
-          </div>
-        </div>
+          </aside>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            className="btn btn-secondary btn-sm absolute right-3 top-3 z-[1000] shadow-md"
+            aria-expanded={false}
+            aria-controls={panelId}
+          >
+            <LayersGlyph /> ชั้นข้อมูล
+          </button>
+        )}
 
-        {/* ชุมชนที่เลือกอยู่ — เห็นได้แม้แผงปิด (ข้างปุ่มซูม) */}
-        {focused ? (
-          <div className="pointer-events-none absolute left-14 top-3 z-[1000] max-w-[calc(100%-8.5rem)] truncate rounded-full border-2 border-slate-200 bg-white/95 px-3 py-1 text-xs font-bold text-ink-900 shadow-md">
+        {/* ชุมชนที่เลือกอยู่ — เห็นได้แม้แผงพับ (ข้างปุ่มซูม) */}
+        {focused && !panelOpen ? (
+          <div className="pointer-events-none absolute left-14 top-3 z-[1000] max-w-[calc(100%-12rem)] truncate rounded-full border-2 border-slate-200 bg-white/95 px-3 py-1 text-xs font-bold text-ink-900 shadow-md">
             {focused.nameTh}
           </div>
         ) : null}
+
         {legend.length > 0 && metric !== "off" ? (
           <div className="pointer-events-none absolute bottom-3 left-3 z-[1000] max-w-[14rem] rounded-xl border-2 border-slate-200 bg-white/95 px-3 py-2 text-[11px] text-slate-600 shadow-md">
             <p className="mb-1 font-bold text-slate-800">{GRID_METRIC_LABELS[metric]}</p>
@@ -395,9 +404,6 @@ export function PublicMap({
           </div>
         ) : null}
       </div>
-      {floodGrid.length === 0 ? (
-        <p className="text-xs text-slate-500">ยังไม่มีพื้นที่ที่มีแบบสำรวจพร้อมพิกัดมากพอจะแสดงความรุนแรงน้ำท่วม (ต้องมีอย่างน้อย {GRID_MIN_HOUSEHOLDS} หลังต่อช่อง)</p>
-      ) : null}
     </div>
   );
 }
