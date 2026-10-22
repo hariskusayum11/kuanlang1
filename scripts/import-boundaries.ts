@@ -62,7 +62,7 @@ async function main() {
     const geojson = JSON.stringify(f.geometry);
     const id = randomUUID();
 
-    await prisma.$transaction(async (tx) => {
+    const version = await prisma.$transaction(async (tx) => {
       // ปิดขอบเขตปัจจุบันของชุมชนนี้
       await tx.$executeRaw(Prisma.sql`
         UPDATE community_boundary
@@ -74,7 +74,7 @@ async function main() {
         SELECT COALESCE(MAX(version), 0) + 1 AS next
         FROM community_boundary WHERE "communityId" = ${community.id}
       `);
-      const nextVersion = rows[0]?.next ?? 1;
+      const nextVersion = Number(rows[0]?.next ?? 1);
       // เพิ่มขอบเขตใหม่ (Polygon → MultiPolygon, geography 4326)
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO community_boundary
@@ -85,10 +85,11 @@ async function main() {
           ${source}, ${approved}, now(), now()
         )
       `);
+      return nextVersion;
     });
 
     imported += 1;
-    console.log(`  ✓ ${code} → v${"?"} (${approved ? "รับรอง" : "ร่าง"})`);
+    console.log(`  ✓ ${code} → v${version} (${approved ? "รับรอง" : "ร่าง"})`);
   }
 
   console.log(`\nนำเข้า ${imported} ขอบเขต · ข้าม ${skipped.length}${skipped.length ? " → " + skipped.join(", ") : ""}`);
