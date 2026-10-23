@@ -2,8 +2,11 @@
 # Build:  docker build -t <user>/skl-fris:v1 .
 # ใช้ base เดียวกันทั้ง build/run เพื่อให้ Prisma engine (glibc/openssl) ตรงกัน
 # ใช้ bookworm-slim (glibc) แทน alpine (musl) — เสถียรกว่ากับ Prisma 5
+# Node 22 LTS (2026-10-24): Node 20 หมดอายุ (EOL 30 เม.ย. 2026) และไม่ได้แพตช์ความปลอดภัย
+# รอบ 21 ต.ค. 2026 (Brotli decoder RCE ฯลฯ) — build ด้วย `docker build --pull` เพื่อให้ได้ 22.x ล่าสุด
+# และตรวจ `node -v` ใน image ต้อง ≥ 22.23.4
 
-FROM node:20-bookworm-slim AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 ENV TZ=Asia/Bangkok
 # openssl จำเป็นต่อ Prisma engine · ca-certificates สำหรับ TLS ตอน build
@@ -25,7 +28,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ---- Runtime ----
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
