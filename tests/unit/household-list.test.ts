@@ -56,12 +56,21 @@ describe("buildVerifiedWhere", () => {
       ctx({ isGlobalScope: false, communityIds: ["c1", "c2"] }),
       {},
     );
-    expect(where).toMatchObject({ communityId: { in: ["c1", "c2"] } });
+    expect(where).toMatchObject({ AND: [{ communityId: { in: ["c1", "c2"] } }] });
   });
 
   it("ตัวกรอง community/tambon ถูกนำไปใส่ใน where", () => {
     const where = buildVerifiedWhere(ctx(), { communityId: "cX", tambonId: "tY" });
-    expect(where).toMatchObject({ communityId: "cX", tambonId: "tY" });
+    expect(where).toMatchObject({ AND: [{}, { communityId: "cX" }], tambonId: "tY" });
+  });
+
+  it("ตัวกรองชุมชนจาก URL เขียนทับขอบเขตไม่ได้ — ต้องผ่านทั้งสองเงื่อนไข (docs/43)", () => {
+    const where = buildVerifiedWhere(
+      ctx({ isGlobalScope: false, communityIds: ["c1"] }),
+      { communityId: "c2" },
+    );
+    expect(where).toMatchObject({ AND: [{ communityId: { in: ["c1"] } }, { communityId: "c2" }] });
+    expect(where).not.toHaveProperty("communityId");
   });
 
   it("ค้นหา → OR ทั้งรหัสใบและบ้านเลขที่ (ไม่ค้นในฟิลด์เข้ารหัส)", () => {
