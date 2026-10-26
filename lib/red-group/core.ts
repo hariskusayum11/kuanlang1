@@ -126,6 +126,7 @@ export async function listRedGroupPeople(
             nameStatus: true,
             age: true,
             ageMonths: true,
+            reportedAt: true,
             prefixOther: true,
             namePrefix: { select: { nameTh: true } },
             vulnerabilities: {
@@ -164,7 +165,8 @@ export async function listRedGroupPeople(
             detail: safeDecrypt(v.detail),
           })),
         },
-        householdInput,
+        // คนที่หัวหน้าชุมชนแจ้งเพิ่ม: อายุครรภ์/อายุลูกเป็นค่า ณ วันที่แจ้ง ไม่ใช่วันสำรวจของบ้าน (docs/43)
+        p.reportedAt ? { ...householdInput, referenceDate: p.reportedAt } : householdInput,
         now,
       );
       if (!classification) continue;

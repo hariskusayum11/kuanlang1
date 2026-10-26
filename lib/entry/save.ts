@@ -506,7 +506,7 @@ export async function submitEntry(
         // "อ่าน" กับ "ลบ" (ฝั่งนั้นจะรอล็อกแล้วได้ CONFLICT เพราะแถวถูกลบไปแล้ว)
         await tx.$queryRaw`SELECT id FROM vulnerable_person WHERE "householdId" = ${existing.id} FOR UPDATE`;
         const inactivePersons = await tx.vulnerablePerson.findMany({
-          where: { householdId: existing.id, isActive: false },
+          where: { householdId: existing.id, isActive: false, reportedAt: null },
           select: {
             seq: true,
             firstName: true,
@@ -537,11 +537,12 @@ export async function submitEntry(
           droppedStatuses = carry.dropped;
         }
         // ลูกของ Household ถูกสร้างใหม่ทั้งชุดจาก payload ล่าสุด
+        // ยกเว้นคนที่หัวหน้าชุมชนแจ้งเพิ่ม (reportedAt) — ไม่ได้อยู่ในกระดาษ จึงไม่อยู่ใน payload (docs/43)
         await tx.assistanceNeed.deleteMany({ where: { householdId: existing.id } });
         await tx.personVulnerability.deleteMany({
-          where: { person: { householdId: existing.id } },
+          where: { person: { householdId: existing.id, reportedAt: null } },
         });
-        await tx.vulnerablePerson.deleteMany({ where: { householdId: existing.id } });
+        await tx.vulnerablePerson.deleteMany({ where: { householdId: existing.id, reportedAt: null } });
         // ส่วนที่ 3-4 (materialize) — ล้างชุดเดิมก่อนสร้างใหม่จาก payload ล่าสุด
         await tx.floodRiskProfile.deleteMany({ where: { householdId: existing.id } });
         await tx.evacuationVehicle.deleteMany({ where: { householdId: existing.id } });

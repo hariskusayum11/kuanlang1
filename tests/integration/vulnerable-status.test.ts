@@ -198,7 +198,7 @@ describe.skipIf(!isLocalDevDb)("Integration: สถานะกลุ่มเ�
       target: "DECEASED",
       eventDate: "2026-10-10",
     }, new Date("2026-10-19T05:00:00.000Z"));
-    expect(result).toEqual({ ok: true, status: "DECEASED" });
+    expect(result).toEqual({ ok: true, status: "DECEASED", count: 1 });
 
     const person = await prisma.vulnerablePerson.findUniqueOrThrow({ where: { id: personId } });
     expect(person.isActive).toBe(false);
@@ -224,7 +224,7 @@ describe.skipIf(!isLocalDevDb)("Integration: สถานะกลุ่มเ�
       .toEqual({ ok: false, reason: "FUTURE_DATE" });
 
     // คืนสถานะ → ล้างค่าเหตุการณ์ทั้งหมด
-    expect(await setVulnerableStatus(ctxLeader, { personId, target: "ACTIVE" })).toEqual({ ok: true, status: "ACTIVE" });
+    expect(await setVulnerableStatus(ctxLeader, { personId, target: "ACTIVE" })).toEqual({ ok: true, status: "ACTIVE", count: 1 });
     const restored = await prisma.vulnerablePerson.findUniqueOrThrow({ where: { id: personId } });
     expect(restored).toMatchObject({ isActive: true, deactivatedReason: null, deactivatedAt: null, deactivatedById: null });
   });

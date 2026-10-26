@@ -22,6 +22,9 @@ import { TRIAGE_EXAMPLE } from "@/domain/triage";
 import { CommunityComparison, DepthHistogram, StackedBar } from "@/components/dashboard/charts";
 import { RedGroupCard } from "@/components/dashboard/red-group-card";
 import { canViewRedGroup, listRedGroupPeople } from "@/lib/red-group/core";
+import { getLeaderActivity } from "@/lib/leader-activity/core";
+import { LeaderActivityCard } from "@/components/dashboard/leader-activity-card";
+import { householdSheetHref } from "@/lib/household/sheet-link";
 
 export const metadata = { title: "แดชบอร์ดผู้บริหาร" };
 export const dynamic = "force-dynamic";
@@ -102,7 +105,7 @@ export default async function DashboardPage({
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
   // ปุ่ม "ดูรายละเอียด" ของ "อื่นๆ" (ข้อ 6) — เฉพาะประเภทที่ต้องระบุรายละเอียด + สิทธิ์สุขภาพ
   const canViewDetail = hasPermission(ctx, PERMISSIONS.MEDICAL_DASHBOARD_VIEW);
-  const [counts, coverage, analytics, detailTypes, redGroup] = await Promise.all([
+  const [counts, coverage, analytics, detailTypes, redGroup, leaderActivity] = await Promise.all([
     fetchScopedDashboardCounts(scope),
     fetchCommunityCoverage(scope),
     fetchQuestionnaireAnalytics(scope, filters),
@@ -111,6 +114,8 @@ export default async function DashboardPage({
       : Promise.resolve([]),
     // เมนูลัดกลุ่มสีแดง (docs/42) — ตัวเลขรวมตามขอบเขต ไม่ขึ้นกับตัวกรองของหน้า
     canViewRedGroup(ctx) ? listRedGroupPeople(ctx) : Promise.resolve(null),
+    // ความเคลื่อนไหวจากหัวหน้าชุมชน (docs/43) — แอดมินเท่านั้น (null = ไม่แสดง)
+    getLeaderActivity(ctx),
   ]);
   const cards = toStatCards(counts);
   const detailTypeIds = new Set(detailTypes.map((t) => t.id));
@@ -155,6 +160,10 @@ export default async function DashboardPage({
           isGlobalScope={ctx.isGlobalScope}
           canOpenMap={hasPermission(ctx, PERMISSIONS.MAP_VIEW)}
         />
+      ) : null}
+
+      {leaderActivity ? (
+        <LeaderActivityCard feed={leaderActivity} sheetHref={(id) => householdSheetHref(ctx.permissions, id)} />
       ) : null}
 
       <DashboardFilters filters={filters} options={analytics.options} />

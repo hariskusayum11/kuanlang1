@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import { listStatusPeople } from "@/lib/vulnerable-status/core";
+import { getReportFormOptions, listStatusPeople } from "@/lib/vulnerable-status/core";
+import { ReportPersonButton } from "@/components/community-status/report-person-dialog";
 import { bangkokToday, MAX_EVENT_YEARS_BACK } from "@/domain/vulnerable/status";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 import { StatusList } from "@/components/community-status/status-list";
@@ -25,7 +26,10 @@ export default async function CommunityStatusPage({
 }) {
   const ctx = await requirePermission(PERMISSIONS.VULNERABLE_STATUS_UPDATE);
   const params = await searchParams;
-  const data = await listStatusPeople(ctx, params.community);
+  const [data, reportOptions] = await Promise.all([
+    listStatusPeople(ctx, params.community),
+    getReportFormOptions(ctx, params.community),
+  ]);
   if (!data) redirect("/access-denied");
 
   const inactiveCount = data.rows.filter((r) => r.status !== "ACTIVE").length;
@@ -43,6 +47,7 @@ export default async function CommunityStatusPage({
             ? <>ผู้ดูแลระบบ · ทุกชุมชน</>
             : <>ดูแล {data.communities.length} ชุมชน</>
         }
+        actions={reportOptions ? <ReportPersonButton options={reportOptions} /> : undefined}
       />
 
       {data.communities.length === 0 ? (

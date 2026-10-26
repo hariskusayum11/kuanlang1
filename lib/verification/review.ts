@@ -18,6 +18,7 @@ import type { AuthorizationContext } from "../authz/types";
 import { decryptText } from "../crypto/encryption";
 import { getKeyring } from "../crypto/keys";
 import { displayStatusOf, PERSON_STATUS_LABELS } from "../../domain/vulnerable/status";
+import { REPORTED_LABEL } from "../../domain/vulnerable/reported";
 
 function canVerify(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.VERIFICATION_VIEW);
@@ -52,6 +53,8 @@ export interface ReviewVulnerablePerson {
   phoneStatus: FieldStatusEnum;
   /** สถานะหลังการสำรวจ (เสียชีวิต/ย้ายออก/…) — null = ยังต้องดูแล (docs/34) */
   inactiveLabel: string | null;
+  /** ไม่ได้มาจากกระดาษ — หัวหน้าชุมชนแจ้งเพิ่ม (docs/43) · ผู้ตรวจอย่าเทียบกับกระดาษ */
+  reportedLabel: string | null;
   vulnerabilities: string[];
 }
 
@@ -515,6 +518,7 @@ export async function loadHouseholdForReview(
       inactiveLabel: p.isActive
         ? null
         : PERSON_STATUS_LABELS[displayStatusOf({ isActive: p.isActive, deactivatedReason: p.deactivatedReason })],
+      reportedLabel: p.reportedAt ? REPORTED_LABEL : null,
       vulnerabilities: p.vulnerabilities.map((item) => {
         const detail = safeDecrypt(item.detail);
         return detail

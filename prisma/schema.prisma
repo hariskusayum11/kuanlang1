@@ -309,6 +309,7 @@ model User {
   surveyedHouseholds           Household[]           @relation("surveyorUser") // FK ที่ขาด (SCH-20)
   duplicateResolvedHouseholds  Household[]           @relation("duplicateResolvedBy")
   deactivatedVulnerablePersons VulnerablePerson[]    @relation("vulnerableDeactivatedBy")
+  reportedVulnerablePersons    VulnerablePerson[]    @relation("vulnerableReportedBy")
   verifiedShelters             EvacuationSite[]      @relation("shelterVerifiedBy")
   priorityRuleVersions         PriorityRuleVersion[] @relation("priorityRuleCreatedBy")
 
@@ -1132,11 +1133,18 @@ model VulnerablePerson {
   deactivatedById   String? /// ผู้บันทึกสถานะ (หัวหน้าชุมชน/แอดมิน)
   notes             String? /// หมายเหตุเพิ่มเติม
 
+  // --- แจ้งเพิ่มหลังการสำรวจ (docs/43) — ไม่ได้มาจากกระดาษ ---
+  // null = แถวจากแบบสอบถาม · มีค่า = หัวหน้าชุมชน/แอดมินแจ้งเพิ่ม (นับทันที — Owner Decision 2026-10-26)
+  // แก้ใบกระดาษภายหลังต้องไม่ลบแถวเหล่านี้ (lib/entry/save.ts) · seq ≥ 1001 กันชนกับแถวกระดาษ (CHECK ใน SQL)
+  reportedAt   DateTime? /// วันที่แจ้งเพิ่ม — ตัวบ่งชี้หลัก (คงอยู่แม้บัญชีผู้แจ้งถูกลบ)
+  reportedById String? /// ผู้แจ้งเพิ่ม
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   household       Household             @relation(fields: [householdId], references: [id])
   deactivatedBy   User?                 @relation("vulnerableDeactivatedBy", fields: [deactivatedById], references: [id], onDelete: SetNull)
+  reportedBy      User?                 @relation("vulnerableReportedBy", fields: [reportedById], references: [id], onDelete: SetNull)
   namePrefix      NamePrefix?           @relation(fields: [namePrefixId], references: [id])
   vulnerabilities PersonVulnerability[]
   rescueTasks     RescueTask[]
@@ -1144,6 +1152,7 @@ model VulnerablePerson {
   @@unique([householdId, seq]) /// กันลำดับซ้ำในใบเดียวกัน (SCH-22)
   @@index([householdId])
   @@index([triageLevel], name: "ix_vulnerable_triage")
+  @@index([reportedAt])
   @@map("vulnerable_person")
 }
 

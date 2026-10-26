@@ -54,6 +54,7 @@ function PersonCard({ person }: { person: ReviewVulnerablePerson }) {
           {display || <span className="font-normal text-slate-400">— ไม่มีชื่อ —</span>}
           <StatusBadge status={person.nameStatus} />
           {person.inactiveLabel ? <span className="badge badge-neutral">{person.inactiveLabel}</span> : null}
+          {person.reportedLabel ? <span className="badge badge-brand" title="ไม่ได้มาจากแบบสอบถามกระดาษ">{person.reportedLabel}</span> : null}
         </p>
         <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
           <span className="flex items-center gap-1">

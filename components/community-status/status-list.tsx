@@ -13,6 +13,7 @@ import {
 import { setVulnerableStatusAction } from "@/lib/vulnerable-status/actions";
 import { statusChangeSchema } from "@/lib/vulnerable-status/validation";
 import type { StatusPersonRow } from "@/lib/vulnerable-status/core";
+import { REPORTED_LABEL } from "@/domain/vulnerable/reported";
 
 type CountFilter = "ALL" | "COUNTED" | "NOT_COUNTED";
 
@@ -148,6 +149,11 @@ export function StatusList({
                   <p className={`flex flex-wrap items-center gap-2 font-semibold ${inactive ? "text-slate-500" : "text-slate-900"}`}>
                     <span className={inactive ? "line-through decoration-slate-300" : ""}>{r.fullName}</span>
                     {inactive && <span className="badge badge-neutral">{r.statusLabel}</span>}
+                    {r.reported && (
+                      <span className="badge badge-brand" title={r.reportedByName ? `แจ้งโดย ${r.reportedByName}` : undefined}>
+                        {REPORTED_LABEL}
+                      </span>
+                    )}
                     {r.pendingVerification && (
                       <span className="badge badge-warning" title="แบบสอบถามยังไม่ผ่านการตรวจ — ยังไม่ถูกนับในรายงาน">
                         รอตรวจ
@@ -198,6 +204,7 @@ export function StatusList({
         <StatusDialog
           key={editing.personId}
           person={editing}
+          householdActiveCount={rows.filter((r) => r.householdId === editing.householdId && r.status === "ACTIVE").length}
           today={today}
           oldestDate={oldestDate}
           onClose={() => setEditing(null)}
@@ -213,12 +220,15 @@ export function StatusList({
 
 function StatusDialog({
   person,
+  householdActiveCount,
   today,
   oldestDate,
   onClose,
   onSaved,
 }: {
   person: StatusPersonRow;
+  /** จำนวนคนที่ยังต้องดูแลในบ้านเดียวกัน (รวมคนนี้) — มากกว่า 1 จึงเสนอ "ย้ายออกทั้งบ้าน" */
+  householdActiveCount: number;
   today: string;
   oldestDate: string;
   onClose: () => void;
@@ -230,7 +240,10 @@ function StatusDialog({
   const [eventDate, setEventDate] = useState(today);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ไม่ติ๊กไว้ล่วงหน้า — ย้ายออกทั้งบ้านกระทบหลายคน ต้องเลือกเอง (docs/43)
+  const [wholeHousehold, setWholeHousehold] = useState(false);
   const needsDate = target != null && (INACTIVE_STATUSES as readonly string[]).includes(target);
+  const canMoveHousehold = target === "MOVED_OUT" && person.status === "ACTIVE" && householdActiveCount > 1;
 
   async function submit() {
     setError(null);
@@ -238,7 +251,12 @@ function StatusDialog({
       setError("เลือกสถานะใหม่ก่อนบันทึก");
       return;
     }
-    const payload = { personId: person.personId, target, ...(needsDate ? { eventDate } : {}) };
+    const payload = {
+      personId: person.personId,
+      target,
+      ...(needsDate ? { eventDate } : {}),
+      ...(canMoveHousehold && wholeHousehold ? { wholeHousehold: true } : {}),
+    };
     const parsed = statusChangeSchema.safeParse(payload);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? ERRORS.INVALID);
@@ -311,6 +329,25 @@ function StatusDialog({
             </label>
           ))}
         </fieldset>
+
+        {canMoveHousehold && (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-slate-100 px-3 py-2.5 hover:border-slate-200">
+            <input
+              type="checkbox"
+              checked={wholeHousehold}
+              onChange={(e) => setWholeHousehold(e.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">
+                ย้ายออกทั้งบ้าน ({householdActiveCount.toLocaleString("th-TH")} คน)
+              </span>
+              <span className="block text-xs text-slate-500">
+                บันทึก “ย้ายออก” ให้ทุกคนในบ้านเลขที่ {person.houseNo || "นี้"} ที่ยังต้องดูแลในครั้งเดียว
+              </span>
+            </span>
+          </label>
+        )}
 
         {needsDate && (
           <label className="mt-4 block">
