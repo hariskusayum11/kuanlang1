@@ -9,6 +9,7 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.COMMUNITY_VIEW,
     PERMISSIONS.MAP_VIEW,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.KEYER_PERFORMANCE_VIEW,
     PERMISSIONS.MEDICAL_DASHBOARD_VIEW,
     PERMISSIONS.MEDICAL_CASE_VIEW,
     PERMISSIONS.MEDICAL_MAP_VIEW,
@@ -27,6 +28,7 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.MAP_VIEW,
     PERMISSIONS.VERIFICATION_VIEW,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.KEYER_PERFORMANCE_VIEW,
     // ดูรายชื่อ + ส่งออก Excel รายกลุ่ม (กลุ่มทั่วไป) — กลุ่มสุขภาพยังจำกัดที่ EXECUTIVE/ADMIN
     PERMISSIONS.REPORT_SEGMENT_EXPORT,
     // ยืนยันบ้านพักพิง (docs/38) — เจ้าหน้าที่เห็นข้อมูลครัวเรือนอยู่แล้ว
@@ -37,6 +39,7 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.COMMUNITY_VIEW,
     PERMISSIONS.COMMUNITY_MANAGE,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.KEYER_PERFORMANCE_VIEW,
   ],
   [UserRoleEnum.VERIFIER]: [PERMISSIONS.VERIFICATION_VIEW],
   [UserRoleEnum.DATA_ENTRY]: [PERMISSIONS.SURVEY_ENTRY],
@@ -47,6 +50,7 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
   [UserRoleEnum.RESEARCHER]: [
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.KEYER_PERFORMANCE_VIEW,
   ],
   [UserRoleEnum.FIELD_SURVEYOR]: [],
   // หัวหน้าชุมชน = "แอดมินชุมชน" — ทุกสิทธิ์จำกัดเฉพาะชุมชนที่ผูกไว้ (isGlobalScope=false จาก buildAuthorization)

@@ -12,6 +12,9 @@ export const PERMISSIONS = {
   MEDICAL_MAP_VIEW: "medical.map.view",
   MEDICAL_REPORT_EXPORT: "medical.report.export",
   PERSONAL_REPORT_EXPORT: "report.personal.export",
+  // ผลงานผู้กรอก (/keyer-performance) — แยกจาก report.view (2026-10-26) เพื่อให้หัวหน้าชุมชน
+  // เห็นรายงานสรุปชุมชนได้โดยไม่เห็นผลงานของเจ้าหน้าที่คีย์ (เจ้าของระบบขอเอาออก)
+  KEYER_PERFORMANCE_VIEW: "report.keyer.view",
   // ดูรายชื่อรายกลุ่ม + ดาวน์โหลด Excel เฉพาะกลุ่ม (กลุ่มทั่วไป ไม่ใช่ข้อมูลสุขภาพ)
   // กลุ่มอ่อนไหวด้านสุขภาพ/เปราะบางใช้ MEDICAL_REPORT_EXPORT แทน (Owner Decision เฟส 1)
   REPORT_SEGMENT_EXPORT: "report.segment.export",

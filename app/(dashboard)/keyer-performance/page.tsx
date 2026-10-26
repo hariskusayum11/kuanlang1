@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 type SearchParams = Promise<{ from?: string; to?: string }>;
 
 export default async function KeyerPerformancePage({ searchParams }: { searchParams: SearchParams }) {
-  const ctx = await requirePermission(PERMISSIONS.REPORT_VIEW);
+  const ctx = await requirePermission(PERMISSIONS.KEYER_PERFORMANCE_VIEW);
   const raw = await searchParams;
   const filters = { dateFrom: raw.from, dateTo: raw.to };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);

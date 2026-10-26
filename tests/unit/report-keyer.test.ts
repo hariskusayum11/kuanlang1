@@ -16,7 +16,7 @@ function ctx(overrides: Partial<AuthorizationContext> = {}): AuthorizationContex
     name: "เจ้าหน้าที่",
     email: "a@b.c",
     roles: [UserRoleEnum.COORDINATOR],
-    permissions: [PERMISSIONS.REPORT_VIEW],
+    permissions: [PERMISSIONS.KEYER_PERFORMANCE_VIEW],
     isGlobalScope: true,
     isProtectedAccount: false,
     communityIds: [],
@@ -25,9 +25,10 @@ function ctx(overrides: Partial<AuthorizationContext> = {}): AuthorizationContex
 }
 
 describe("canViewReports", () => {
-  it("มี report.view → true, ไม่มี → false", () => {
+  it("มี report.keyer.view → true · มีแค่ report.view (เช่น หัวหน้าชุมชน) → false", () => {
     expect(canViewReports(ctx())).toBe(true);
     expect(canViewReports(ctx({ permissions: [PERMISSIONS.SURVEY_ENTRY] }))).toBe(false);
+    expect(canViewReports(ctx({ permissions: [PERMISSIONS.REPORT_VIEW] }))).toBe(false);
   });
 });
 

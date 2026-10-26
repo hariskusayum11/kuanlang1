@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const ctx = await getAuthorizationContext();
   if (!ctx) return new Response("ไม่ได้เข้าสู่ระบบ", { status: 401 });
-  if (!hasPermission(ctx, PERMISSIONS.REPORT_VIEW)) {
+  if (!hasPermission(ctx, PERMISSIONS.KEYER_PERFORMANCE_VIEW)) {
     return new Response("ไม่มีสิทธิ์เข้าถึง", { status: 403 });
   }
 

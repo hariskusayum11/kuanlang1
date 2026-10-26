@@ -16,7 +16,7 @@ import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 
 export function canViewReports(ctx: AuthorizationContext): boolean {
-  return hasPermission(ctx, PERMISSIONS.REPORT_VIEW);
+  return hasPermission(ctx, PERMISSIONS.KEYER_PERFORMANCE_VIEW);
 }
 
 /** เงื่อนไข scope — คงรูปแบบเดียวกับโมดูลอื่น (null = ไม่มีสิทธิ์เห็นใด) */

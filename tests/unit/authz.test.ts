@@ -308,7 +308,6 @@ describe("visibleNavItems", () => {
       "/risk",
       "/community-volunteers",
       "/reports",
-      "/keyer-performance",
     ]);
     // ชื่อเมนูของบัญชีที่ถูกจำกัดชุมชน
     expect(nav.find((i) => i.href === "/dashboard")?.label).toBe("ภาพรวมชุมชน");
@@ -324,6 +323,8 @@ describe("visibleNavItems", () => {
       PERMISSIONS.PERSONAL_REPORT_EXPORT,
       PERMISSIONS.REPORT_SEGMENT_EXPORT,
       PERMISSIONS.REPORT_QUICK_EDIT,
+      // ผลงานผู้กรอก — เจ้าของระบบขอเอาออกจากหัวหน้าชุมชน (2026-10-26)
+      PERMISSIONS.KEYER_PERFORMANCE_VIEW,
       PERMISSIONS.USER_MANAGE,
       PERMISSIONS.SETTINGS_VIEW,
       PERMISSIONS.PRIORITY_RULES_MANAGE,
