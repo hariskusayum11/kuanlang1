@@ -61,8 +61,9 @@ export function buildVerifiedWhere(
     deletedAt: null,
     hasDuplicateFlag: false,
     sheet: { status: SheetStatus.VERIFIED },
-    ...scope,
-    ...(filters.communityId ? { communityId: filters.communityId } : {}),
+    // ขอบเขตกับตัวกรองชุมชนต้องอยู่คนละเงื่อนไข (AND) — ถ้า spread ทั้งคู่ลงคีย์ communityId
+    // ตัวกรองจาก URL จะเขียนทับขอบเขต ทำให้หัวหน้าชุมชนเลือกดูชุมชนอื่นได้ (พบตอนทำ docs/43)
+    AND: [scope, ...(filters.communityId ? [{ communityId: filters.communityId }] : [])],
     ...(filters.tambonId ? { tambonId: filters.tambonId } : {}),
     ...(search
       ? {
