@@ -17,9 +17,9 @@
 | `map.view` | `/map` | จุดรายบ้านพร้อมที่อยู่ของชุมชนตน |
 | `vulnerable.red.view` | การ์ดเมนูลัดบน `/dashboard` · `/red-group/export` · `/map?red=on` | **เพิ่ม 2026-10-26** — รายชื่อกลุ่มสีแดงของชุมชนตน (ชื่อ เบอร์ พิกัด) ดู [42](42-red-group.md) |
 
-**ตั้งใจไม่ให้:** `household.view` (รายการครัวเรือน, `/risk`, ชั้น "ลำดับการช่วยเหลือ" `?help=on`)
-· `medical.*` (รวมปุ่ม "ดูรายละเอียด" โรคบนแดชบอร์ด) · `report.*` และการส่งออกทุกชนิด
-(ยกเว้นรายชื่อกลุ่มสีแดงตาม docs/42)
+**อัปเดต 2026-10-26:** เพิ่มชุดสิทธิ์ "แอดมินชุมชน" — `household.view` · `report.view` · `community.manage` ·
+`site.manage` · `shelter.verify` · `volunteer.list.view` (ทั้งหมดเฉพาะชุมชนที่ผูกไว้) ดู [43](43-community-admin.md)
+ยังไม่ให้: `medical.*` · `verification.view` · `survey.entry` · ส่งออกรายบุคคลทั่วไป · ตั้งค่า/จัดการผู้ใช้
 · `settings.view` · `verification.view`
 
 ## 2. ขอบเขต — ข้อยกเว้นเดียวของ #R7-B
