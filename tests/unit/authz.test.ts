@@ -314,7 +314,13 @@ describe("visibleNavItems", () => {
     for (const role of Object.values(UserRoleEnum)) {
       if (role === UserRoleEnum.ADMIN || role === UserRoleEnum.COMMUNITY_LEADER) continue;
       expect(buildAuthorization([role]).permissions).not.toContain(PERMISSIONS.VULNERABLE_STATUS_UPDATE);
-      expect(buildAuthorization([role]).permissions).not.toContain(PERMISSIONS.RED_GROUP_VIEW);
+    }
+  });
+
+  it("รายชื่อกลุ่มสีแดง: ADMIN · ผู้บริหาร/แพทย์ · หัวหน้าชุมชน เท่านั้น (docs/42)", () => {
+    const allowed: UserRoleEnum[] = [UserRoleEnum.ADMIN, UserRoleEnum.EXECUTIVE, UserRoleEnum.COMMUNITY_LEADER];
+    for (const role of Object.values(UserRoleEnum)) {
+      expect(buildAuthorization([role]).permissions.includes(PERMISSIONS.RED_GROUP_VIEW)).toBe(allowed.includes(role));
     }
   });
 

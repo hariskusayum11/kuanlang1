@@ -25,7 +25,7 @@ export const PERMISSIONS = {
   // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนถูกจำกัดเฉพาะชุมชนที่ผูกไว้ (docs/34)
   VULNERABLE_STATUS_UPDATE: "vulnerable.status.update",
   // กลุ่มเปราะบางสีแดง (docs/42) — การ์ดเมนูลัด + ดาวน์โหลด Excel (ชื่อ เบอร์ พิกัด) + กรองหมุดบนแผนที่
-  // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนได้เฉพาะชุมชนที่ผูกไว้ (Owner Decision 2026-10-26)
+  // ADMIN + ผู้บริหาร/แพทย์ (ทุกชุมชน) + หัวหน้าชุมชน (เฉพาะชุมชนที่ผูกไว้) — Owner Decision 2026-10-26
   RED_GROUP_VIEW: "vulnerable.red.view",
   // ยืนยันบ้านที่ยินยอมเป็นจุดพักพิง → เป็นจุดพักพิงจริง (docs/38) — เจ้าหน้าที่ + ADMIN
   SHELTER_VERIFY: "shelter.verify",

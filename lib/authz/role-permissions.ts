@@ -16,6 +16,8 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.PERSONAL_REPORT_EXPORT,
     // ผู้บริหารเปิดรายชื่อและส่งออกกลุ่มทั่วไปจากรายงานได้ด้วย
     PERMISSIONS.REPORT_SEGMENT_EXPORT,
+    // รายชื่อกลุ่มเปราะบางสีแดง ทุกชุมชน (docs/42, Owner Decision 2026-10-26)
+    PERMISSIONS.RED_GROUP_VIEW,
   ],
   [UserRoleEnum.OFFICER]: [
     PERMISSIONS.DASHBOARD_VIEW,

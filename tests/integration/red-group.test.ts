@@ -27,6 +27,7 @@ const EMAILS = {
   keyer: "test-red-keyer@test.invalid",
   officer: "test-red-officer@test.invalid",
   admin: "test-red-admin@test.invalid",
+  executive: "test-red-executive@test.invalid",
   leader: "test-red-leader@test.invalid",
 } as const;
 const CODES = ["TRGA", "TRGB"] as const;
@@ -62,6 +63,7 @@ describe.skipIf(!isLocalDevDb)("Integration: กลุ่มเปราะบ�
   let ctxKeyer: AuthorizationContext;
   let ctxOfficer: AuthorizationContext;
   let ctxAdmin: AuthorizationContext;
+  let ctxExecutive: AuthorizationContext;
   let ctxLeader: AuthorizationContext;
   let cA = "";
   let cB = "";
@@ -119,15 +121,16 @@ describe.skipIf(!isLocalDevDb)("Integration: กลุ่มเปราะบ�
       await prisma.userRole.create({ data: { userId: u.id, role, isActive: true } });
       return u;
     };
-    const [keyer, officer, admin, leader] = await Promise.all([
+    const [keyer, officer, admin, executive, leader] = await Promise.all([
       mkUser(EMAILS.keyer, UserRoleEnum.DATA_ENTRY),
       mkUser(EMAILS.officer, UserRoleEnum.OFFICER),
       mkUser(EMAILS.admin, UserRoleEnum.ADMIN),
+      mkUser(EMAILS.executive, UserRoleEnum.EXECUTIVE),
       mkUser(EMAILS.leader, UserRoleEnum.COMMUNITY_LEADER),
     ]);
     await prisma.userCommunityScope.create({ data: { userId: leader.id, communityId: cA } });
-    [ctxKeyer, ctxOfficer, ctxAdmin, ctxLeader] = await Promise.all(
-      [keyer, officer, admin, leader].map((u) => loadContextOrThrow({ id: u.id, name: u.name, email: u.email })),
+    [ctxKeyer, ctxOfficer, ctxAdmin, ctxExecutive, ctxLeader] = await Promise.all(
+      [keyer, officer, admin, executive, leader].map((u) => loadContextOrThrow({ id: u.id, name: u.name, email: u.email })),
     );
 
     // ชุมชน A
@@ -147,8 +150,9 @@ describe.skipIf(!isLocalDevDb)("Integration: กลุ่มเปราะบ�
     await prisma.$disconnect();
   });
 
-  it("สิทธิ์: ADMIN และหัวหน้าชุมชนเท่านั้น", async () => {
+  it("สิทธิ์: ADMIN · ผู้บริหาร/แพทย์ · หัวหน้าชุมชน เท่านั้น", async () => {
     expect(canViewRedGroup(ctxAdmin)).toBe(true);
+    expect(canViewRedGroup(ctxExecutive)).toBe(true);
     expect(canViewRedGroup(ctxLeader)).toBe(true);
     expect(canViewRedGroup(ctxOfficer)).toBe(false);
     expect(canViewRedGroup(ctxKeyer)).toBe(false);
@@ -170,10 +174,12 @@ describe.skipIf(!isLocalDevDb)("Integration: กลุ่มเปราะบ�
     expect(JSON.stringify(result)).not.toContain(NAME_B);
   });
 
-  it("ADMIN: เห็นทั้งสองชุมชน", async () => {
-    const result = await listRedGroupPeople(ctxAdmin);
-    const ours = result.rows.filter((r) => r.communityId === cA || r.communityId === cB);
-    expect(ours.map((r) => r.householdId)).toEqual(expect.arrayContaining([houses["RA-1"], houses["RB-1"]]));
+  it("ADMIN และผู้บริหาร/แพทย์: เห็นทั้งสองชุมชน", async () => {
+    for (const ctx of [ctxAdmin, ctxExecutive]) {
+      const result = await listRedGroupPeople(ctx);
+      const ours = result.rows.filter((r) => r.communityId === cA || r.communityId === cB);
+      expect(ours.map((r) => r.householdId)).toEqual(expect.arrayContaining([houses["RA-1"], houses["RB-1"]]));
+    }
   });
 
   it("ไฟล์ Excel: ถอดรหัสชื่อได้ · ไม่มีรายละเอียดโรคดิบ · แถวควรยืนยันมีธง", async () => {
