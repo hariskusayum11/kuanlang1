@@ -1,94 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FieldStatusEnum } from "@prisma/client";
 import { requirePermission } from "@/lib/authz/context";
 import { PERMISSIONS } from "@/lib/authz/permissions";
-import {
-  loadHouseholdForReview,
-  type ReviewField,
-  type ReviewVulnerablePerson,
-} from "@/lib/verification/review";
+import { loadHouseholdForReview } from "@/lib/verification/review";
 import { loadHouseholdEditable } from "@/lib/verification/edit";
 import { VerifyPanel } from "@/components/verification/verify-panel";
 import { EditPanelFull } from "@/components/verification/edit-panel-full";
 import { DeleteHouseholdButton } from "@/components/admin/delete-household-button";
-import { SectionTitle } from "@/components/layout/page-hero";
 import { DuplicateResolutionPanel } from "@/components/verification/duplicate-resolution-panel";
+import { SheetSections, VulnerablePeopleSection } from "@/components/household/sheet-view";
 
 export const metadata = { title: "ตรวจสอบใบ" };
 export const dynamic = "force-dynamic";
-
-function StatusBadge({ status }: { status: FieldStatusEnum }) {
-  if (status === FieldStatusEnum.ILLEGIBLE) {
-    return <span className="badge badge-warning">อ่านไม่ออก · F2</span>;
-  }
-  if (status === FieldStatusEnum.BLANK_IN_PAPER) {
-    return <span className="badge badge-neutral">ว่างในกระดาษ · F3</span>;
-  }
-  return null;
-}
-
-function FieldRow({ field }: { field: ReviewField }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b-2 border-slate-50 py-2.5">
-      <dt className="flex items-center gap-1.5 text-sm font-medium text-slate-500">
-        {field.label}
-        {field.sensitive && (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 text-slate-400" aria-label="ข้อมูลอ่อนไหว">
-            <rect x="5" y="11" width="14" height="9" rx="2" />
-            <path d="M8 11V8a4 4 0 018 0v3" />
-          </svg>
-        )}
-      </dt>
-      <dd className="flex items-center gap-2 text-right text-sm font-semibold text-slate-900">
-        {/* ป้าย F2/F3 ของช่อง (ถ้ามี) — ให้ผู้ตรวจเห็นทันทีว่าช่องไหนกระดาษอ่านไม่ออก/ว่าง
-            จะได้เพ่งเทียบกับกระดาษตรงจุดนั้นก่อน */}
-        {field.status && <StatusBadge status={field.status} />}
-        {field.value != null && field.value !== "" ? (
-          field.value
-        ) : (
-          <span className="text-slate-300">—</span>
-        )}
-      </dd>
-    </div>
-  );
-}
-
-function PersonCard({ person }: { person: ReviewVulnerablePerson }) {
-  const display = [person.prefix, person.name].filter(Boolean).join(" ");
-  return (
-    <div className="rounded-2xl border-2 border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-alert-100 text-[11px] font-bold text-alert-700">
-            {person.seq}
-          </span>
-          {display || <span className="font-normal text-slate-400">— ไม่มีชื่อ —</span>}
-          <StatusBadge status={person.nameStatus} />
-        </p>
-        <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
-          <span className="flex items-center gap-1">
-            อายุ {person.ageMonths != null ? `${person.ageMonths} เดือน` : person.age != null ? `${person.age} ปี` : "—"}
-            <StatusBadge status={person.ageStatus} />
-          </span>
-          <span className="flex items-center gap-1">
-            โทร {person.phone ?? "—"}
-            <StatusBadge status={person.phoneStatus} />
-          </span>
-        </div>
-      </div>
-      {person.vulnerabilities.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {person.vulnerabilities.map((v) => (
-            <span key={v} className="badge badge-neutral">
-              {v}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default async function ReviewPage({
   params,
@@ -209,33 +132,11 @@ export default async function ReviewPage({
           options={editable.options}
         />
       ) : (
-        review.sections.map((section) => (
-          <section key={section.title} className="card p-6">
-            <SectionTitle title={section.title} tone="brand" />
-            <dl className="mt-2 grid gap-x-10 sm:grid-cols-2 xl:grid-cols-3">
-              {section.fields.map((f) => (
-                <FieldRow key={f.label} field={f} />
-              ))}
-            </dl>
-          </section>
-        ))
+        <SheetSections sections={review.sections} />
       )}
 
       {/* กลุ่มเปราะบาง */}
-      {review.vulnerablePersons.length > 0 && (
-        <section className="card p-6">
-          <SectionTitle
-            title="กลุ่มเปราะบาง"
-            tone="alert"
-            aside={<span className="badge badge-neutral">{review.vulnerablePersons.length} คน</span>}
-          />
-          <div className="mt-3 space-y-3">
-            {review.vulnerablePersons.map((p) => (
-              <PersonCard key={p.seq} person={p} />
-            ))}
-          </div>
-        </section>
-      )}
+      <VulnerablePeopleSection people={review.vulnerablePersons} />
 
       {/* แถบยืนยัน */}
       <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-white/95 px-6 py-4 shadow-lg backdrop-blur">

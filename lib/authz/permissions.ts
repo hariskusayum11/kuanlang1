@@ -28,7 +28,13 @@ export const PERMISSIONS = {
   // ADMIN + ผู้บริหาร/แพทย์ (ทุกชุมชน) + หัวหน้าชุมชน (เฉพาะชุมชนที่ผูกไว้) — Owner Decision 2026-10-26
   RED_GROUP_VIEW: "vulnerable.red.view",
   // ยืนยันบ้านที่ยินยอมเป็นจุดพักพิง → เป็นจุดพักพิงจริง (docs/38) — เจ้าหน้าที่ + ADMIN
+  // + หัวหน้าชุมชน (เฉพาะชุมชนที่ผูกไว้ · docs/43)
   SHELTER_VERIFY: "shelter.verify",
+  // เพิ่ม/แก้/ลบ จุดสำคัญ (จุดอพยพ โรงเรียน มัสยิด ฯลฯ) — ADMIN + หัวหน้าชุมชน (เฉพาะชุมชนตน · docs/43)
+  // เดิมผูกกับชื่อ Role ADMIN ใน canManageImportantSites → ย้ายมาเป็น permission
+  SITE_MANAGE: "site.manage",
+  // รายชื่ออาสาสมัครในชุมชน (ชื่อ เบอร์ ทักษะ) — หัวหน้าชุมชน + ADMIN (docs/43)
+  VOLUNTEER_LIST_VIEW: "volunteer.list.view",
   SETTINGS_VIEW: "settings.view",
   USER_MANAGE: "user.manage",
   // ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้รายอื่น — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS

@@ -17,6 +17,15 @@ import { getCommunityMapSummaries } from "../../lib/geo/community-map-summary";
 import { getCurrentCommunityBoundaries } from "../../lib/geo/community-boundaries";
 import { getImportantSites } from "../../lib/geo/important-sites";
 import { getHelpPriority } from "../../lib/risk/help-priority";
+import { getVerifiedHouseholds } from "../../lib/household/list";
+import { loadHouseholdForReview } from "../../lib/verification/review";
+import { getRiskList } from "../../lib/risk/list";
+import { getExecutiveReport } from "../../lib/report/executive-summary";
+import { listCommunityVolunteers } from "../../lib/community-volunteers/core";
+import { getKeyring } from "../../lib/crypto/keys";
+import { deleteImportantSite, saveImportantSite } from "../../lib/geo/important-sites";
+import { updatePopulation } from "../../lib/community/core";
+import { getShelterOverview } from "../../lib/shelters/core";
 
 // Integration — หัวหน้าชุมชนเห็นแดชบอร์ด/ชุมชน/แผนที่ เฉพาะชุมชนที่ผูกไว้ (Owner Decision 2026-10-19 · docs/41)
 // ---------------------------------------------------------------------------
@@ -199,7 +208,7 @@ describe.skipIf(!isLocalDevDb)("Integration: ขอบเขตของหั�
     expect(leaksB(result)).toEqual([]);
   });
 
-  it("แผนที่: จุดรายบ้าน กล่องสรุปชุมชน ขอบเขต จุดสำคัญ ตัวเลือก — เฉพาะชุมชน A · ลำดับช่วยเหลือปิด", async () => {
+  it("แผนที่: จุดรายบ้าน กล่องสรุปชุมชน ขอบเขต จุดสำคัญ ตัวเลือก ลำดับช่วยเหลือ — เฉพาะชุมชน A", async () => {
     const map = await getHouseholdLayerMap(ctxLeader, {});
     // เจ้าของอนุญาตให้หัวหน้าชุมชนเห็นจุดรายบ้านของชุมชนตน
     expect(map.points.map((p) => p.houseNo)).toEqual([HOUSE_A]);
@@ -221,8 +230,58 @@ describe.skipIf(!isLocalDevDb)("Integration: ขอบเขตของหั�
     expect(sites.map((s) => s.name)).toEqual([SITE_A]);
     expect(await getImportantSites(ctxLeader, cB)).toEqual([]);
 
-    // ?help=on — ต้องมี household.view ซึ่งหัวหน้าชุมชนไม่มี
-    expect(await getHelpPriority(ctxLeader, {})).toBeNull();
+    // ?help=on — หัวหน้าชุมชนมี household.view แล้ว (docs/43) แต่ต้องเห็นแค่ชุมชน A
+    const help = await getHelpPriority(ctxLeader, {});
+    expect(help?.cases.length).toBe(1);
+    expect(leaksB(help)).toEqual([]);
+    expect((await getHelpPriority(ctxLeader, { communityId: cB }))?.cases).toEqual([]);
+  });
+
+  it("แอดมินชุมชน (docs/43): ครัวเรือน ใบเต็ม ความเสี่ยง รายงาน บ้านพักพิง อาสา จุดสำคัญ ประชากร — เฉพาะชุมชน A", async () => {
+    const list = await getVerifiedHouseholds(ctxLeader, {});
+    expect(list.rows.map((r) => r.houseNo)).toEqual([HOUSE_A]);
+    expect(leaksB(list)).toEqual([]);
+    expect((await getVerifiedHouseholds(ctxLeader, { communityId: cB })).rows).toEqual([]);
+
+    // เปิดใบเต็มได้เฉพาะชุมชน A · ใบชุมชน B ตอบเหมือนไม่มี (กัน IDOR)
+    const houseA = await prisma.household.findFirstOrThrow({ where: { communityId: cA }, select: { id: true } });
+    const houseB = await prisma.household.findFirstOrThrow({ where: { communityId: cB }, select: { id: true } });
+    const view = await loadHouseholdForReview(ctxLeader, houseA.id, { purpose: "view" });
+    expect(view?.canConfirm).toBe(false);
+    expect(view?.canResolveDuplicate).toBe(false);
+    expect(await loadHouseholdForReview(ctxLeader, houseB.id, { purpose: "view" })).toBeNull();
+    // ไม่มีสิทธิ์ตรวจ → โหมดตรวจเปิดไม่ได้เลย
+    expect(await loadHouseholdForReview(ctxLeader, houseA.id)).toBeNull();
+
+    const risk = await getRiskList(ctxLeader);
+    expect(risk.rows.map((r) => r.householdId)).toEqual([houseA.id]);
+
+    const report = await getExecutiveReport(ctxLeader, { status: "VERIFIED" });
+    expect(report?.summary.households).toBe(1);
+    expect(leaksB(report)).toEqual([]);
+
+    const volunteers = await listCommunityVolunteers(ctxLeader, getKeyring());
+    expect(volunteers).not.toBeNull();
+    expect(leaksB(volunteers)).toEqual([]);
+
+    // จุดสำคัญ: เพิ่มในชุมชน A ได้ · ชุมชน B ไม่ได้ · แก้/ลบจุดของ B ไม่ได้
+    const siteInput = { name: "จุดทดสอบหัวหน้าเพิ่มเอง", type: "SCHOOL", latitude: 7.013, longitude: 100.453 };
+    expect((await saveImportantSite(ctxLeader, { ...siteInput, communityId: cA })).ok).toBe(true);
+    expect((await saveImportantSite(ctxLeader, { ...siteInput, communityId: cB })).ok).toBe(false);
+    const siteB = await prisma.evacuationSite.findFirstOrThrow({ where: { name: SITE_B }, select: { id: true } });
+    expect((await saveImportantSite(ctxLeader, { ...siteInput, id: siteB.id, communityId: cA })).ok).toBe(false);
+    expect((await deleteImportantSite(ctxLeader, siteB.id)).ok).toBe(false);
+
+    // ประชากร: แก้จำนวนครัวเรือนชุมชน A ได้ แต่เป้า % คงเดิม · ชุมชน B ไม่ได้
+    expect(await updatePopulation(ctxLeader, cA, { totalHouseholds: 321, targetCoveragePercent: 10 })).toEqual({ ok: true });
+    const a = await prisma.community.findUniqueOrThrow({ where: { id: cA }, select: { totalHouseholds: true, targetCoveragePercent: true } });
+    expect(a.totalHouseholds).toBe(321);
+    expect(Number(a.targetCoveragePercent)).toBe(60);
+    expect((await updatePopulation(ctxLeader, cB, { totalHouseholds: 1, targetCoveragePercent: 60 })).ok).toBe(false);
+
+    // บ้านพักพิง: รายการเฉพาะชุมชน A
+    const shelters = await getShelterOverview(ctxLeader);
+    expect(leaksB(shelters)).toEqual([]);
   });
 
   it("หัวหน้าชุมชนที่ยังไม่ผูกชุมชน → ไม่เห็นอะไรเลย (ไม่ fallback เป็นทั้งระบบ)", async () => {

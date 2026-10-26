@@ -8,6 +8,7 @@ import {
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
 import { DeleteHouseholdButton } from "@/components/admin/delete-household-button";
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
+import { householdSheetHref } from "@/lib/household/sheet-link";
 
 export const metadata = { title: "ครัวเรือนที่ตรวจแล้ว" };
 export const dynamic = "force-dynamic";
@@ -145,7 +146,8 @@ export default async function HouseholdsPage({
           <>
             <HouseholdTable
               rows={result.rows}
-              canOpen={ctx.permissions.includes(PERMISSIONS.VERIFICATION_VIEW)}
+              openHref={(id) => householdSheetHref(ctx.permissions, id)}
+              canEdit={ctx.permissions.includes(PERMISSIONS.VERIFICATION_VIEW)}
               isAdmin={ctx.roles.includes("ADMIN")}
             />
             {(totalPages > 1 || result.total > 0) && (
@@ -222,7 +224,17 @@ function formatAddress(r: HouseholdListRow): string {
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-function HouseholdTable({ rows, canOpen, isAdmin }: { rows: HouseholdListRow[]; canOpen: boolean; isAdmin: boolean }) {
+function HouseholdTable({
+  rows,
+  openHref,
+  canEdit,
+  isAdmin,
+}: {
+  rows: HouseholdListRow[];
+  openHref: (householdId: string) => string | null;
+  canEdit: boolean;
+  isAdmin: boolean;
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[1120px] text-sm">
@@ -239,7 +251,9 @@ function HouseholdTable({ rows, canOpen, isAdmin }: { rows: HouseholdListRow[]; 
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const href = openHref(r.householdId);
+            return (
             <tr key={r.householdId} className="group transition-colors hover:bg-brand-50/50">
               <td className="py-2.5 pl-6 pr-4 font-mono text-xs font-bold text-slate-700">{r.sheetNo}</td>
               <td className="py-2.5 pr-4">
@@ -273,17 +287,18 @@ function HouseholdTable({ rows, canOpen, isAdmin }: { rows: HouseholdListRow[]; 
               </td>
               <td className="sticky right-0 bg-white py-2.5 pr-6 text-right group-hover:bg-brand-50/50">
                 <div className="flex items-center justify-end gap-1.5">
-                  {canOpen ? (
-                    <Link href={`/verification/${r.householdId}?mode=view`} className="btn btn-secondary btn-sm">ดู</Link>
+                  {href ? (
+                    <Link href={href} className="btn btn-secondary btn-sm">ดู</Link>
                   ) : <span className="text-xs text-slate-300">—</span>}
-                  {isAdmin && canOpen && (
+                  {isAdmin && canEdit && (
                     <Link href={`/verification/${r.householdId}?mode=edit`} className="btn btn-accent btn-sm">แก้ไข</Link>
                   )}
                   {isAdmin && <DeleteHouseholdButton householdId={r.householdId} sheetNo={r.sheetNo} />}
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

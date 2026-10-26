@@ -17,6 +17,7 @@ import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 import { decryptText } from "../crypto/encryption";
 import { getKeyring } from "../crypto/keys";
+import { displayStatusOf, PERSON_STATUS_LABELS } from "../../domain/vulnerable/status";
 
 function canVerify(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.VERIFICATION_VIEW);
@@ -49,6 +50,8 @@ export interface ReviewVulnerablePerson {
   ageStatus: FieldStatusEnum;
   phone: string | null;
   phoneStatus: FieldStatusEnum;
+  /** สถานะหลังการสำรวจ (เสียชีวิต/ย้ายออก/…) — null = ยังต้องดูแล (docs/34) */
+  inactiveLabel: string | null;
   vulnerabilities: string[];
 }
 
@@ -152,10 +155,19 @@ function floodDepthText(m: number | null, cm: number | null): string | null {
 export async function loadHouseholdForReview(
   ctx: AuthorizationContext,
   householdId: string,
-  options: { includeDeleted?: boolean } = {},
+  options: {
+    includeDeleted?: boolean;
+    /**
+     * "view" = เปิดดูใบอย่างเดียวจากหน้าข้อมูลครัวเรือน (docs/43) — ใช้ household.view ได้
+     * เฉพาะใบที่ตรวจแล้ว · ไม่มีปุ่มยืนยัน/ตัดสินใบซ้ำ · หัวหน้าชุมชนเปิดได้เฉพาะชุมชนที่ผูกไว้
+     */
+    purpose?: "verify" | "view";
+  } = {},
 ): Promise<HouseholdReview | null> {
-  if (!canVerify(ctx)) return null;
-  const includeDeleted = options.includeDeleted === true && ctx.roles.includes("ADMIN");
+  const viewOnly = options.purpose === "view";
+  const viaHouseholdView = viewOnly && !canVerify(ctx) && hasPermission(ctx, PERMISSIONS.HOUSEHOLD_VIEW);
+  if (!canVerify(ctx) && !viaHouseholdView) return null;
+  const includeDeleted = !viewOnly && options.includeDeleted === true && ctx.roles.includes("ADMIN");
 
   const h = await prisma.household.findFirst({
     where: includeDeleted ? { id: householdId } : { id: householdId, deletedAt: null },
@@ -204,6 +216,8 @@ export async function loadHouseholdForReview(
 
   const inScope = ctx.isGlobalScope || ctx.communityIds.includes(h.communityId);
   if (!inScope) return null;
+  // ผู้ที่ไม่มีสิทธิ์ตรวจ เห็นได้เฉพาะใบที่ตรวจแล้ว (ตรงกับรายการครัวเรือน) — ตอบ null เหมือนไม่พบ
+  if (viaHouseholdView && (h.sheet.status !== SheetStatus.VERIFIED || h.deletedAt !== null)) return null;
 
   // Audit READ — เปิดดูข้อมูลอ่อนไหว (ไม่ log ค่า PII ดิบ)
   await writeAuditLog({
@@ -211,7 +225,7 @@ export async function loadHouseholdForReview(
     action: AuditAction.READ,
     entityType: "Household",
     entityId: h.id,
-    reason: "verification-review",
+    reason: viewOnly ? "household-view" : "verification-review",
   });
 
   const enteredByMe = h.enteredById === ctx.userId;
@@ -474,6 +488,7 @@ export async function loadHouseholdForReview(
       status: candidate.sheet.status,
     })),
     canResolveDuplicate:
+      !viewOnly &&
       h.deletedAt === null &&
       h.sheet.status === SheetStatus.ENTERED_1 &&
       !enteredByMe &&
@@ -481,6 +496,7 @@ export async function loadHouseholdForReview(
       h.duplicateResolution === null,
     deletedAt: h.deletedAt,
     canConfirm:
+      !viewOnly &&
       h.deletedAt === null &&
       h.sheet.status === SheetStatus.ENTERED_1 &&
       !enteredByMe &&
@@ -496,6 +512,9 @@ export async function loadHouseholdForReview(
       ageStatus: p.ageStatus,
       phone: safeDecrypt(p.phone),
       phoneStatus: p.phoneStatus,
+      inactiveLabel: p.isActive
+        ? null
+        : PERSON_STATUS_LABELS[displayStatusOf({ isActive: p.isActive, deactivatedReason: p.deactivatedReason })],
       vulnerabilities: p.vulnerabilities.map((item) => {
         const detail = safeDecrypt(item.detail);
         return detail

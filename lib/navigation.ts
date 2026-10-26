@@ -9,12 +9,15 @@ export interface NavItem {
   activeHrefs?: readonly string[];
   fallback?: { permission: Permission; href: string };
   iconHref?: string;
+  /** ชื่อเมนูเมื่อบัญชีถูกจำกัดชุมชน (หัวหน้าชุมชน · docs/43) — ไม่ระบุ = ใช้ label */
+  scopedLabel?: string;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
   {
     group: "overview",
     label: "แดชบอร์ดผู้บริหาร",
+    scopedLabel: "ภาพรวมชุมชน",
     href: "/dashboard",
     permission: PERMISSIONS.DASHBOARD_VIEW,
     implemented: true,
@@ -99,8 +102,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // "กฎการจัดลำดับ" (/priority-rules) ไม่มีเมนูแยกแล้ว (2026-10-21) — เกณฑ์แสดงบนหน้าที่ใช้จริง
   // /medical และ /risk พร้อมปุ่มแก้ของ ADMIN · หน้าเดิมยังเปิดได้จากลิงก์ "ฉบับเต็ม" (docs/40)
   {
+    // รายชื่ออาสาสมัครที่ชาวบ้านแจ้งไว้ในแบบสอบถาม — ใช้เรียกคนช่วยตอนเกิดภัย (docs/43)
+    group: "analysis",
+    label: "อาสาสมัครในชุมชน",
+    href: "/community-volunteers",
+    permission: PERMISSIONS.VOLUNTEER_LIST_VIEW,
+    implemented: true,
+    iconHref: "/volunteer",
+  },
+  {
     group: "analysis",
     label: "รายงานและส่งออก",
+    scopedLabel: "รายงานสรุปชุมชน",
     href: "/reports",
     permission: PERMISSIONS.REPORT_VIEW,
     implemented: true,
@@ -158,11 +171,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 export function visibleNavItems(
   permissions: readonly Permission[],
+  options: { scoped?: boolean } = {},
 ): NavItem[] {
   return NAV_ITEMS.flatMap((item) => {
-    if (permissions.includes(item.permission)) return [item];
+    const label = options.scoped && item.scopedLabel ? item.scopedLabel : item.label;
+    if (permissions.includes(item.permission)) return [{ ...item, label }];
     if (item.fallback && permissions.includes(item.fallback.permission)) {
-      return [{ ...item, href: item.fallback.href }];
+      return [{ ...item, label, href: item.fallback.href }];
     }
     return [];
   });

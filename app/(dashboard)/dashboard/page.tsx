@@ -128,7 +128,7 @@ export default async function DashboardPage({
       <div className="animate-slide-up relative overflow-hidden rounded-3xl band-brand px-6 py-6 md:px-8">
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold text-white">แดชบอร์ดผู้บริหาร</h2>
+            <h2 className="text-2xl font-bold text-white">{ctx.isGlobalScope ? "แดชบอร์ดผู้บริหาร" : "ภาพรวมชุมชน"}</h2>
             <p className="mt-1 text-sm text-brand-50">
               สรุปข้อมูลหลักของพื้นที่ที่คุณรับผิดชอบ
             </p>

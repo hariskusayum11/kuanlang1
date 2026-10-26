@@ -93,6 +93,7 @@ export default async function CommunitiesPage() {
                       targetCoveragePercent={c.targetCoveragePercent}
                       dataSource={c.populationDataSource}
                       dataNote={c.populationDataNote}
+                      canEditTarget={ctx.isGlobalScope}
                     />
                   )}
                 </div>

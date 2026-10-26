@@ -161,7 +161,10 @@ export async function updatePopulation(
   });
   if (!current) return { ok: false, reason: "NOT_FOUND" };
 
-  const v = validation.value;
+  // หัวหน้าชุมชนแก้ได้เฉพาะจำนวนครัวเรือน/แหล่งข้อมูล — เป้า % คงค่าเดิมเสมอ (docs/43)
+  const v = ctx.isGlobalScope
+    ? validation.value
+    : { ...validation.value, targetCoveragePercent: current.targetCoveragePercent };
   await prisma.community.update({
     where: { id: communityId },
     data: {

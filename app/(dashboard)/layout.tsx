@@ -29,7 +29,7 @@ export default async function DashboardLayout({
     }),
   ]);
 
-  const navItems = visibleNavItems(ctx.permissions).map(
+  const navItems = visibleNavItems(ctx.permissions, { scoped: !ctx.isGlobalScope }).map(
     ({ group, label, href, implemented, activeHrefs, iconHref }) => ({
       group,
       label,

@@ -235,6 +235,7 @@ describe("visibleNavItems", () => {
       "แผนที่ข้อมูลสำรวจ",
       "ความเสี่ยงและการช่วยเหลือ",
       // "กฎการจัดลำดับ" ไม่มีเมนูแยกแล้ว — เกณฑ์อยู่บนหน้า /medical และ /risk (docs/40)
+      "อาสาสมัครในชุมชน",
       "รายงานและส่งออก",
       "ผลงานผู้กรอก",
       // หน้าเดียวของอาสาสมัคร — อยู่หมวด overview เพราะเป็นหน้าแรกของเขา
@@ -252,6 +253,7 @@ describe("visibleNavItems", () => {
       "data",
       "data",
       "data",
+      "analysis",
       "analysis",
       "analysis",
       "analysis",
@@ -278,7 +280,7 @@ describe("visibleNavItems", () => {
     expect(visibleNavItems(permissions).map((i) => i.href)).toEqual(["/volunteer"]);
   });
 
-  it("COMMUNITY_LEADER เห็นสถานะกลุ่มเปราะบาง + แดชบอร์ด/ชุมชน/แผนที่ เท่านั้น (docs/34, docs/41)", () => {
+  it("COMMUNITY_LEADER = แอดมินชุมชน (docs/34, docs/41, docs/42, docs/43)", () => {
     const { permissions } = buildAuthorization([UserRoleEnum.COMMUNITY_LEADER]);
     expect([...permissions].sort()).toEqual(
       [
@@ -286,28 +288,53 @@ describe("visibleNavItems", () => {
         PERMISSIONS.RED_GROUP_VIEW,
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.COMMUNITY_VIEW,
+        PERMISSIONS.COMMUNITY_MANAGE,
         PERMISSIONS.MAP_VIEW,
+        PERMISSIONS.SITE_MANAGE,
+        PERMISSIONS.SHELTER_VERIFY,
+        PERMISSIONS.REPORT_VIEW,
+        PERMISSIONS.HOUSEHOLD_VIEW,
+        PERMISSIONS.VOLUNTEER_LIST_VIEW,
       ].sort(),
     );
-    expect(visibleNavItems(permissions).map((i) => i.href)).toEqual([
+    const nav = visibleNavItems(permissions, { scoped: true });
+    expect(nav.map((i) => i.href)).toEqual([
       "/dashboard",
+      "/households",
       "/community-status",
+      "/shelters",
       "/communities",
       "/map",
+      "/risk",
+      "/community-volunteers",
+      "/reports",
+      "/keyer-performance",
     ]);
-    // ห้ามได้สิทธิ์ข้อมูลรายบ้าน/สุขภาพ/รายงาน/ส่งออก/ตั้งค่า
+    // ชื่อเมนูของบัญชีที่ถูกจำกัดชุมชน
+    expect(nav.find((i) => i.href === "/dashboard")?.label).toBe("ภาพรวมชุมชน");
+    expect(nav.find((i) => i.href === "/reports")?.label).toBe("รายงานสรุปชุมชน");
+    // ห้าม: คีย์/ตรวจใบ · แดชบอร์ดสุขภาพ · ส่งออกรายบุคคลทั่วไป · จัดการผู้ใช้/ตั้งค่า
     for (const forbidden of [
-      PERMISSIONS.HOUSEHOLD_VIEW,
+      PERMISSIONS.SURVEY_ENTRY,
+      PERMISSIONS.VERIFICATION_VIEW,
       PERMISSIONS.MEDICAL_CASE_VIEW,
       PERMISSIONS.MEDICAL_DASHBOARD_VIEW,
       PERMISSIONS.MEDICAL_MAP_VIEW,
-      PERMISSIONS.REPORT_VIEW,
+      PERMISSIONS.MEDICAL_REPORT_EXPORT,
+      PERMISSIONS.PERSONAL_REPORT_EXPORT,
       PERMISSIONS.REPORT_SEGMENT_EXPORT,
-      PERMISSIONS.COMMUNITY_MANAGE,
+      PERMISSIONS.REPORT_QUICK_EDIT,
+      PERMISSIONS.USER_MANAGE,
       PERMISSIONS.SETTINGS_VIEW,
+      PERMISSIONS.PRIORITY_RULES_MANAGE,
     ]) {
       expect(permissions).not.toContain(forbidden);
     }
+  });
+
+  it("ชื่อเมนูปกติไม่เปลี่ยนสำหรับบัญชีทั้งระบบ", () => {
+    const nav = visibleNavItems(ROLE_PERMISSIONS[UserRoleEnum.EXECUTIVE]);
+    expect(nav.find((i) => i.href === "/dashboard")?.label).toBe("แดชบอร์ดผู้บริหาร");
   });
 
   it("บทบาทอื่นนอกจาก ADMIN/หัวหน้าชุมชน บันทึกสถานะกลุ่มเปราะบางไม่ได้", () => {
@@ -348,6 +375,7 @@ describe("visibleNavItems", () => {
       "/medical",
       "/map",
       "/risk",
+      "/community-volunteers",
       "/reports",
       "/keyer-performance",
       "/volunteer",

@@ -14,6 +14,8 @@ type Props = {
   targetCoveragePercent: number;
   dataSource: string | null;
   dataNote: string | null;
+  /** หัวหน้าชุมชนแก้ได้เฉพาะจำนวนครัวเรือน — เป้า % เป็นนโยบายของโครงการ (server บังคับซ้ำ · docs/43) */
+  canEditTarget?: boolean;
 };
 
 const ERRORS: Record<string, string> = {
@@ -95,9 +97,13 @@ export function PopulationEditor(props: Props) {
                   inputMode="numeric"
                   value={target}
                   onChange={(e) => setTarget(sanitizeIntString(e.target.value, 100))}
-                  className="field max-w-28"
+                  readOnly={props.canEditTarget === false}
+                  className="field max-w-28 read-only:bg-slate-50 read-only:text-slate-500"
                 />
-                <p className="text-[11px] font-medium text-slate-400">ผ่านเป้าเมื่อ Coverage &gt; ค่านี้ (ค่าเริ่มต้น 60)</p>
+                <p className="text-[11px] font-medium text-slate-400">
+                  ผ่านเป้าเมื่อ Coverage &gt; ค่านี้ (ค่าเริ่มต้น 60)
+                  {props.canEditTarget === false ? " · กำหนดโดยผู้ดูแลระบบ" : ""}
+                </p>
               </div>
 
               <div className="space-y-1.5">

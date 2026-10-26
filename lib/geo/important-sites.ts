@@ -1,6 +1,8 @@
-import { AuditAction, EvacuationSiteType, UserRoleEnum } from "@prisma/client";
+import { AuditAction, EvacuationSiteType } from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAuditLog } from "../audit/log";
+import { canAccessCommunity, hasPermission } from "../authz/access";
+import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 
 export interface ImportantSitePoint {
@@ -24,9 +26,16 @@ export const IMPORTANT_SITE_TYPES: { value: EvacuationSiteType; label: string }[
   { value: EvacuationSiteType.OTHER, label: "จุดสำคัญอื่น ๆ" },
 ];
 
+/** ADMIN (ทุกชุมชน) + หัวหน้าชุมชน (เฉพาะชุมชนที่ผูกไว้ — ตรวจซ้ำใน save/delete) · docs/43 */
 export function canManageImportantSites(ctx: AuthorizationContext): boolean {
-  return ctx.roles.includes(UserRoleEnum.ADMIN);
+  return hasPermission(ctx, PERMISSIONS.SITE_MANAGE);
 }
+
+function canManageCommunity(ctx: AuthorizationContext, communityId: string): boolean {
+  return canManageImportantSites(ctx) && canAccessCommunity(ctx, communityId);
+}
+
+const OUT_OF_SCOPE_ERROR = "จัดการได้เฉพาะจุดในชุมชนที่คุณดูแล";
 
 /** จุดสำคัญบนแผนที่ภายใน — เคารพขอบเขตชุมชน (หัวหน้าชุมชนเห็นเฉพาะชุมชนที่ผูกไว้ · docs/41) */
 export async function getImportantSites(
@@ -92,9 +101,16 @@ async function isHostShelter(id: string): Promise<boolean> {
 }
 
 export async function saveImportantSite(ctx: AuthorizationContext, input: ImportantSiteInput) {
-  if (!canManageImportantSites(ctx)) return { ok: false as const, error: "เฉพาะผู้ดูแลระบบเท่านั้น" };
+  if (!canManageImportantSites(ctx)) return { ok: false as const, error: "ไม่มีสิทธิ์จัดการจุดสำคัญ" };
   const error = validate(input);
   if (error) return { ok: false as const, error };
+  // ทั้งชุมชนปลายทาง และ (ถ้าแก้) ชุมชนเดิมของจุด ต้องอยู่ในขอบเขต — กันย้ายจุดของชุมชนอื่นมาเป็นของตน
+  if (!canManageCommunity(ctx, input.communityId)) return { ok: false as const, error: OUT_OF_SCOPE_ERROR };
+  if (input.id) {
+    const existing = await prisma.evacuationSite.findUnique({ where: { id: input.id }, select: { communityId: true } });
+    if (!existing) return { ok: false as const, error: "ไม่พบจุดที่ต้องการแก้" };
+    if (!canManageCommunity(ctx, existing.communityId)) return { ok: false as const, error: OUT_OF_SCOPE_ERROR };
+  }
   const data = {
     communityId: input.communityId,
     name: input.name.trim(),
@@ -122,9 +138,10 @@ export async function saveImportantSite(ctx: AuthorizationContext, input: Import
 }
 
 export async function deleteImportantSite(ctx: AuthorizationContext, id: string) {
-  if (!canManageImportantSites(ctx)) return { ok: false as const, error: "เฉพาะผู้ดูแลระบบเท่านั้น" };
+  if (!canManageImportantSites(ctx)) return { ok: false as const, error: "ไม่มีสิทธิ์จัดการจุดสำคัญ" };
   const existing = await prisma.evacuationSite.findUnique({ where: { id }, select: { id: true, type: true, communityId: true } });
   if (!existing) return { ok: false as const, error: "ไม่พบจุดที่ต้องการลบ" };
+  if (!canManageCommunity(ctx, existing.communityId)) return { ok: false as const, error: OUT_OF_SCOPE_ERROR };
   if (await isHostShelter(id)) return { ok: false as const, error: HOST_SHELTER_ERROR };
   await prisma.evacuationSite.delete({ where: { id } });
   await writeAuditLog({

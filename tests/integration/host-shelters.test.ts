@@ -98,7 +98,9 @@ describe.skipIf(!isLocalDevDb)("Integration: ยืนยันบ้านพ�
 
     expect((await verifyHostShelter(officer, { ...fields, householdId, isPublic: false, ownerContacted: false })).ok).toBe(false);
     expect(await verifyHostShelter(officer, { ...fields, householdId: noCoords, isPublic: false, ownerContacted: true })).toEqual({ ok: false, reason: "NO_COORDINATES" });
-    expect(await verifyHostShelter(leader, { ...fields, householdId, isPublic: false, ownerContacted: true })).toEqual({ ok: false, reason: "FORBIDDEN" });
+    // หัวหน้าชุมชนมีสิทธิ์ยืนยันแล้ว (docs/43) แต่บัญชีนี้ไม่ได้ผูกชุมชน → นอกขอบเขต = ไม่พบ
+    expect(await verifyHostShelter(leader, { ...fields, householdId, isPublic: false, ownerContacted: true })).toEqual({ ok: false, reason: "NOT_FOUND" });
+    expect((await getShelterOverview(leader))?.candidates).toEqual([]);
     expect(await getShelterOverview(keyer)).toBeNull();
   });
 

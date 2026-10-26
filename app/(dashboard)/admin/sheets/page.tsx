@@ -16,7 +16,9 @@ export default async function AdminSheetsPage({
 }: {
   searchParams: Promise<{ page?: string; size?: string }>;
 }) {
-  const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
+  // USER_MANAGE ตรงกับเมนู — household.view ไม่พอแล้วเพราะหัวหน้าชุมชนก็มี (docs/43)
+  // listDeletedHouseholds ตรวจ ADMIN ซ้ำอีกชั้น
+  const ctx = await requirePermission(PERMISSIONS.USER_MANAGE);
   const sp = await searchParams;
   const result = await listDeletedHouseholds(
     ctx,

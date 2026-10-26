@@ -1,6 +1,6 @@
 import { AuditAction, EvacuationSiteType, Prisma, SheetStatus } from "@prisma/client";
 import { writeAuditLog } from "../audit/log";
-import { hasPermission } from "../authz/access";
+import { hasPermission, scopedCommunityIds } from "../authz/access";
 import { PERMISSIONS } from "../authz/permissions";
 import type { AuthorizationContext } from "../authz/types";
 import { buildUsableHouseholdWhere } from "../household/trusted-where";
@@ -17,6 +17,12 @@ import { updateShelterSchema, verifyShelterSchema } from "./validation";
 
 export function canVerifyShelters(ctx: AuthorizationContext): boolean {
   return hasPermission(ctx, PERMISSIONS.SHELTER_VERIFY);
+}
+
+/** หัวหน้าชุมชนยืนยันได้เฉพาะชุมชนที่ผูกไว้ (docs/43) · บทบาทอื่นทั้งระบบ */
+function siteScope(ctx: AuthorizationContext): Prisma.EvacuationSiteWhereInput {
+  const ids = scopedCommunityIds(ctx);
+  return ids ? { communityId: { in: ids } } : {};
 }
 
 export interface ShelterCandidateRow {
@@ -56,7 +62,7 @@ export async function getShelterOverview(ctx: AuthorizationContext): Promise<She
     prisma.household.findMany({
       where: {
         AND: [
-          buildUsableHouseholdWhere({ status: "VERIFIED" }),
+          buildUsableHouseholdWhere({ status: "VERIFIED" }, scopedCommunityIds(ctx)),
           { floodRiskProfile: { canBeHostHouse: true } },
           // ยังไม่ได้ยืนยัน (หรือเคยยืนยันแล้วถูกยกเลิก → ยืนยันใหม่ได้)
           { OR: [{ hostShelter: null }, { hostShelter: { isActive: false } }] },
@@ -74,7 +80,7 @@ export async function getShelterOverview(ctx: AuthorizationContext): Promise<She
       },
     }),
     prisma.evacuationSite.findMany({
-      where: { sourceHouseholdId: { not: null } },
+      where: { sourceHouseholdId: { not: null }, ...siteScope(ctx) },
       orderBy: [{ isActive: "desc" }, { community: { code: "asc" } }, { name: "asc" }],
       select: {
         id: true,
@@ -140,7 +146,7 @@ export async function verifyHostShelter(ctx: AuthorizationContext, raw: unknown,
   const { householdId, ownerContacted: _confirmed, ...fields } = parsed.data;
 
   const household = await prisma.household.findFirst({
-    where: { AND: [{ id: householdId }, buildUsableHouseholdWhere({ status: "ALL" })] },
+    where: { AND: [{ id: householdId }, buildUsableHouseholdWhere({ status: "ALL" }, scopedCommunityIds(ctx))] },
     select: {
       id: true,
       communityId: true,
@@ -210,7 +216,7 @@ export async function updateHostShelter(ctx: AuthorizationContext, raw: unknown)
   const { siteId, ...fields } = parsed.data;
 
   const before = await prisma.evacuationSite.findFirst({
-    where: { id: siteId, sourceHouseholdId: { not: null }, isActive: true },
+    where: { id: siteId, sourceHouseholdId: { not: null }, isActive: true, ...siteScope(ctx) },
     select: { capacity: true, isPublic: true, name: true },
   });
   if (!before) return { ok: false, reason: "NOT_FOUND" };
@@ -230,7 +236,7 @@ export async function updateHostShelter(ctx: AuthorizationContext, raw: unknown)
 export async function revokeHostShelter(ctx: AuthorizationContext, siteId: string): Promise<ShelterResult> {
   if (!canVerifyShelters(ctx)) return { ok: false, reason: "FORBIDDEN" };
   const updated = await prisma.evacuationSite.updateMany({
-    where: { id: siteId, sourceHouseholdId: { not: null }, isActive: true },
+    where: { id: siteId, sourceHouseholdId: { not: null }, isActive: true, ...siteScope(ctx) },
     data: { isActive: false, isPublic: false },
   });
   if (updated.count !== 1) return { ok: false, reason: "NOT_FOUND" };

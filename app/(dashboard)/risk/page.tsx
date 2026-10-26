@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/authz/context";
-import { hasPermission } from "@/lib/authz/access";
 import { PERMISSIONS } from "@/lib/authz/permissions";
+import { householdSheetHref } from "@/lib/household/sheet-link";
 import { getRiskList, type RiskRow } from "@/lib/risk/list";
 import { getRulesPageData } from "@/lib/rules/core";
 import type { RiskLevel } from "@/domain/risk";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function RiskPage() {
   const ctx = await requirePermission(PERMISSIONS.HOUSEHOLD_VIEW);
   const [result, rules] = await Promise.all([getRiskList(ctx), getRulesPageData(ctx)]);
-  const canOpen = hasPermission(ctx, PERMISSIONS.VERIFICATION_VIEW);
+  const openHref = (householdId: string) => householdSheetHref(ctx.permissions, householdId);
   const { counts } = result;
   const mappablePct = Math.round((result.mappableWeight / result.systemWeight) * 100);
 
@@ -102,7 +102,7 @@ export default async function RiskPage() {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {result.rows.map((r, i) => (
-                  <RiskTableRow key={r.householdId} row={r} rank={i + 1} canOpen={canOpen} />
+                  <RiskTableRow key={r.householdId} row={r} rank={i + 1} href={openHref(r.householdId)} />
                 ))}
               </tbody>
             </table>
@@ -133,11 +133,11 @@ const LEVEL_META: Record<
 function RiskTableRow({
   row,
   rank,
-  canOpen,
+  href,
 }: {
   row: RiskRow;
   rank: number;
-  canOpen: boolean;
+  href: string | null;
 }) {
   const meta = row.level ? LEVEL_META[row.level] : null;
   const pct = Math.max(0, Math.min(100, row.absoluteScore));
@@ -148,8 +148,8 @@ function RiskTableRow({
     <tr className="transition-colors hover:bg-brand-50/50">
       <td className="py-3 pl-6 pr-3 text-right font-bold tabular-nums text-slate-400">{rank}</td>
       <td className="py-3 pr-4">
-        {canOpen ? (
-          <Link href={`/verification/${row.householdId}`} className="font-bold text-brand-700 hover:underline">
+        {href ? (
+          <Link href={href} className="font-bold text-brand-700 hover:underline">
             {row.sheetNo}
           </Link>
         ) : (

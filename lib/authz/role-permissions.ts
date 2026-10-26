@@ -49,16 +49,23 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
     PERMISSIONS.REPORT_VIEW,
   ],
   [UserRoleEnum.FIELD_SURVEYOR]: [],
-  // หัวหน้าชุมชน (Owner Decision 2026-10-19) — เปลี่ยนสถานะกลุ่มเปราะบาง (docs/34)
-  // + ดูแดชบอร์ด ข้อมูลชุมชน และแผนที่ภายใน (docs/41) — ทั้งหมดเฉพาะชุมชนที่ผูกไว้
-  // (isGlobalScope=false จาก buildAuthorization) · ไม่มี household.view / medical / report / export
-  // ข้อยกเว้นเดียวเรื่องส่งออก: รายชื่อกลุ่มสีแดงของชุมชนตน (docs/42, Owner Decision 2026-10-26)
+  // หัวหน้าชุมชน = "แอดมินชุมชน" — ทุกสิทธิ์จำกัดเฉพาะชุมชนที่ผูกไว้ (isGlobalScope=false จาก buildAuthorization)
+  //  - 2026-10-19 เปลี่ยนสถานะกลุ่มเปราะบาง (docs/34) · 2026-10-21 แดชบอร์ด/ชุมชน/แผนที่ (docs/41)
+  //  - 2026-10-26 รายชื่อกลุ่มสีแดง (docs/42) + ชุด "แอดมินชุมชน" (docs/43): แก้จำนวนครัวเรือน จัดการจุดสำคัญ
+  //    ยืนยันบ้านพักพิง รายงานสรุป ดูใบเต็ม (รวมรายละเอียดโรค) ความเสี่ยง รายชื่ออาสาสมัคร
+  //  ไม่มี: คีย์/ตรวจใบ (survey.entry, verification.view) · medical dashboard · export รายบุคคลทั่วไป · ตั้งค่าระบบ
   [UserRoleEnum.COMMUNITY_LEADER]: [
     PERMISSIONS.VULNERABLE_STATUS_UPDATE,
     PERMISSIONS.RED_GROUP_VIEW,
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.COMMUNITY_VIEW,
+    PERMISSIONS.COMMUNITY_MANAGE,
     PERMISSIONS.MAP_VIEW,
+    PERMISSIONS.SITE_MANAGE,
+    PERMISSIONS.SHELTER_VERIFY,
+    PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.HOUSEHOLD_VIEW,
+    PERMISSIONS.VOLUNTEER_LIST_VIEW,
   ],
 };
 
