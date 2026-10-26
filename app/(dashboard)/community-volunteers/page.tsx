@@ -43,14 +43,14 @@ export default async function CommunityVolunteersPage({ searchParams }: { search
 
       {result.skills.length > 0 ? (
         <nav className="flex flex-wrap gap-2" aria-label="กรองตามทักษะ">
-          <Link href="/community-volunteers" className={`chip chip-md ${skill ? "chip-neutral" : "chip-brand"}`}>
+          <Link href="/community-volunteers" className={`btn btn-sm ${skill ? "btn-ghost" : "btn-primary"}`}>
             ทุกทักษะ
           </Link>
           {result.skills.map((s) => (
             <Link
               key={s.code}
               href={`/community-volunteers?skill=${encodeURIComponent(s.code)}`}
-              className={`chip chip-md ${skill === s.code ? "chip-brand" : "chip-neutral"}`}
+              className={`btn btn-sm ${skill === s.code ? "btn-primary" : "btn-ghost"}`}
               aria-current={skill === s.code ? "true" : undefined}
             >
               {s.label} <span className="tabular-nums opacity-70">{s.count.toLocaleString("th-TH")}</span>
