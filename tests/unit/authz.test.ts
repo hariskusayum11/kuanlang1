@@ -283,6 +283,7 @@ describe("visibleNavItems", () => {
     expect([...permissions].sort()).toEqual(
       [
         PERMISSIONS.VULNERABLE_STATUS_UPDATE,
+        PERMISSIONS.RED_GROUP_VIEW,
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.COMMUNITY_VIEW,
         PERMISSIONS.MAP_VIEW,
@@ -313,6 +314,7 @@ describe("visibleNavItems", () => {
     for (const role of Object.values(UserRoleEnum)) {
       if (role === UserRoleEnum.ADMIN || role === UserRoleEnum.COMMUNITY_LEADER) continue;
       expect(buildAuthorization([role]).permissions).not.toContain(PERMISSIONS.VULNERABLE_STATUS_UPDATE);
+      expect(buildAuthorization([role]).permissions).not.toContain(PERMISSIONS.RED_GROUP_VIEW);
     }
   });
 

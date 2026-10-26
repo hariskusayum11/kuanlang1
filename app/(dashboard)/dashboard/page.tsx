@@ -20,6 +20,8 @@ import { getSystemPreferences } from "@/lib/settings/core";
 import { floodDepthMeters } from "@/domain/flood/depth";
 import { TRIAGE_EXAMPLE } from "@/domain/triage";
 import { CommunityComparison, DepthHistogram, StackedBar } from "@/components/dashboard/charts";
+import { RedGroupCard } from "@/components/dashboard/red-group-card";
+import { canViewRedGroup, listRedGroupPeople } from "@/lib/red-group/core";
 
 export const metadata = { title: "แดชบอร์ดผู้บริหาร" };
 export const dynamic = "force-dynamic";
@@ -100,13 +102,15 @@ export default async function DashboardPage({
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
   // ปุ่ม "ดูรายละเอียด" ของ "อื่นๆ" (ข้อ 6) — เฉพาะประเภทที่ต้องระบุรายละเอียด + สิทธิ์สุขภาพ
   const canViewDetail = hasPermission(ctx, PERMISSIONS.MEDICAL_DASHBOARD_VIEW);
-  const [counts, coverage, analytics, detailTypes] = await Promise.all([
+  const [counts, coverage, analytics, detailTypes, redGroup] = await Promise.all([
     fetchScopedDashboardCounts(scope),
     fetchCommunityCoverage(scope),
     fetchQuestionnaireAnalytics(scope, filters),
     canViewDetail
       ? prisma.vulnerabilityType.findMany({ where: { requiresDetail: true }, select: { id: true } })
       : Promise.resolve([]),
+    // เมนูลัดกลุ่มสีแดง (docs/42) — ตัวเลขรวมตามขอบเขต ไม่ขึ้นกับตัวกรองของหน้า
+    canViewRedGroup(ctx) ? listRedGroupPeople(ctx) : Promise.resolve(null),
   ]);
   const cards = toStatCards(counts);
   const detailTypeIds = new Set(detailTypes.map((t) => t.id));
@@ -142,6 +146,15 @@ export default async function DashboardPage({
         <div className="rounded-2xl border-2 border-sun-200 bg-sun-50 px-5 py-4 text-sm font-semibold leading-6 text-sun-900" role="status">
           <span className="mr-2" aria-hidden="true">📢</span>{preferences.notice}
         </div>
+      ) : null}
+
+      {redGroup ? (
+        <RedGroupCard
+          tally={redGroup.tally}
+          communityCount={redGroup.communities.length}
+          isGlobalScope={ctx.isGlobalScope}
+          canOpenMap={hasPermission(ctx, PERMISSIONS.MAP_VIEW)}
+        />
       ) : null}
 
       <DashboardFilters filters={filters} options={analytics.options} />

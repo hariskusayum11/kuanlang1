@@ -13,6 +13,7 @@ import { depthBin, FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale"
 import { highestUrgency, MAP_URGENCY_LABELS } from "@/domain/geo/map-urgency";
 import { HELP_URGENCY_LABELS, HELP_URGENCY_WORD } from "@/domain/geo/help-priority";
 import { RISK_LEVEL_LABEL } from "@/domain/rules/priority-rules";
+import { RED_GROUP_LABELS, RED_GROUP_NO } from "@/domain/vulnerable/red-group";
 import type { HelpCase } from "@/lib/risk/help-priority";
 
 const MAP_VIEW_STORAGE_KEY = "skl-fris:household-map-view:v1";
@@ -112,6 +113,10 @@ function popupRow(label: string, value: string): string {
 
 function popup(point: HouseholdLayerPoint): string {
   const details: string[] = [];
+  // โหมดกลุ่มสีแดง (docs/42) — บอกเลขกลุ่มตามเอกสารทีม ไม่มีชื่อคน/รายละเอียดโรค
+  if (point.redGroups?.length) {
+    details.push(popupRow("กลุ่มสีแดง", `<span style="color:#b91c1c">${point.redGroups.map((group) => escapeHtml(`${RED_GROUP_NO[group]}. ${RED_GROUP_LABELS[group]}`)).join("<br/>")}</span>`));
+  }
   if (point.vulnerableCount) {
     details.push(popupRow("กลุ่มเปราะบาง", `<b>${point.vulnerableCount.toLocaleString("th-TH")}</b> คน<br/><span style="font-weight:400;color:#475569">วิกฤต ${point.triage.P1} · เร่งด่วน ${point.triage.P2} · เฝ้าระวัง ${point.triage.P3}${point.triage.UNASSESSED ? ` · ยังไม่ประเมิน ${point.triage.UNASSESSED}` : ""}</span>`));
   }

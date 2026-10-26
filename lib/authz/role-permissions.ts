@@ -50,8 +50,10 @@ export const ROLE_PERMISSIONS: Record<UserRoleEnum, readonly Permission[]> = {
   // หัวหน้าชุมชน (Owner Decision 2026-10-19) — เปลี่ยนสถานะกลุ่มเปราะบาง (docs/34)
   // + ดูแดชบอร์ด ข้อมูลชุมชน และแผนที่ภายใน (docs/41) — ทั้งหมดเฉพาะชุมชนที่ผูกไว้
   // (isGlobalScope=false จาก buildAuthorization) · ไม่มี household.view / medical / report / export
+  // ข้อยกเว้นเดียวเรื่องส่งออก: รายชื่อกลุ่มสีแดงของชุมชนตน (docs/42, Owner Decision 2026-10-26)
   [UserRoleEnum.COMMUNITY_LEADER]: [
     PERMISSIONS.VULNERABLE_STATUS_UPDATE,
+    PERMISSIONS.RED_GROUP_VIEW,
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.COMMUNITY_VIEW,
     PERMISSIONS.MAP_VIEW,

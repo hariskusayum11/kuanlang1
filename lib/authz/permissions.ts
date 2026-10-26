@@ -24,6 +24,9 @@ export const PERMISSIONS = {
   // บันทึกสถานะกลุ่มเปราะบางหลังการสำรวจ (เสียชีวิต/ย้ายออก/ไม่เข้าเกณฑ์/คืนสถานะ)
   // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนถูกจำกัดเฉพาะชุมชนที่ผูกไว้ (docs/34)
   VULNERABLE_STATUS_UPDATE: "vulnerable.status.update",
+  // กลุ่มเปราะบางสีแดง (docs/42) — การ์ดเมนูลัด + ดาวน์โหลด Excel (ชื่อ เบอร์ พิกัด) + กรองหมุดบนแผนที่
+  // หัวหน้าชุมชน + ADMIN — หัวหน้าชุมชนได้เฉพาะชุมชนที่ผูกไว้ (Owner Decision 2026-10-26)
+  RED_GROUP_VIEW: "vulnerable.red.view",
   // ยืนยันบ้านที่ยินยอมเป็นจุดพักพิง → เป็นจุดพักพิงจริง (docs/38) — เจ้าหน้าที่ + ADMIN
   SHELTER_VERIFY: "shelter.verify",
   SETTINGS_VIEW: "settings.view",

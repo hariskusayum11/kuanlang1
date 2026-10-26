@@ -37,6 +37,12 @@ export interface MapViewState {
   boundaries: boolean;
   /** ชั้น "ลำดับการช่วยเหลือ" (ค่าเริ่มต้น = ปิด · เปิดเขียนเป็น `help=on`) — docs/40 */
   help: boolean;
+  /**
+   * แสดงเฉพาะบ้านที่มีกลุ่มเปราะบางสีแดง (`red=on`) — docs/42
+   * กรองที่ server (ต้องมีสิทธิ์ RED_GROUP_VIEW ไม่งั้นหน้าแผนที่ถือว่าปิด)
+   * เปิดแล้วชั้นครัวเรือนเริ่มที่ "กลุ่มเปราะบาง" อย่างเดียว ถ้า URL ไม่ได้ระบุ layers เอง
+   */
+  red: boolean;
 }
 
 /** ค่าที่หมายถึง "ปิดชั้นเส้นขอบชุมชน" ใน URL — เขียนออกเป็น `off` เสมอ */
@@ -88,17 +94,19 @@ export function parseMapViewState(
   allSiteTypes: readonly string[],
 ): MapViewState {
   const base = first(params.base);
+  const red = HELP_ON_VALUES.has(first(params.red)?.trim().toLowerCase() ?? "");
   return {
     communityId: cleanId(first(params.community)),
     tambonId: cleanId(first(params.tambon)),
     dateFrom: cleanDate(first(params.from)),
     dateTo: cleanDate(first(params.to)),
     base: base === "satellite" ? "satellite" : "street",
-    layers: parseList(first(params.layers), HOUSEHOLD_LAYER_KEYS, DEFAULT_HOUSEHOLD_LAYERS),
+    layers: parseList(first(params.layers), HOUSEHOLD_LAYER_KEYS, red ? ["vulnerable"] : DEFAULT_HOUSEHOLD_LAYERS),
     skill: cleanId(first(params.skill)),
     siteTypes: parseList(first(params.sites), allSiteTypes, allSiteTypes),
     boundaries: !BOUNDARY_OFF_VALUES.has(first(params.boundary)?.trim().toLowerCase() ?? ""),
     help: HELP_ON_VALUES.has(first(params.help)?.trim().toLowerCase() ?? ""),
+    red,
   };
 }
 
@@ -122,7 +130,8 @@ export function serializeMapViewState(
   if (state.dateFrom) params.set("from", state.dateFrom);
   if (state.dateTo) params.set("to", state.dateTo);
   if (state.base !== "street") params.set("base", state.base);
-  if (!sameMembers(state.layers, DEFAULT_HOUSEHOLD_LAYERS)) {
+  if (state.red) params.set("red", "on");
+  if (!sameMembers(state.layers, state.red ? ["vulnerable"] : DEFAULT_HOUSEHOLD_LAYERS)) {
     params.set("layers", listValue(state.layers, HOUSEHOLD_LAYER_KEYS));
   }
   if (state.skill) params.set("skill", state.skill);

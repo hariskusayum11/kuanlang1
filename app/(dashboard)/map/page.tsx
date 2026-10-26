@@ -10,6 +10,7 @@ import { dateRangeError } from "@/lib/household/trusted-where";
 import { getCurrentCommunityBoundaries } from "@/lib/geo/community-boundaries";
 import { getCommunityMapSummaries } from "@/lib/geo/community-map-summary";
 import { getHelpPriority } from "@/lib/risk/help-priority";
+import { canViewRedGroup, listRedGroupPeople, redGroupsByHousehold } from "@/lib/red-group/core";
 
 export const metadata = { title: "แผนที่ข้อมูลพื้นที่" };
 export const dynamic = "force-dynamic";
@@ -27,7 +28,11 @@ const SITE_TYPE_VALUES = IMPORTANT_SITE_TYPES.map((type) => type.value);
  */
 export default async function SurveyMapPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   const ctx = await requirePermission(PERMISSIONS.MAP_VIEW);
-  const view = parseMapViewState(await searchParams, SITE_TYPE_VALUES);
+  const params = await searchParams;
+  // โหมดกลุ่มสีแดง (docs/42) — ไม่มีสิทธิ์ = อ่าน URL เหมือนไม่มี red (ไม่บอกว่ามีโหมดนี้)
+  const redOn = canViewRedGroup(ctx) && parseMapViewState(params, SITE_TYPE_VALUES).red;
+  const view = parseMapViewState(redOn ? params : { ...params, red: undefined }, SITE_TYPE_VALUES);
+  const redMap = redOn ? redGroupsByHousehold((await listRedGroupPeople(ctx)).rows) : undefined;
   const filters: HouseholdMapFilters = {
     communityId: view.communityId,
     tambonId: view.tambonId,
@@ -36,7 +41,7 @@ export default async function SurveyMapPage({ searchParams }: { searchParams: Pr
   };
   const filterError = dateRangeError(filters.dateFrom, filters.dateTo);
   const [householdMap, preferences, sites, boundaries, communitySummary, helpPriority] = await Promise.all([
-    getHouseholdLayerMap(ctx, filters),
+    getHouseholdLayerMap(ctx, filters, redMap),
     getSystemPreferences(),
     getImportantSites(ctx, filters.communityId),
     // ขอบเขตทุกชุมชนเป็นบริบทเสมอ (ชุมชนที่เลือกถูกเน้นฝั่ง client) — ระดับชุมชน ไม่ใช่รายบ้าน

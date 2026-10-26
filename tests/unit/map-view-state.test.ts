@@ -42,6 +42,7 @@ describe("map view state (URL query)", () => {
       siteTypes: ["OTHER", "SCHOOL"],
       boundaries: false,
       help: true,
+      red: true,
     };
     const query = serializeMapViewState(original, SITE_TYPES);
     const reparsed = parseMapViewState(Object.fromEntries(new URLSearchParams(query)), SITE_TYPES);
@@ -73,6 +74,7 @@ describe("map view state (URL query)", () => {
       siteTypes: ["SCHOOL"],
       boundaries: true,
       help: false,
+      red: false,
     });
   });
 
@@ -103,5 +105,16 @@ describe("map view state (URL query)", () => {
     expect(on.help).toBe(true);
     expect(serializeMapViewState(on, SITE_TYPES)).toBe("help=on");
     expect(parseMapViewState({ help: "<x>" }, SITE_TYPES).help).toBe(false);
+  });
+
+  it("กลุ่มสีแดง: red=on เริ่มที่ชั้นกลุ่มเปราะบางอย่างเดียว และลิงก์สั้นคงรูป (docs/42)", () => {
+    expect(parseMapViewState({}, SITE_TYPES).red).toBe(false);
+    const red = parseMapViewState({ red: "on" }, SITE_TYPES);
+    expect(red.red).toBe(true);
+    expect(red.layers).toEqual(["vulnerable"]);
+    expect(serializeMapViewState(red, SITE_TYPES)).toBe("red=on");
+    // ระบุ layers เองได้ — เขียนกลับเมื่อไม่ใช่ค่าเริ่มต้นของโหมดนี้
+    const withHeat = parseMapViewState({ red: "on", layers: "vulnerable,heat" }, SITE_TYPES);
+    expect(serializeMapViewState(withHeat, SITE_TYPES)).toBe("red=on&layers=vulnerable,heat");
   });
 });

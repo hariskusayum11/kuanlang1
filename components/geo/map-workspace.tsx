@@ -8,6 +8,7 @@ import type { CommunityBoundaryShape } from "@/lib/geo/community-boundaries";
 import type { CommunityMapSummary } from "@/lib/geo/community-map-summary";
 import {
   countActiveLayers,
+  DEFAULT_HOUSEHOLD_LAYERS,
   HOUSEHOLD_LAYER_KEYS,
   mapViewHref,
   type BaseMapKey,
@@ -153,9 +154,10 @@ export function MapWorkspace({
       siteTypes,
       boundaries: showBoundaries,
       help,
+      red: view.red,
       ...patch,
     }),
-    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, base, layers, skill, siteTypes, showBoundaries, help],
+    [view.communityId, view.tambonId, view.dateFrom, view.dateTo, view.red, base, layers, skill, siteTypes, showBoundaries, help],
   );
 
   // เขียนชั้นข้อมูลลง URL โดยไม่โหลดหน้าใหม่
@@ -260,6 +262,23 @@ export function MapWorkspace({
       ) : null}
 
       {toast ? <Toast result={toast} onClose={() => setToast(null)} /> : null}
+
+      {/* โหมดกลุ่มสีแดง (docs/42) — server กรองจุดให้แล้ว ปิดได้ด้วยการโหลดแผนที่ปกติ */}
+      {view.red ? (
+        // ใต้ปุ่ม "เพิ่มจุดสำคัญ" ชิดซ้าย — ไม่ทับปุ่มและไม่ไปอยู่ใต้แผงชั้นข้อมูลด้านขวา
+        <div className="absolute left-3 right-3 top-16 z-[1060] md:left-14 md:right-auto md:top-14 md:w-[26rem]" role="status">
+          <div className="flex items-center gap-3 rounded-2xl border-2 border-red-200 bg-white/95 px-4 py-2.5 shadow-md">
+            <span className="h-3 w-3 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-xs leading-5 text-slate-700">
+              <b className="text-red-700">เฉพาะกลุ่มสีแดง</b> {nf(points.length)} หลังที่มีพิกัด
+              {missingCoordinates.uniqueHouseholds ? ` · ไม่มีพิกัดอีก ${nf(missingCoordinates.uniqueHouseholds)} หลัง (ดูในไฟล์ Excel)` : ""}
+            </p>
+            <a href={mapViewHref(currentState({ red: false, layers: [...DEFAULT_HOUSEHOLD_LAYERS] }), allSiteTypes)} className="shrink-0 text-xs font-bold text-brand-700 hover:underline">
+              แสดงทั้งหมด
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       {noData && !isPending ? (
         <div className="pointer-events-none absolute inset-0 z-[1040] grid place-items-center p-6">

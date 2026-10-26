@@ -34,7 +34,7 @@
 
 | | |
 |---|---|
-| Permission | `vulnerable.status.update` + (ตั้งแต่ 2026-10-21) `dashboard.view` · `community.view` · `map.view` เฉพาะชุมชนที่ผูกไว้ — ดู [41](41-community-leader-scope.md) · ADMIN ได้ด้วยผ่าน `ALL_PERMISSIONS` |
+| Permission | `vulnerable.status.update` + (ตั้งแต่ 2026-10-21) `dashboard.view` · `community.view` · `map.view` เฉพาะชุมชนที่ผูกไว้ — ดู [41](41-community-leader-scope.md) · (ตั้งแต่ 2026-10-26) `vulnerable.red.view` ดาวน์โหลดรายชื่อกลุ่มสีแดง — ดู [42](42-red-group.md) · ADMIN ได้ด้วยผ่าน `ALL_PERMISSIONS` |
 | หน้า | `/community-status` · `/dashboard` (หน้าแรกหลังเข้าระบบ) · `/communities` · `/map` |
 | เห็น | ชื่อ · อายุ · บ้านเลขที่/หมู่ · **ชื่อประเภท**ความเปราะบาง (เช่น "ผู้ป่วยติดเตียง") · รหัสแบบสอบถาม |
 | **ไม่เห็น** | รายละเอียดโรค (`PersonVulnerability.detail`) · เบอร์โทร · พิกัด · ระดับความเร่งด่วน — **ไม่ select ออกจากฐานข้อมูลเลย** ไม่ใช่แค่ซ่อน (เทสต์ตรวจว่าไม่อยู่ใน payload) |

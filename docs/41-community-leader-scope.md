@@ -15,9 +15,11 @@
 | `dashboard.view` | `/dashboard` (หน้าแรกหลังเข้าระบบ) · `/priority-rules` (อ่านอย่างเดียว) | |
 | `community.view` | `/communities` | ไม่มี `community.manage` — แก้จำนวนครัวเรือนไม่ได้ |
 | `map.view` | `/map` | จุดรายบ้านพร้อมที่อยู่ของชุมชนตน |
+| `vulnerable.red.view` | การ์ดเมนูลัดบน `/dashboard` · `/red-group/export` · `/map?red=on` | **เพิ่ม 2026-10-26** — รายชื่อกลุ่มสีแดงของชุมชนตน (ชื่อ เบอร์ พิกัด) ดู [42](42-red-group.md) |
 
 **ตั้งใจไม่ให้:** `household.view` (รายการครัวเรือน, `/risk`, ชั้น "ลำดับการช่วยเหลือ" `?help=on`)
 · `medical.*` (รวมปุ่ม "ดูรายละเอียด" โรคบนแดชบอร์ด) · `report.*` และการส่งออกทุกชนิด
+(ยกเว้นรายชื่อกลุ่มสีแดงตาม docs/42)
 · `settings.view` · `verification.view`
 
 ## 2. ขอบเขต — ข้อยกเว้นเดียวของ #R7-B

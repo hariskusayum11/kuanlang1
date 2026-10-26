@@ -7,6 +7,7 @@ import { PERMISSIONS } from "../authz/permissions";
 import { buildVerifiedMapHouseholdWhere } from "../household/trusted-where";
 import { effectiveTriage, type TriageCode } from "../../domain/triage";
 import { calculateFloodDepthCm } from "../../domain/flood/depth";
+import type { RedGroup } from "../../domain/vulnerable/red-group";
 
 export interface HouseholdMapFilters {
   communityId?: string;
@@ -39,6 +40,8 @@ export interface HouseholdLayerPoint {
   potentialHostHouse: boolean;
   /** ระดับน้ำสูงสุดจากแบบสอบถาม ใช้สร้างฮีตแมป (ซม.) */
   floodDepthCm: number | null;
+  /** กลุ่มสีแดงของคนในบ้าน — มีเฉพาะตอนเปิดโหมด `red=on` (docs/42) */
+  redGroups?: RedGroup[];
 }
 
 export interface HouseholdLayerMapResult {
@@ -68,6 +71,8 @@ function validCoordinate(lat: number | null, lng: number | null): lat is number 
 export async function getHouseholdLayerMap(
   ctx: AuthorizationContext,
   filters: HouseholdMapFilters,
+  /** โหมดกลุ่มสีแดง: แสดงเฉพาะบ้านใน map นี้ (ผู้เรียกตรวจสิทธิ์ RED_GROUP_VIEW แล้ว) */
+  onlyRed?: ReadonlyMap<string, RedGroup[]>,
 ): Promise<HouseholdLayerMapResult> {
   if (!hasPermission(ctx, PERMISSIONS.MAP_VIEW)) {
     return {
@@ -83,6 +88,7 @@ export async function getHouseholdLayerMap(
   const layerWhere: Prisma.HouseholdWhereInput = {
     AND: [
       baseWhere,
+      ...(onlyRed ? [{ id: { in: [...onlyRed.keys()] } }] : []),
       {
         OR: [
           { vulnerablePersons: { some: { isActive: true } } },
@@ -214,6 +220,7 @@ export async function getHouseholdLayerMap(
       })),
       potentialHostHouse: hostHouse,
       floodDepthCm,
+      ...(onlyRed ? { redGroups: onlyRed.get(household.id) ?? [] } : {}),
     });
     sumLat += lat;
     sumLng += lng as number;
@@ -223,7 +230,7 @@ export async function getHouseholdLayerMap(
     userId: ctx.userId,
     action: AuditAction.READ,
     entityType: "HouseholdLayerMap",
-    reason: `เปิดแผนที่จุดครัวเรือนพร้อมที่อยู่สำหรับผู้มีสิทธิ์ (${points.length} จุด, ไม่มีพิกัด ${missing.uniqueHouseholds})`,
+    reason: `เปิดแผนที่จุดครัวเรือนพร้อมที่อยู่สำหรับผู้มีสิทธิ์${onlyRed ? " — เฉพาะกลุ่มสีแดง" : ""} (${points.length} จุด, ไม่มีพิกัด ${missing.uniqueHouseholds})`,
   });
 
   return {
