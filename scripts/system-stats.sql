@@ -206,4 +206,25 @@ JOIN trusted t ON t.id = f."householdId"
 JOIN community c ON c.id = t."communityId"
 GROUP BY c."nameTh" ORDER BY avg_depth_cm DESC NULLS LAST;
 
+\echo '=== 24) สถานะกลุ่มเปราะบางหลังการสำรวจ (docs/34, docs/43) ==='
+SELECT count(*) FILTER (WHERE vp."isActive") AS active,
+       count(*) FILTER (WHERE vp."deactivatedReason" = 'DECEASED') AS deceased,
+       count(*) FILTER (WHERE vp."deactivatedReason" = 'MOVED_OUT') AS moved_out,
+       count(*) FILTER (WHERE vp."deactivatedReason" = 'NO_LONGER_ELIGIBLE') AS no_longer_eligible,
+       count(*) FILTER (WHERE vp."reportedAt" IS NOT NULL) AS reported_by_leader
+FROM vulnerable_person vp JOIN trusted t ON t.id = vp."householdId";
+
+\echo '=== 25) จุดสำคัญและบ้านพักพิง (docs/38) ==='
+SELECT count(*) FILTER (WHERE e."isActive" AND e."sourceHouseholdId" IS NULL) AS important_sites,
+       count(*) FILTER (WHERE e."isActive" AND e."sourceHouseholdId" IS NOT NULL) AS host_shelters_verified,
+       count(*) FILTER (WHERE e."isActive" AND e."sourceHouseholdId" IS NOT NULL AND e."isPublic") AS host_shelters_public,
+       (SELECT count(*) FROM flood_risk_profile f JOIN trusted t ON t.id = f."householdId" WHERE f."canBeHostHouse" IS TRUE) AS host_house_offers
+FROM evacuation_site e;
+
+\echo '=== 26) บัญชีหัวหน้าชุมชน (docs/41, docs/43) ==='
+SELECT count(DISTINCT ur."userId") AS leaders,
+       count(DISTINCT ur."userId") FILTER (WHERE EXISTS (SELECT 1 FROM user_community_scope s WHERE s."userId" = ur."userId")) AS leaders_with_community
+FROM user_role ur JOIN "user" u ON u.id = ur."userId"
+WHERE ur.role = 'COMMUNITY_LEADER' AND ur."isActive" AND u."isActive";
+
 ROLLBACK;
