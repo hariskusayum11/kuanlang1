@@ -10,8 +10,6 @@ import {
 import { PublicMap } from "@/components/public/public-map";
 import { ExternalLinkCards } from "@/components/public/external-link-cards";
 import { listPublicExternalLinks } from "@/lib/external-links/core";
-import { getCommunityFlagStatus } from "@/lib/water/community-flag";
-import { CommunityFlagCard } from "@/components/public/community-flag-card";
 
 // Public Home — เปิดได้โดยไม่ login (CLAUDE.md: Public Portal mobile-first)
 // แสดงเฉพาะ aggregate + ข้อมูลราชการ — ไม่มี PII / พิกัดรายบ้าน / Sheet ID
@@ -108,12 +106,11 @@ const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }
 ];
 
 export default async function PublicHomePage() {
-  const [stats, contacts, mapData, externalLinks, flagStatus] = await Promise.all([
+  const [stats, contacts, mapData, externalLinks] = await Promise.all([
     getPublicStats(),
     getPublicEmergencyContacts(),
     getPublicMapData(),
     listPublicExternalLinks(),
-    getCommunityFlagStatus(),
   ]);
   const hasMapPoints = mapData.communities.length + mapData.sites.length > 0;
   const boundaryCount = mapData.communities.filter((c) => c.boundary).length;
@@ -212,9 +209,6 @@ export default async function PublicHomePage() {
             />
           </svg>
         </section>
-
-        {/* ธงเตือนภัยชุมชน (โดยประมาณ) — สัญญาณที่ชาวบ้านใช้จริง จึงอยู่ก่อนเบอร์ฉุกเฉิน · ระดับน้ำแคช 10 นาที */}
-        <CommunityFlagCard status={flagStatus} />
 
         {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่บนสุด (แดง = วิกฤตจริง) */}
         <section aria-labelledby="emergency-title" className="card mt-8 overflow-hidden">

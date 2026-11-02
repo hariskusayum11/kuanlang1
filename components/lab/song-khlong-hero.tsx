@@ -177,9 +177,10 @@ export function SongKhlongHero({
             historyMark={historyMark}
             communityNames={communityNames}
             animate={!reduced}
+            flag={estimatedFlag}
           />
         ) : null}
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-[58%] bg-gradient-to-r from-canvas via-canvas/85 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-[40%] bg-gradient-to-r from-canvas via-canvas/80 to-transparent" />
         <div className="absolute bottom-28 right-10 z-10">{stat}</div>
       </div>
 
@@ -272,7 +273,16 @@ export function SongKhlongHero({
             historyMark={historyMark}
             communityNames={communityNames}
             animate={!reduced}
+            flag={estimatedFlag}
           />
+          {/* จอแคบเห็นแค่ครึ่งขวาของฉาก (เสาธงอยู่ขอบ) — แสดงธงเป็นป้ายมุมซ้ายบนแทน */}
+          <a href="#flags" className="absolute left-3 top-3 flex items-center gap-2 rounded-2xl bg-white/90 py-1.5 pl-1.5 pr-3 shadow ring-1 ring-slate-200">
+            <Flag level={estimatedFlag} className="h-11 w-11" />
+            <span className="leading-tight">
+              <b className="block text-base text-ink-900">{ESTIMATED_FLAG_LABEL[estimatedFlag]}</b>
+              <span className="text-[11px] text-slate-500">โดยประมาณ</span>
+            </span>
+          </a>
           <div className="absolute bottom-3 right-3">{stat}</div>
         </div>
       ) : null}

@@ -1,4 +1,4 @@
-// ธงเตือนภัยโดยประมาณ — ใช้ร่วมระหว่างหน้าแรก (/) และหน้าต้นแบบ /lab/song-khlong
+// ธงเตือนภัยโดยประมาณ — หน้าต้นแบบ /lab/song-khlong (ส่วนหัว + ส่วนธงเตือนภัย)
 // ข้อมูลสาธารณะล้วน: ระดับน้ำสถานีของรัฐ × เกณฑ์ธงของชุมชน (ไม่มีข้อมูลรายบ้าน)
 import {
   closestToNextFlag,
@@ -9,7 +9,6 @@ import {
   type EstimatedFlag,
 } from "../../domain/water/community-flags";
 import type { StationReading } from "../../domain/water/station-status";
-import { getSongKhlongStations } from "./thaiwater";
 
 export interface CommunityFlagStatus {
   flag: EstimatedFlag;
@@ -28,10 +27,4 @@ export function flagStatusFromReadings(readings: readonly StationReading[]): Com
     measuredAt: Object.fromEntries(FLAG_BRIDGE_CRITERIA.map((c) => [c.stationCode, reading(c.stationCode)?.measuredAt ?? null])),
     closest: closestToNextFlag(bridges),
   };
-}
-
-/** ดึงระดับน้ำ (แคช 10 นาที) แล้วประเมินธง · ดึงไม่ได้ = ธง UNKNOWN (ไม่ throw) */
-export async function getCommunityFlagStatus(): Promise<CommunityFlagStatus> {
-  const feed = await getSongKhlongStations();
-  return flagStatusFromReadings(feed.readings);
 }

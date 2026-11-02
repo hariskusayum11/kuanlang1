@@ -5,6 +5,7 @@
 // บ้านและน้ำใช้มาตราส่วนเดียวกัน (domain/water/scene-geometry.ts) — น้ำสูงกว่าตลิ่งเท่าไร ในภาพก็ท่วมบ้านเท่านั้น
 // สีใช้คลาส Token ทั้งหมด · ไม่มี <defs>/gradient (ตามข้อบังคับ SVG ของระบบ)
 import { gaugeMarks, mslToSceneY, SCENE, wavePath } from "@/domain/water/scene-geometry";
+import type { EstimatedFlag } from "@/domain/water/community-flags";
 
 const GROUND = SCENE.bankY;
 const M = SCENE.pxPerM;
@@ -302,6 +303,46 @@ function PowerLines({ poles }: { poles: number[] }) {
   );
 }
 
+// สีธงตามความหมายของระบบ: ปกติ = มิ้นต์ · เฝ้าระวัง = sun · อุทกภัย = red · ไม่ทราบ = slate
+const POLE_FLAG_FILL: Record<EstimatedFlag, string> = {
+  GREEN: "fill-emerald-500",
+  YELLOW: "fill-sun-400",
+  RED: "fill-red-600",
+  UNKNOWN: "fill-slate-300",
+};
+const POLE_FLAG_TEXT: Record<EstimatedFlag, string> = {
+  GREEN: "ธงเขียว · โดยประมาณ",
+  YELLOW: "ธงเหลือง · โดยประมาณ",
+  RED: "ธงแดง · โดยประมาณ",
+  UNKNOWN: "ธง · ไม่มีข้อมูล",
+};
+
+/** เสาธงเตือนภัยชุมชนริมคลอง — สีตามธงโดยประมาณ (ไม่ใช่ธงที่ประกาศ) · ธงสะบัดไปทางซ้าย (ฝั่งข้อความ) */
+function FlagPole({ x, flag, animate }: { x: number; flag: EstimatedFlag; animate: boolean }) {
+  const top = GROUND - 9.5 * M;
+  return (
+    <g>
+      <rect x={x - 22} y={GROUND - 14} width={44} height={16} rx={3} className="fill-slate-400" />
+      <rect x={x - 5} y={top} width={10} height={GROUND - top} rx={4} className="fill-slate-300" />
+      <rect x={x - 1} y={top} width={3} height={GROUND - top} className="fill-white/60" />
+      <circle cx={x} cy={top - 4} r={9} className="fill-slate-400" />
+      <g transform={`translate(${2 * x} 0) scale(-1 1)`}>
+        <g className={animate ? "animate-flag-wave" : undefined} style={{ transformBox: "fill-box", transformOrigin: "left center" }}>
+          <path
+            d={`M${x + 5} ${top + 6} C${x + 60} ${top - 14} ${x + 110} ${top + 30} ${x + 175} ${top + 8} L${x + 175} ${top + 112} C${x + 110} ${top + 134} ${x + 60} ${top + 90} ${x + 5} ${top + 110} Z`}
+            className={POLE_FLAG_FILL[flag]}
+          />
+          <path
+            d={`M${x + 5} ${top + 6} C${x + 60} ${top - 14} ${x + 110} ${top + 30} ${x + 175} ${top + 8} L${x + 175} ${top + 30} C${x + 110} ${top + 52} ${x + 60} ${top + 8} ${x + 5} ${top + 28} Z`}
+            className="fill-white/20"
+          />
+        </g>
+      </g>
+      <Label x={x - 92} y={top + 158} text={POLE_FLAG_TEXT[flag]} tone="white" />
+    </g>
+  );
+}
+
 const HOUSES = [
   { x: 926, w: 104, kind: RaisedWoodHouse, labelY: GROUND - 4.3 * M - 102 },
   { x: 1064, w: 116, kind: ConcreteHouse, labelY: GROUND - 3.1 * M - 92 },
@@ -332,6 +373,7 @@ export function HadYaiScene({
   historyMark,
   communityNames,
   animate,
+  flag,
 }: {
   /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
   levelMsl: number | null;
@@ -340,6 +382,8 @@ export function HadYaiScene({
   historyMark: SceneMark | null;
   communityNames: string[];
   animate: boolean;
+  /** ธงเตือนภัยชุมชนโดยประมาณ — แสดงบนเสาธงริมคลอง */
+  flag: EstimatedFlag;
 }) {
   const waterY = mslToSceneY(levelMsl, bankMsl);
   const marks = gaugeMarks(bankMsl);
@@ -384,8 +428,9 @@ export function HadYaiScene({
 
       {/* พื้นดินริมคลอง */}
       <rect x={0} y={GROUND - 14} width={SCENE.width} height={20} className="fill-emerald-200" />
-      {[120, 330, 560, 700].map((x, i) => <RubberTree key={x} x={x} h={150 + (i % 2) * 40} />)}
-      {[240, 470, 790].map((x, i) => <Palm key={x} x={x} h={200 + i * 18} />)}
+      {[120, 330, 560].map((x, i) => <RubberTree key={x} x={x} h={150 + (i % 2) * 40} />)}
+      {[240, 470].map((x, i) => <Palm key={x} x={x} h={200 + i * 18} />)}
+      <FlagPole x={826} flag={flag} animate={animate} />
       {[1056, 1206, 1336, 1472, 1594].map((x, i) => (i % 2 ? <Palm key={x} x={x} h={230} /> : <RubberTree key={x} x={x} h={190} />))}
 
       {HOUSES.map(({ x, w, kind: House }) => (

@@ -17,14 +17,6 @@ export const ESTIMATED_FLAG_LABEL: Record<EstimatedFlag, string> = {
   UNKNOWN: "ไม่ทราบ",
 };
 
-/** ความหมายสั้น ๆ ตามแนวปฏิบัติของกลุ่มสองคลองควนลัง */
-export const ESTIMATED_FLAG_MEANING: Record<EstimatedFlag, string> = {
-  GREEN: "สถานการณ์ปกติ",
-  YELLOW: "เฝ้าระวัง · อพยพผู้ป่วยติดเตียงและผู้ฟอกไต",
-  RED: "เกิดอุทกภัย · อพยพกลุ่มเปราะบางและกลุ่มเสี่ยง",
-  UNKNOWN: "ไม่มีข้อมูลระดับน้ำตอนนี้",
-};
-
 export const ESTIMATE_TEXT: Record<EstimatedFlag, string> = {
   GREEN: "ทุกสะพานยังต่ำกว่าเกณฑ์ยกธงเหลือง",
   YELLOW: "มีสะพานที่ระดับน้ำถึงเกณฑ์ยกธงเหลือง — เกณฑ์ชุมชนให้อพยพผู้ป่วยติดเตียงและผู้ฟอกไต",
