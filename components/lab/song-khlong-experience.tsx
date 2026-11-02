@@ -61,6 +61,9 @@ function thaiTime(measuredAt: string | null): string {
   return `${t ?? ""} น. · ${day} ${months[(m ?? 1) - 1] ?? ""}`;
 }
 
+/** "บ้านหาดใหญ่ใน" → "หาดใหญ่ใน" — แสดงชื่อพื้นที่แทนรหัสสถานี */
+const placeName = (stationName: string) => stationName.replace(/^บ้าน/, "");
+
 const fmt = (n: number, digits = 2) => n.toLocaleString("th-TH", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 function gridGeoJson(cells: GridCell[]) {
@@ -217,17 +220,11 @@ export function SongKhlongExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- หมุดสถานี + สีคลองตามสถานะ ----------
+  // ---------- สีคลองตามสถานะ ----------
+  // ไม่ปักหมุดสถานีบนแผนที่ — รหัสสถานี (X.44 ฯลฯ) คนทั่วไปไม่เข้าใจ ระดับน้ำอยู่ในการ์ดแทน
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const markers = stations.map((s) => {
-      const st = waterStatus(s);
-      const el = document.createElement("div");
-      el.className = "flex items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20";
-      el.innerHTML = `<span style="background:${STATUS_COLOR[st]}" class="inline-block h-3 w-3 rounded-full ring-2 ring-white/70"></span>${s.code} ${s.name}`;
-      return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).addTo(map);
-    });
     const color = STATUS_COLOR[mainStatus];
     map.setPaintProperty("utapao-glow", "line-color", color);
     map.setPaintProperty("r1-glow", "line-color", color);
@@ -235,8 +232,7 @@ export function SongKhlongExperience({
     const r1 = r1SimulatedIntensity(mainStatus);
     map.setPaintProperty("r1-glow", "line-opacity", 0.2 + 0.45 * r1);
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
-    return () => markers.forEach((m) => m.remove());
-  }, [ready, stations, mainStatus]);
+  }, [ready, mainStatus]);
 
   // ---------- แอนิเมชันน้ำไหล ----------
   useEffect(() => {
@@ -305,7 +301,7 @@ export function SongKhlongExperience({
         </h1>
         {main ? (
           <p className="mt-3 text-sm leading-6 text-slate-200">
-            สถานี <b>{main.code} {main.name}</b> · ระดับ {main.levelMsl !== null ? fmt(main.levelMsl) : "—"} ม.รทก. ·{" "}
+            จุดวัดน้ำ<b>{placeName(main.name)}</b> (ใกล้ควนลังที่สุด) · ระดับ {main.levelMsl !== null ? fmt(main.levelMsl) : "—"} ม.รทก. ·{" "}
             {mainFreeboard !== null ? (mainFreeboard > 0 ? <>ต่ำกว่าตลิ่ง <b>{fmt(mainFreeboard)} ม.</b></> : <b className="text-red-300">ล้นตลิ่ง {fmt(-mainFreeboard)} ม.</b>) : "ไม่ทราบระดับตลิ่ง"}{" "}
             · สถานะ <b>{WATER_STATUS_LABEL[mainStatus]}</b>
           </p>
@@ -341,8 +337,7 @@ export function SongKhlongExperience({
                     <div className="absolute inset-x-0 border-t-2 border-dashed border-white/70" style={{ bottom: `${100 / 1.2}%` }} title="ระดับตลิ่ง" />
                     <div className="absolute inset-x-0 bottom-0 rounded-b-full transition-[height] duration-700" style={{ height: `${((fill ?? 0) / 1.2) * 100}%`, background: STATUS_COLOR[st] }} />
                   </div>
-                  <p className="mt-2 text-[11px] font-bold">{s.code}</p>
-                  <p className="text-[10px] leading-tight text-slate-300">{s.name.replace(/^บ้าน/, "")}</p>
+                  <p className="mt-2 text-[11px] font-bold leading-tight">{placeName(s.name)}</p>
                   <p className="mt-1 text-[10px] text-slate-400">{fb !== null ? (fb > 0 ? `−${fmt(fb, 1)} ม.` : `ล้น ${fmt(-fb, 1)} ม.`) : "—"}</p>
                   {i === stations.length - 1 ? <p className="mt-0.5 rounded-full bg-sky-400/20 px-1.5 text-[9px] text-sky-200">ใกล้ควนลัง</p> : null}
                 </div>
