@@ -328,13 +328,14 @@ function FlagPole({ x, flag, animate }: { x: number; flag: EstimatedFlag; animat
       <circle cx={x} cy={top - 4} r={9} className="fill-slate-400" />
       <g transform={`translate(${2 * x} 0) scale(-1 1)`}>
         <g className={animate ? "animate-flag-wave" : undefined} style={{ transformBox: "fill-box", transformOrigin: "left center" }}>
+          {/* ธงสามเหลี่ยม (ชายธง) — ไม่ให้คล้ายธงชาติ */}
           <path
-            d={`M${x + 5} ${top + 6} C${x + 60} ${top - 14} ${x + 110} ${top + 30} ${x + 175} ${top + 8} L${x + 175} ${top + 112} C${x + 110} ${top + 134} ${x + 60} ${top + 90} ${x + 5} ${top + 110} Z`}
+            d={`M${x + 5} ${top + 4} Q${x + 100} ${top + 20} ${x + 200} ${top + 58} Q${x + 100} ${top + 96} ${x + 5} ${top + 112} Z`}
             className={POLE_FLAG_FILL[flag]}
           />
           <path
-            d={`M${x + 5} ${top + 6} C${x + 60} ${top - 14} ${x + 110} ${top + 30} ${x + 175} ${top + 8} L${x + 175} ${top + 30} C${x + 110} ${top + 52} ${x + 60} ${top + 8} ${x + 5} ${top + 28} Z`}
-            className="fill-white/20"
+            d={`M${x + 5} ${top + 4} Q${x + 100} ${top + 20} ${x + 200} ${top + 58} Q${x + 100} ${top + 34} ${x + 5} ${top + 26} Z`}
+            className="fill-white/25"
           />
         </g>
       </g>

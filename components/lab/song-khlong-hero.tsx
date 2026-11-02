@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { HadYaiScene, type SceneMark } from "@/components/lab/hadyai-scene";
 import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
@@ -189,8 +190,13 @@ export function SongKhlongHero({
           <LogoMark size={30} className="text-brand-600" />
           <span className="text-sm font-bold">SKL-FRIS · สองคลองควนลัง</span>
           <span className="badge badge-neutral ml-1">ต้นแบบ</span>
-          <a href="#flags" className="ml-auto text-sm font-semibold text-brand-700 hover:underline">ธงเตือนภัย ↓</a>
-          <a href="#map" className="ml-4 text-sm font-semibold text-brand-700 hover:underline">แผนที่ ↓</a>
+          <nav className="ml-auto flex items-center gap-4">
+            <a href="#emergency-title" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">เบอร์ฉุกเฉิน</a>
+            <a href="#flags" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">ธงเตือนภัย</a>
+            <a href="#map" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">แผนที่</a>
+            <Link href="/register" className="btn btn-primary btn-sm">สมัครใช้งาน</Link>
+            <Link href="/login" className="btn btn-secondary btn-sm">เข้าสู่ระบบ</Link>
+          </nav>
         </div>
 
         <div className="mt-8 max-w-[40rem] md:mt-[9vh]">

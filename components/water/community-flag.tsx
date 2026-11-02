@@ -29,7 +29,8 @@ export function Flag({ level, className = "h-12 w-12" }: { level: FlagLevel | "U
     <svg viewBox="0 0 48 48" className={`${className} shrink-0`} aria-hidden>
       <rect x={8} y={4} width={3} height={42} rx={1.5} className="fill-slate-400" />
       <circle cx={9.5} cy={4} r={3} className="fill-slate-300" />
-      <path d="M11 7 C20 3 26 11 38 7 L38 26 C26 30 20 22 11 26 Z" className={FLAG_FILL[level]} />
+      {/* ธงสามเหลี่ยม (ชายธง) — ไม่ให้คล้ายธงชาติ */}
+      <path d="M11 6 Q26 10 41 16.5 Q26 23 11 27 Z" className={FLAG_FILL[level]} />
       {level === "RED_SIREN" ? (
         <g>
           <path d="M36 34 a6 6 0 0 1 12 0 v6 h-12 Z" className="fill-alert-500" />
