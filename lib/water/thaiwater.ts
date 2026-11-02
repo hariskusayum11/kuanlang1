@@ -3,9 +3,11 @@
 // ต้นแบบหน้า /lab/song-khlong — ดึงที่ server แล้วแคช 10 นาที (ต้นทางไม่เปิด CORS และ
 // ไม่ควรให้ผู้เข้าชมทุกคนยิงไปที่ต้นทางเอง) · ล้มเหลว = คืนรายการว่าง หน้ายังแสดงได้
 // ⚠️ ยังไม่ได้ตรวจเงื่อนไขการใช้ข้อมูลของ ThaiWater — ต้องตรวจและใส่เครดิตก่อนเผยแพร่จริง
-import type { StationReading } from "../../domain/water/station-status";
+import type { HistoryPoint, StationReading } from "../../domain/water/station-status";
 
 const ENDPOINT = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_load";
+const GRAPH_ENDPOINT = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_graph";
+const HEADERS = { "User-Agent": "SKL-FRIS/lab (khuanlangmodel.com)", Accept: "application/json" };
 const CACHE_SECONDS = 600;
 
 /** สถานีบนคลองอู่ตะเภา เรียงจากต้นน้ำ → ควนลัง (น้ำไหลจากใต้ขึ้นเหนือ) */
@@ -18,6 +20,7 @@ interface RawRecord {
   river_name?: string | null;
   agency?: { agency_shortname?: { th?: string } | null } | null;
   station?: {
+    id?: number | null;
     tele_station_oldcode?: string | null;
     tele_station_name?: { th?: string } | null;
     tele_station_lat?: number | null;
@@ -43,6 +46,7 @@ export function parseThaiWater(payload: unknown, codes: readonly string[]): Stat
     const lng = num(r.station?.tele_station_long);
     if (lat === null || lng === null) continue;
     byCode.set(code, {
+      stationId: num(r.station?.id),
       code,
       name: r.station?.tele_station_name?.th ?? code,
       river: r.river_name ?? "",
@@ -71,12 +75,41 @@ export async function getSongKhlongStations(): Promise<StationFeed> {
     const res = await fetch(ENDPOINT, {
       next: { revalidate: CACHE_SECONDS },
       signal: AbortSignal.timeout(15_000),
-      headers: { "User-Agent": "SKL-FRIS/lab (khuanlangmodel.com)", Accept: "application/json" },
+      headers: HEADERS,
     });
     if (!res.ok) return { stations: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
     const stations = parseThaiWater(await res.json(), SONG_KHLONG_STATIONS);
     return { stations, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
   } catch {
     return { stations: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
+  }
+}
+
+/** ข้อมูลรายชั่วโมงจาก waterlevel_graph — ข้ามชั่วโมงที่ไม่มีค่า */
+export function parseGraph(payload: unknown): HistoryPoint[] {
+  const data = (payload as { data?: { graph_data?: Array<{ datetime?: string; value?: unknown }> } })?.data?.graph_data;
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((d) => {
+    const level = num(d.value);
+    return typeof d.datetime === "string" && level !== null ? [{ at: d.datetime, levelMsl: level }] : [];
+  });
+}
+
+/** วันที่ตามเวลาไทย "YYYY-MM-DD" (ต้นทางใช้เวลาไทย) */
+export function bangkokDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+/**
+ * ระดับน้ำรายชั่วโมงของสถานีระหว่างวันที่ (รวมปลายทั้งสองวัน)
+ * `cacheSeconds` — ช่วงล่าสุดใช้ 10 นาที · เหตุการณ์ในอดีต (ข้อมูลไม่เปลี่ยน) แคชได้นาน
+ */
+export async function getStationHistory(stationId: number, startDate: string, endDate: string, cacheSeconds = CACHE_SECONDS): Promise<HistoryPoint[]> {
+  const url = `${GRAPH_ENDPOINT}?station_type=tele_waterlevel&station_id=${stationId}&start_date=${startDate}&end_date=${endDate}`;
+  try {
+    const res = await fetch(url, { next: { revalidate: cacheSeconds }, signal: AbortSignal.timeout(15_000), headers: HEADERS });
+    return res.ok ? parseGraph(await res.json()) : [];
+  } catch {
+    return [];
   }
 }

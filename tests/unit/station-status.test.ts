@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { freeboard, gaugeFill, r1SimulatedIntensity, waterStatus, waterTrend } from "../../domain/water/station-status";
+import { freeboard, gaugeFill, levelPercent, peakOf, r1SimulatedIntensity, waterStatus, waterTrend } from "../../domain/water/station-status";
 
 // สถานะน้ำจากสถานีวัด (ต้นแบบ /lab/song-khlong)
 
@@ -37,6 +37,14 @@ describe("gaugeFill", () => {
   });
 });
 
+describe("levelPercent", () => {
+  it("ตรงกับ storage_percent ของ ThaiWater และไม่ตัดเพดาน", () => {
+    expect(levelPercent({ levelMsl: 1.19, bankMsl: 7.15, groundMsl: -2.204 })).toBeCloseTo(36.28, 1); // X.44 จริง
+    expect(levelPercent({ levelMsl: 9.97, bankMsl: 7.15, groundMsl: -2.204 })).toBeCloseTo(130.1, 0); // พ.ย. 68
+    expect(levelPercent({ levelMsl: null, bankMsl: 7.15, groundMsl: 0 })).toBeNull();
+  });
+});
+
 describe("r1SimulatedIntensity", () => {
   it("คลอง ร.1 ไหลแรงขึ้นเมื่อคลองอู่ตะเภาสูง", () => {
     expect(r1SimulatedIntensity("NORMAL")).toBeLessThan(r1SimulatedIntensity("WATCH"));
@@ -52,11 +60,28 @@ describe("parseThaiWater", () => {
       waterlevel_msl: msl,
       waterlevel_msl_previous: "1.00",
       river_name: "คลองอู่ตะเภา",
-      station: { tele_station_oldcode: code, tele_station_name: { th: code }, tele_station_lat: lat, tele_station_long: 100.4, min_bank: 7.15, ground_level: "-2.2" },
+      station: { id: 2591, tele_station_oldcode: code, tele_station_name: { th: code }, tele_station_lat: lat, tele_station_long: 100.4, min_bank: 7.15, ground_level: "-2.2" },
     });
     const out = parseThaiWater({ waterlevel_data: { data: [rec("X.44", "1.10"), rec("ZZZ", "9"), rec("X.90", "2.99"), rec("X.173A", "1", null)] } }, ["X.173A", "X.90", "X.44"]);
     expect(out.map((s) => s.code)).toEqual(["X.90", "X.44"]);
-    expect(out[1]).toMatchObject({ levelMsl: 1.1, previousMsl: 1, bankMsl: 7.15, groundMsl: -2.2 });
+    expect(out[1]).toMatchObject({ stationId: 2591, levelMsl: 1.1, previousMsl: 1, bankMsl: 7.15, groundMsl: -2.2 });
     expect(parseThaiWater({ nope: true }, ["X.44"])).toEqual([]);
+  });
+});
+
+describe("ข้อมูลย้อนหลัง", () => {
+  it("parseGraph ข้ามชั่วโมงที่ไม่มีค่า", async () => {
+    const { parseGraph } = await import("../../lib/water/thaiwater");
+    const out = parseGraph({ data: { graph_data: [{ datetime: "2025-11-25 09:00", value: null }, { datetime: "2025-11-25 10:00", value: 9.97 }, { datetime: "2025-11-25 11:00", value: "9.9" }] } });
+    expect(out).toEqual([{ at: "2025-11-25 10:00", levelMsl: 9.97 }, { at: "2025-11-25 11:00", levelMsl: 9.9 }]);
+    expect(parseGraph(null)).toEqual([]);
+  });
+  it("peakOf หาจุดสูงสุด", () => {
+    expect(peakOf([{ at: "a", levelMsl: 1 }, { at: "b", levelMsl: 9.97 }, { at: "c", levelMsl: 3 }])?.at).toBe("b");
+    expect(peakOf([])).toBeNull();
+  });
+  it("bangkokDate ใช้เวลาไทย", async () => {
+    const { bangkokDate } = await import("../../lib/water/thaiwater");
+    expect(bangkokDate(new Date("2026-11-01T18:30:00Z"))).toBe("2026-11-02"); // 01:30 น. เวลาไทย
   });
 });

@@ -8,6 +8,8 @@ export type WaterStatus = "NORMAL" | "WATCH" | "WARNING" | "OVERFLOW" | "UNKNOWN
 export type WaterTrend = "RISING" | "FALLING" | "STEADY" | "UNKNOWN";
 
 export interface StationReading {
+  /** รหัสภายในของ ThaiWater — ใช้ขอข้อมูลย้อนหลัง */
+  stationId: number | null;
   code: string;
   name: string;
   river: string;
@@ -80,6 +82,16 @@ export function gaugeFill(r: Pick<StationReading, "levelMsl" | "bankMsl" | "grou
   return Math.max(0, Math.min(1.2, fill));
 }
 
+/**
+ * ระดับน้ำเทียบความลึกถึงตลิ่ง (%) ไม่ตัดเพดาน — ตรงกับ storage_percent ของ ThaiWater
+ * ใช้แสดงเป็นตัวเลข (เช่น น้ำท่วมใหญ่ = 130%) ส่วน gaugeFill ตัดที่ 120% เพื่อวาดไม้วัดเท่านั้น
+ */
+export function levelPercent(r: Pick<StationReading, "levelMsl" | "bankMsl" | "groundMsl">): number | null {
+  if (!finite(r.levelMsl) || !finite(r.bankMsl)) return null;
+  const base = finite(r.groundMsl) && r.groundMsl < r.bankMsl ? r.groundMsl : r.bankMsl - 10;
+  return ((r.levelMsl - base) / (r.bankMsl - base)) * 100;
+}
+
 /** ความเร็วการไหลบนแผนที่ (เท่าของปกติ) — ยิ่งใกล้ตลิ่งยิ่งเร็ว */
 export function flowSpeed(status: WaterStatus): number {
   return { NORMAL: 1, WATCH: 1.6, WARNING: 2.4, OVERFLOW: 3.2, UNKNOWN: 0.6 }[status];
@@ -92,4 +104,16 @@ export function flowSpeed(status: WaterStatus): number {
  */
 export function r1SimulatedIntensity(utapao: WaterStatus): number {
   return { NORMAL: 0.35, WATCH: 0.7, WARNING: 1, OVERFLOW: 1, UNKNOWN: 0.25 }[utapao];
+}
+
+/** ระดับน้ำรายชั่วโมงย้อนหลัง */
+export interface HistoryPoint {
+  /** เวลาไทย "YYYY-MM-DD HH:mm" */
+  at: string;
+  levelMsl: number;
+}
+
+/** จุดสูงสุดของช่วงข้อมูล · ไม่มีข้อมูล = null */
+export function peakOf(points: readonly HistoryPoint[]): HistoryPoint | null {
+  return points.reduce<HistoryPoint | null>((best, p) => (best === null || p.levelMsl > best.levelMsl ? p : best), null);
 }

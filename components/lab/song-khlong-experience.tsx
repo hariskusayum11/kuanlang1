@@ -162,6 +162,13 @@ export function SongKhlongExperience({
       bearing: reducedMotion.current ? -22 : 0,
       maxPitch: 70,
       attributionControl: { compact: true },
+      // แผนที่อยู่ใต้ส่วนหัว — เลื่อนหน้าได้ปกติ ซูมต้องกด Ctrl / ใช้สองนิ้ว
+      cooperativeGestures: true,
+      locale: {
+        "CooperativeGesturesHandler.WindowsHelpText": "กด Ctrl ค้างแล้วเลื่อนเพื่อซูมแผนที่",
+        "CooperativeGesturesHandler.MacHelpText": "กด ⌘ ค้างแล้วเลื่อนเพื่อซูมแผนที่",
+        "CooperativeGesturesHandler.MobileHelpText": "ใช้สองนิ้วเพื่อเลื่อนแผนที่",
+      },
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
@@ -206,9 +213,15 @@ export function SongKhlongExperience({
         new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map);
       }
       setReady(true);
-      if (!reducedMotion.current) {
-        // เริ่มจากต้นน้ำ (บางศาลา) แล้วบินตามน้ำขึ้นมาที่ควนลัง
-        map.flyTo({ center, zoom, pitch: 58, bearing: -22, duration: 5200, essential: true, curve: 1.3 });
+      if (!reducedMotion.current && containerRef.current) {
+        // เริ่มจากต้นน้ำ (บางศาลา) แล้วบินตามน้ำขึ้นมาที่ควนลัง — เมื่อเลื่อนมาเห็นแผนที่แล้วเท่านั้น
+        const io = new IntersectionObserver((entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return;
+          io.disconnect();
+          map.flyTo({ center, zoom, pitch: 58, bearing: -22, duration: 5200, essential: true, curve: 1.3 });
+        }, { threshold: 0.4 });
+        io.observe(containerRef.current);
+        map.once("remove", () => io.disconnect());
       }
     });
 
