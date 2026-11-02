@@ -220,11 +220,20 @@ export function SongKhlongExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- สีคลองตามสถานะ ----------
-  // ไม่ปักหมุดสถานีบนแผนที่ — รหัสสถานี (X.44 ฯลฯ) คนทั่วไปไม่เข้าใจ ระดับน้ำอยู่ในการ์ดแทน
+  // ---------- หมุดสถานี + สีคลองตามสถานะ ----------
+  // ป้ายแสดงชื่อพื้นที่อย่างเดียว ไม่ใส่รหัสสถานี (X.44 ฯลฯ) ที่คนทั่วไปไม่เข้าใจ
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
+    const markers = stations.map((s) => {
+      const el = document.createElement("div");
+      el.className = "flex items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20";
+      const dot = document.createElement("span");
+      dot.className = "inline-block h-3 w-3 rounded-full ring-2 ring-white/70";
+      dot.style.background = STATUS_COLOR[waterStatus(s)];
+      el.append(dot, `จุดวัดน้ำ${placeName(s.name)}`);
+      return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).addTo(map);
+    });
     const color = STATUS_COLOR[mainStatus];
     map.setPaintProperty("utapao-glow", "line-color", color);
     map.setPaintProperty("r1-glow", "line-color", color);
@@ -232,7 +241,8 @@ export function SongKhlongExperience({
     const r1 = r1SimulatedIntensity(mainStatus);
     map.setPaintProperty("r1-glow", "line-opacity", 0.2 + 0.45 * r1);
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
-  }, [ready, mainStatus]);
+    return () => markers.forEach((m) => m.remove());
+  }, [ready, stations, mainStatus]);
 
   // ---------- แอนิเมชันน้ำไหล ----------
   useEffect(() => {
