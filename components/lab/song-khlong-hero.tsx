@@ -168,39 +168,45 @@ export function SongKhlongHero({
   return (
     <section className="relative isolate overflow-hidden bg-gradient-to-b from-brand-100 via-canvas to-mist md:min-h-dvh">
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
-      <div className="absolute inset-0 hidden md:block" >
+      <div className="absolute inset-0 hidden md:block">
+        {/* กว้างไม่เกิน 16:9 ของความสูงจอ — จอกว้างแนวนอนจะไม่ครอปด้านบน (เสาธง/ป้ายชุมชนไม่หาย)
+            จอแคบกว่า 16:9 ใช้เต็มความกว้างแล้วครอปด้านซ้าย (ฝั่งข้อความ) แทน · ขอบซ้ายของภาพโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีของส่วนหัวโดยไม่มีรอยต่อ */}
         {main && main.bankMsl !== null ? (
-          <HadYaiScene
-            levelMsl={viewedLevel}
-            bankMsl={main.bankMsl}
-            groundMsl={main.groundMsl}
-            historyMark={historyMark}
-            communityNames={communityNames}
-            animate={!reduced}
-            flag={estimatedFlag}
-          />
+          <div className="absolute inset-y-0 right-0 w-[min(100%,177.78dvh)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">
+            <HadYaiScene
+              levelMsl={viewedLevel}
+              bankMsl={main.bankMsl}
+              groundMsl={main.groundMsl}
+              historyMark={historyMark}
+              communityNames={communityNames}
+              animate={!reduced}
+              flag={estimatedFlag}
+            />
+          </div>
         ) : null}
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-[40%] bg-gradient-to-r from-canvas via-canvas/80 to-transparent" />
         <div className="absolute bottom-28 right-10 z-10">{stat}</div>
       </div>
 
       <div className="relative z-10 mx-auto flex max-w-[1500px] flex-col px-4 pb-6 pt-5 md:min-h-dvh md:px-10 md:pb-36 md:pt-8">
-        <div className="flex items-center gap-2 text-ink-900">
+        {/* แถบเมนูแบบแคปซูลพื้นโปร่ง — ภาพด้านหลังลอดใต้ได้โดยไม่ชนตัวหนังสือ */}
+        <div className="flex items-center gap-2 rounded-full bg-white/80 py-2 pl-3 pr-2 text-ink-900 shadow-sm ring-1 ring-white backdrop-blur-md md:pl-4">
           <LogoMark size={30} className="text-brand-600" />
-          <span className="text-sm font-bold">SKL-FRIS · สองคลองควนลัง</span>
-          <span className="badge badge-neutral ml-1">ต้นแบบ</span>
-          <nav className="ml-auto flex items-center gap-4">
+          <span className="whitespace-nowrap text-sm font-bold">
+            SKL-FRIS<span className="hidden sm:inline"> · สองคลองควนลัง</span>
+          </span>
+          <span className="badge badge-neutral ml-1 hidden sm:inline-flex">ต้นแบบ</span>
+          <nav className="ml-auto flex items-center gap-2 md:gap-4">
             <a href="#emergency-title" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">เบอร์ฉุกเฉิน</a>
             <a href="#flags" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">ธงเตือนภัย</a>
             <a href="#map" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">แผนที่</a>
-            <Link href="/register" className="btn btn-primary btn-sm">สมัครใช้งาน</Link>
-            <Link href="/login" className="btn btn-secondary btn-sm">เข้าสู่ระบบ</Link>
+            <Link href="/register" className="btn btn-primary btn-sm whitespace-nowrap">สมัครใช้งาน</Link>
+            <Link href="/login" className="btn btn-secondary btn-sm whitespace-nowrap">เข้าสู่ระบบ</Link>
           </nav>
         </div>
 
-        <div className="mt-8 max-w-[40rem] md:mt-[9vh]">
-          <p className="eyebrow text-brand-700">คลองอู่ตะเภา · หาดใหญ่</p>
-          <h1 className="mt-3 text-[2.6rem] font-black leading-[1.12] tracking-tight text-ink-900 md:text-7xl">
+        <div className="mt-6 max-w-[40rem] md:mt-10">
+          <p className="eyebrow text-sm text-brand-700">คลองอู่ตะเภา · หาดใหญ่</p>
+          <h1 className="mt-2 text-[2.6rem] font-black leading-[1.12] tracking-tight text-ink-900 md:text-7xl">
             {main ? (
               <>
                 เมื่อ {liveStamp.time} น.
