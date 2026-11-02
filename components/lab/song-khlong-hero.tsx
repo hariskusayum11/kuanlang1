@@ -183,7 +183,8 @@ export function SongKhlongHero({
           <LogoMark size={30} className="text-brand-600" />
           <span className="text-sm font-bold">SKL-FRIS · สองคลองควนลัง</span>
           <span className="badge badge-neutral ml-1">ต้นแบบ</span>
-          <a href="#map" className="ml-auto text-sm font-semibold text-brand-700 hover:underline">แผนที่ ↓</a>
+          <a href="#flags" className="ml-auto text-sm font-semibold text-brand-700 hover:underline">ธงเตือนภัย ↓</a>
+          <a href="#map" className="ml-4 text-sm font-semibold text-brand-700 hover:underline">แผนที่ ↓</a>
         </div>
 
         <div className="mt-8 max-w-[40rem] md:mt-[9vh]">

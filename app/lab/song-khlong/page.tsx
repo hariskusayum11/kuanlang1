@@ -5,6 +5,7 @@ import { getPublicMapData } from "@/lib/public/stats";
 import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
+import { FlagCriteria } from "@/components/lab/flag-criteria";
 
 export const metadata: Metadata = {
   title: "สองคลอง (ต้นแบบ)",
@@ -46,6 +47,7 @@ export default async function SongKhlongLabPage() {
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
       />
+      <FlagCriteria />
       <section id="map" aria-label="แผนที่สองคลอง">
         <SongKhlongExperience
           canals={JSON.parse(canalsText)}
