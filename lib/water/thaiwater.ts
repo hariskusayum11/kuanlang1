@@ -12,6 +12,8 @@ const CACHE_SECONDS = 600;
 
 /** สถานีบนคลองอู่ตะเภา เรียงจากต้นน้ำ → ควนลัง (น้ำไหลจากใต้ขึ้นเหนือ) */
 export const SONG_KHLONG_STATIONS = ["X.173A", "X.90", "X.44"] as const;
+/** สถานีที่ใช้เฉพาะธงโดยประมาณ (สะพานบ้านคลองหวะ — คลองหวะไหลลงคลองอู่ตะเภา) */
+export const FLAG_ONLY_STATIONS = ["X.174"] as const;
 
 interface RawRecord {
   waterlevel_datetime?: string | null;
@@ -64,7 +66,10 @@ export function parseThaiWater(payload: unknown, codes: readonly string[]): Stat
 }
 
 export interface StationFeed {
+  /** สถานีบนคลองอู่ตะเภา เรียงต้นน้ำ → ควนลัง */
   stations: StationReading[];
+  /** ทุกสถานีที่ดึงมา (รวมคลองหวะ) — ใช้คำนวณธงโดยประมาณ */
+  readings: StationReading[];
   /** เวลาที่ server ดึงข้อมูล (ISO) · null = ดึงไม่สำเร็จ */
   fetchedAt: string | null;
   error: string | null;
@@ -77,11 +82,12 @@ export async function getSongKhlongStations(): Promise<StationFeed> {
       signal: AbortSignal.timeout(15_000),
       headers: HEADERS,
     });
-    if (!res.ok) return { stations: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
-    const stations = parseThaiWater(await res.json(), SONG_KHLONG_STATIONS);
-    return { stations, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
+    if (!res.ok) return { stations: [], readings: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
+    const readings = parseThaiWater(await res.json(), [...SONG_KHLONG_STATIONS, ...FLAG_ONLY_STATIONS]);
+    const stations = readings.filter((r) => (SONG_KHLONG_STATIONS as readonly string[]).includes(r.code));
+    return { stations, readings, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
   } catch {
-    return { stations: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
+    return { stations: [], readings: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
   }
 }
 

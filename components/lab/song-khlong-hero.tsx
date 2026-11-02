@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { HadYaiScene, type SceneMark } from "@/components/lab/hadyai-scene";
+import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/lab/flag-criteria";
+import type { EstimatedFlag } from "@/domain/water/community-flags";
 import {
   freeboard,
   levelPercent,
@@ -65,6 +67,7 @@ export function SongKhlongHero({
   flood,
   communityNames,
   feedError,
+  estimatedFlag,
 }: {
   stations: StationReading[];
   /** ระดับน้ำรายชั่วโมง 3 วันล่าสุดของจุดวัดหลัก */
@@ -73,6 +76,8 @@ export function SongKhlongHero({
   flood: HistoryPoint[];
   communityNames: string[];
   feedError: string | null;
+  /** ธงโดยประมาณจากเกณฑ์ของกลุ่มสองคลองควนลัง (ไม่ใช่ธงที่ประกาศ) */
+  estimatedFlag: EstimatedFlag;
 }) {
   const main = stations.at(-1) ?? null; // ใกล้ควนลังที่สุด
   const status: WaterStatus = main ? waterStatus(main) : "UNKNOWN";
@@ -224,8 +229,15 @@ export function SongKhlongHero({
             </a>
           </div>
 
+          <a href="#flags" className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white/85 py-1.5 pl-2 pr-4 text-sm text-slate-700 ring-1 ring-slate-200 hover:ring-brand-300">
+            <Flag level={estimatedFlag} className="h-8 w-8" />
+            <span>
+              ธงโดยประมาณ: <b className="text-ink-900">{ESTIMATED_FLAG_LABEL[estimatedFlag]}</b>
+              <span className="block text-xs text-slate-500">คำนวณจากเกณฑ์ชุมชน ไม่ใช่ธงที่ประกาศ · ดูรายละเอียด ↓</span>
+            </span>
+          </a>
           {stations.length ? (
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {stations.map((s) => {
                 const st = waterStatus(s);
                 const f = freeboard(s);
