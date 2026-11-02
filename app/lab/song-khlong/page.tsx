@@ -8,14 +8,15 @@ import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
 import { FlagCriteria } from "@/components/lab/flag-criteria";
 import { flagStatusFromReadings } from "@/lib/water/community-flag";
+import { PublicFooter } from "@/components/public/home-sections";
 import {
-  EmergencyContactsSection,
-  ExternalLinksSection,
-  JoinNetworkSection,
-  PrepareTipsSection,
-  PublicFooter,
-  PublicStatsSection,
-} from "@/components/public/home-sections";
+  CommunityNumbers,
+  DataCredits,
+  EmergencyStrip,
+  JoinAndFollow,
+  PrepareSteps,
+  TrialSectionHeader,
+} from "@/components/lab/home-trial-sections";
 
 export const metadata: Metadata = {
   title: "สองคลอง (ต้นแบบ)",
@@ -57,7 +58,7 @@ export default async function SongKhlongLabPage() {
     : [[], []];
 
   return (
-    <main className="bg-ink-900">
+    <main className="bg-canvas">
       <SongKhlongHero
         stations={feed.stations}
         recent={recent}
@@ -67,32 +68,31 @@ export default async function SongKhlongLabPage() {
         estimatedFlag={flagStatus.flag}
       />
       {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
-      <div className="bg-canvas px-4 py-10 md:px-10">
-        <EmergencyContactsSection contacts={contacts} className="mx-auto max-w-[1200px]" />
-      </div>
+      <EmergencyStrip contacts={contacts} />
       <FlagCriteria bridges={flagStatus.bridges} flag={flagStatus.flag} measuredAt={flagStatus.measuredAt} />
-      <div className="bg-canvas px-4 py-12 md:px-10">
+      <section id="map" aria-labelledby="map-title" className="bg-canvas px-4 py-16 md:px-10 md:py-20">
         <div className="mx-auto max-w-[1200px]">
-          <PublicStatsSection stats={stats} />
-          <ExternalLinksSection links={externalLinks} className="mt-10" />
+          <TrialSectionHeader
+            id="map-title"
+            eyebrow="5 ชุมชนริมสองคลอง"
+            title="น้ำไหลผ่านชุมชนอย่างไร"
+            lead="คลองอู่ตะเภาไหลจากใต้ขึ้นเหนือผ่านหาดใหญ่ใน เมื่อน้ำมาก น้ำก้อนใหญ่ถูกผันเข้าคลอง ร.1 ไปทางควนลัง — แผนที่แสดงเขตชุมชนและพื้นที่ที่ชาวบ้านเคยเจอน้ำท่วม เป็นภาพรวมระดับพื้นที่ ไม่มีตำแหน่งรายบ้าน"
+          />
+          <CommunityNumbers stats={stats} />
+          <div className="mt-6">
+            <SongKhlongExperience
+              canals={JSON.parse(canalsText)}
+              communities={mapData.communities.map((c) => ({ id: c.id, nameTh: c.nameTh, lat: c.lat, lng: c.lng, boundary: c.boundary }))}
+              floodGrid={mapData.floodGrid.map((c) => ({ bounds: c.bounds, households: c.households, avgDepthCm: c.avgDepthCm }))}
+              sites={mapData.sites}
+              stations={feed.stations}
+            />
+          </div>
         </div>
-      </div>
-      <section id="map" aria-label="แผนที่สองคลอง">
-        <SongKhlongExperience
-          canals={JSON.parse(canalsText)}
-          communities={mapData.communities.map((c) => ({ id: c.id, nameTh: c.nameTh, lat: c.lat, lng: c.lng, boundary: c.boundary }))}
-          floodGrid={mapData.floodGrid.map((c) => ({ bounds: c.bounds, households: c.households, avgDepthCm: c.avgDepthCm }))}
-          sites={mapData.sites}
-          stations={feed.stations}
-          feedError={feed.error}
-        />
       </section>
-      <div className="bg-canvas px-4 py-12 md:px-10">
-        <div className="mx-auto max-w-[1200px]">
-          <PrepareTipsSection />
-          <JoinNetworkSection className="mt-10" />
-        </div>
-      </div>
+      <PrepareSteps />
+      <JoinAndFollow links={externalLinks} />
+      <DataCredits />
       <PublicFooter updatedAt={stats.generatedAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} />
     </main>
   );

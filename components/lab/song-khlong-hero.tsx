@@ -86,7 +86,6 @@ export function SongKhlongHero({
   const fb = main ? freeboard(main) : null;
   const liveStamp = thaiStamp(main?.measuredAt ?? null);
   const floodPeak = useMemo(() => peakOf(flood), [flood]);
-  const recentPeak = useMemo(() => peakOf(recent), [recent]);
 
   const [mode, setMode] = useState<Mode>("live");
   const [index, setIndex] = useState(0);
@@ -229,7 +228,7 @@ export function SongKhlongHero({
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <a href="#map" className="btn btn-primary btn-lg">
-              เปิดแผนที่สองคลอง ↓
+              ดูแผนที่ชุมชน ↓
             </a>
             <a href="tel:1784" className="btn btn-secondary btn-lg">
               โทรสายด่วน ปภ. 1784
@@ -257,14 +256,6 @@ export function SongKhlongHero({
                 );
               })}
             </div>
-          ) : null}
-          <p className="mt-4 hidden text-[11px] leading-5 text-slate-500 md:block">
-            ระดับน้ำ: คลังข้อมูลน้ำแห่งชาติ (สสน./กรมชลประทาน) · ภาพบ้านและน้ำใช้มาตราส่วนเดียวกัน · เกณฑ์เฝ้าระวัง/เตือนภัยเป็นฉบับร่าง
-          </p>
-          {recentPeak ? (
-            <p className="mt-3 text-sm text-slate-500">
-              สูงสุดในช่วง 3 วันที่ผ่านมา {fmt(recentPeak.levelMsl)} ม.รทก. เมื่อ {thaiStamp(recentPeak.at).date} {thaiStamp(recentPeak.at).time} น.
-            </p>
           ) : null}
         </div>
       </div>
@@ -361,9 +352,6 @@ export function SongKhlongHero({
           </div>
         </div>
       ) : null}
-      <p className="px-4 pb-4 text-[11px] leading-5 text-slate-500 md:hidden">
-        ระดับน้ำ: คลังข้อมูลน้ำแห่งชาติ (สสน./กรมชลประทาน) · ภาพบ้านและน้ำใช้มาตราส่วนเดียวกัน · เกณฑ์เฝ้าระวัง/เตือนภัยเป็นฉบับร่าง
-      </p>
     </section>
   );
 }

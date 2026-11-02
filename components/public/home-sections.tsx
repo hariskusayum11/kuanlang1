@@ -7,7 +7,7 @@ import { ExternalLinkCards } from "@/components/public/external-link-cards";
 import type { PublicEmergencyContact, PublicStats } from "@/lib/public/stats";
 import type { ExternalLinkRow } from "@/lib/external-links/core";
 
-const CATEGORY_LABEL: Record<string, string> = {
+export const CATEGORY_LABEL: Record<string, string> = {
   DISASTER: "ป้องกันและบรรเทาสาธารณภัย",
   POLICE: "ตำรวจ",
   MEDICAL: "การแพทย์ฉุกเฉิน",
@@ -15,7 +15,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 /* sun/alert สงวนความหมายไว้ (คำเตือน / ต้องลงมือทำ) — ตัวเลขที่เป็นกลางใช้ brand หรือ ink */
-type Tone = "brand" | "ink" | "alert" | "sun" | "mint";
+export type Tone = "brand" | "ink" | "alert" | "sun" | "mint";
 
 const TONE_CHIP: Record<Tone, string> = {
   brand: "chip chip-brand",
@@ -47,7 +47,7 @@ const TONE_ACCENT: Record<Tone, string> = {
 };
 
 /* บทบาทที่ประชาชน/เจ้าหน้าที่สมัครเองได้ (ตรงกับ REQUESTABLE_ROLES — ผู้ดูแลระบบอนุมัติก่อน login) */
-const JOIN_ROLES: { title: string; desc: string; icon: string }[] = [
+export const JOIN_ROLES: { title: string; desc: string; icon: string }[] = [
   {
     title: "อาสาสมัคร / ชาวบ้าน",
     desc: "ดูภาพรวมพื้นที่ แผนที่ และข้อมูลเตรียมพร้อมตามสิทธิ์",
@@ -65,7 +65,7 @@ const JOIN_ROLES: { title: string; desc: string; icon: string }[] = [
   },
 ];
 
-const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }[] = [
+export const PREPARE_TIPS: { title: string; tone: Tone; icon: string; items: string[] }[] = [
   {
     title: "ก่อนน้ำมา",
     tone: "sun",
