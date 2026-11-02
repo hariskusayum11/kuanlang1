@@ -86,6 +86,16 @@ export function SongKhlongHero({
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [reduced, setReduced] = useState(false);
+  // เล่นจบแล้วกลับไปค่าปัจจุบันเอง — ไม่ให้ตัวเลขใหญ่ค้างเป็นค่าในอดีตจนคนเข้าใจผิด
+  const [finished, setFinished] = useState(false);
+  useEffect(() => {
+    if (!finished) return;
+    const t = window.setTimeout(() => {
+      setMode("live");
+      setFinished(false);
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [finished]);
   useEffect(() => setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
 
   const series = mode === "flood" ? flood : mode === "recent" ? recent : [];
@@ -99,6 +109,7 @@ export function SongKhlongHero({
       setIndex((i) => {
         if (i >= series.length - 1) {
           setPlaying(false);
+          setFinished(true);
           return i;
         }
         return i + 1;
@@ -110,6 +121,7 @@ export function SongKhlongHero({
   const choose = (m: Mode) => {
     setMode(m);
     setPlaying(false);
+    setFinished(false);
     if (m === "flood") {
       // เล่นน้ำขึ้นทันที · ผู้ที่ปิด motion ข้ามไปจุดสูงสุดเลย
       const peakAt = floodPeak ? flood.indexOf(floodPeak) : 0;
@@ -130,12 +142,22 @@ export function SongKhlongHero({
         {percent === null ? "ยังไม่ทราบ" : `${Math.round(percent)}%`}
       </p>
       <p className="mt-1 text-xs font-semibold text-ink-800 md:text-base">
+        {viewedLevel !== null && main.bankMsl !== null && viewedLevel > main.bankMsl ? (
+          <b className="text-red-600">ล้นตลิ่ง {fmt(viewedLevel - main.bankMsl)} ม. · </b>
+        ) : null}
         จุดวัดน้ำ{placeName(main.name)} · {viewedWhen}
       </p>
     </div>
   ) : null;
   const historyMark: SceneMark | null = floodPeak
-    ? { levelMsl: floodPeak.levelMsl, label: `น้ำท่วม พ.ย. 68 สูงสุด ${fmt(floodPeak.levelMsl)} ม.` }
+    ? {
+        levelMsl: floodPeak.levelMsl,
+        // ระดับ ม.รทก. ไม่ใช่ความลึก — บอกเป็น "สูงกว่าตลิ่ง" ที่จุดวัด เพื่อไม่ให้อ่านว่าน้ำลึก 10 เมตร
+        label:
+          main?.bankMsl != null && floodPeak.levelMsl > main.bankMsl
+            ? `น้ำท่วม พ.ย. 68 · สูงกว่าตลิ่ง ${fmt(floodPeak.levelMsl - main.bankMsl)} ม. (จุดวัดหาดใหญ่ใน)`
+            : "น้ำท่วม พ.ย. 68 · สูงสุดที่จุดวัดหาดใหญ่ใน",
+      }
     : null;
 
   return (
@@ -284,6 +306,7 @@ export function SongKhlongHero({
                   value={Math.min(index, series.length - 1)}
                   onChange={(e) => {
                     setPlaying(false);
+                    setFinished(false);
                     setIndex(Number(e.target.value));
                   }}
                   className="w-full accent-brand-600"
@@ -292,6 +315,7 @@ export function SongKhlongHero({
                 <button
                   type="button"
                   onClick={() => {
+                    setFinished(false);
                     if (playing) return setPlaying(false);
                     if (index >= series.length - 1) setIndex(0);
                     setPlaying(true);
