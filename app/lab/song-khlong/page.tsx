@@ -6,7 +6,7 @@ import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/wat
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
 import { FlagCriteria } from "@/components/lab/flag-criteria";
-import { estimateBridgeFlag, estimateCommunityFlag, FLAG_BRIDGE_CRITERIA } from "@/domain/water/community-flags";
+import { flagStatusFromReadings } from "@/lib/water/community-flag";
 
 export const metadata: Metadata = {
   title: "สองคลอง (ต้นแบบ)",
@@ -32,10 +32,7 @@ export default async function SongKhlongLabPage() {
   ]);
   const mainId = feed.stations.at(-1)?.stationId ?? null;
   // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
-  const reading = (code: string) => feed.readings.find((r) => r.code === code) ?? null;
-  const flagBridges = FLAG_BRIDGE_CRITERIA.map((c) => estimateBridgeFlag(c, reading(c.stationCode)?.levelMsl ?? null));
-  const estimatedFlag = estimateCommunityFlag(flagBridges);
-  const measuredAt = Object.fromEntries(FLAG_BRIDGE_CRITERIA.map((c) => [c.stationCode, reading(c.stationCode)?.measuredAt ?? null]));
+  const flagStatus = flagStatusFromReadings(feed.readings);
   const now = new Date();
   const [recent, flood] = mainId
     ? await Promise.all([
@@ -52,9 +49,9 @@ export default async function SongKhlongLabPage() {
         flood={flood}
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
-        estimatedFlag={estimatedFlag}
+        estimatedFlag={flagStatus.flag}
       />
-      <FlagCriteria bridges={flagBridges} flag={estimatedFlag} measuredAt={measuredAt} />
+      <FlagCriteria bridges={flagStatus.bridges} flag={flagStatus.flag} measuredAt={flagStatus.measuredAt} />
       <section id="map" aria-label="แผนที่สองคลอง">
         <SongKhlongExperience
           canals={JSON.parse(canalsText)}

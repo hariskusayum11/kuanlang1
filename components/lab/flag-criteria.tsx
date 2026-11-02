@@ -6,52 +6,16 @@ import {
   COMMUNITY_FLAGS,
   type BridgeFlagEstimate,
   type EstimatedFlag,
-  type FlagLevel,
   type FlagThreshold,
 } from "@/domain/water/community-flags";
+import { ESTIMATE_TEXT, ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 
-// สีธงตามความหมายของระบบ: ปกติ = มิ้นต์ · เฝ้าระวัง = sun · อุทกภัย = red (วิกฤต) · ไม่มีข้อมูล = slate
-const FLAG_FILL: Record<FlagLevel | "UNKNOWN", string> = {
-  GREEN: "fill-emerald-500",
-  YELLOW: "fill-sun-400",
-  RED: "fill-red-600",
-  RED_SIREN: "fill-red-600",
-  UNKNOWN: "fill-slate-300",
-};
-export const ESTIMATED_FLAG_LABEL: Record<EstimatedFlag, string> = {
-  GREEN: "ธงเขียว",
-  YELLOW: "ธงเหลือง",
-  RED: "ธงแดง",
-  UNKNOWN: "ไม่ทราบ",
-};
-const ESTIMATE_TEXT: Record<EstimatedFlag, string> = {
-  GREEN: "ทุกสะพานยังต่ำกว่าเกณฑ์ยกธงเหลือง",
-  YELLOW: "มีสะพานที่ระดับน้ำถึงเกณฑ์ยกธงเหลือง — เกณฑ์ชุมชนให้อพยพผู้ป่วยติดเตียงและผู้ฟอกไต",
-  RED: "มีสะพานที่ระดับน้ำถึงเกณฑ์ยกธงแดง — เกณฑ์ชุมชนให้อพยพกลุ่มเปราะบางและกลุ่มเสี่ยง",
-  UNKNOWN: "ไม่มีข้อมูลระดับน้ำของสะพานใดเลยในตอนนี้ — ดูธงที่ประกาศจากกลุ่มโดยตรง",
-};
 const ESTIMATE_RING: Record<EstimatedFlag, string> = {
   GREEN: "ring-emerald-300 bg-emerald-50",
   YELLOW: "ring-sun-300 bg-sun-50",
   RED: "ring-red-300 bg-red-50",
   UNKNOWN: "ring-slate-200 bg-white",
 };
-
-export function Flag({ level, className = "h-12 w-12" }: { level: FlagLevel | "UNKNOWN"; className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={`${className} shrink-0`} aria-hidden>
-      <rect x={8} y={4} width={3} height={42} rx={1.5} className="fill-slate-400" />
-      <circle cx={9.5} cy={4} r={3} className="fill-slate-300" />
-      <path d="M11 7 C20 3 26 11 38 7 L38 26 C26 30 20 22 11 26 Z" className={FLAG_FILL[level]} />
-      {level === "RED_SIREN" ? (
-        <g>
-          <path d="M36 34 a6 6 0 0 1 12 0 v6 h-12 Z" className="fill-alert-500" />
-          <rect x={34} y={40} width={16} height={3} rx={1} className="fill-ink-800" />
-        </g>
-      ) : null}
-    </svg>
-  );
-}
 
 const fmt = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const rule = (t: FlagThreshold) => ("deck" in t ? "จมสะพาน" : `ต่ำกว่าท้องสะพาน ${t.belowSoffitM} ม.`);

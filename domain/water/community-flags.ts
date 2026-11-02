@@ -86,3 +86,16 @@ const RANK: Record<EstimatedFlag, number> = { UNKNOWN: -1, GREEN: 0, YELLOW: 1, 
 export function estimateCommunityFlag(bridges: readonly BridgeFlagEstimate[]): EstimatedFlag {
   return bridges.reduce<EstimatedFlag>((best, b) => (RANK[b.flag] > RANK[best] ? b.flag : best), "UNKNOWN");
 }
+
+/** สะพานที่ใกล้ธงระดับถัดไปที่สุด (ระยะ ม.) — ใช้บอกว่า "อีกเท่าไรจะยกธง" · ไม่มีข้อมูลหรือถึงธงแดงแล้ว = null */
+export function closestToNextFlag(bridges: readonly BridgeFlagEstimate[]): { bridge: string; next: "YELLOW" | "RED"; meters: number } | null {
+  let best: { bridge: string; next: "YELLOW" | "RED"; meters: number } | null = null;
+  for (const b of bridges) {
+    if (b.levelMsl === null || b.yellowMsl === null || b.redMsl === null) continue;
+    const next = b.flag === "GREEN" ? ("YELLOW" as const) : b.flag === "YELLOW" ? ("RED" as const) : null;
+    if (!next) continue;
+    const meters = (next === "YELLOW" ? b.yellowMsl : b.redMsl) - b.levelMsl;
+    if (!best || meters < best.meters) best = { bridge: b.criterion.bridge, next, meters };
+  }
+  return best;
+}

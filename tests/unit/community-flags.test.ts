@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   BRIDGE_REFERENCES,
+  closestToNextFlag,
   estimateBridgeFlag,
   estimateCommunityFlag,
   FLAG_BRIDGE_CRITERIA,
@@ -54,5 +55,20 @@ describe("estimateCommunityFlag", () => {
     expect(estimateCommunityFlag([e("X.174", null), e("X.90", 3)])).toBe("GREEN");
     expect(estimateCommunityFlag([e("X.174", null), e("X.90", null)])).toBe("UNKNOWN");
     expect(estimateCommunityFlag([])).toBe("UNKNOWN");
+  });
+});
+
+describe("closestToNextFlag", () => {
+  const e = (code: string, level: number | null) => estimateBridgeFlag(bridge(code), level);
+  it("เลือกสะพานที่ใกล้ธงถัดไปที่สุด", () => {
+    // คลองหวะ 4.78 → ห่างธงเหลือง ~1.24 · บางศาลา 2.88 → ห่าง ~4.05
+    const c = closestToNextFlag([e("X.174", 4.78), e("X.173A", 10.45), e("X.90", 2.88)]);
+    expect(c?.bridge).toBe("สะพานบ้านคลองหวะ");
+    expect(c?.next).toBe("YELLOW");
+    expect(c?.meters).toBeCloseTo(1.239, 2);
+  });
+  it("สะพานที่เป็นธงเหลืองแล้ววัดระยะถึงธงแดง · ไม่มีข้อมูล/แดงแล้ว = ข้าม", () => {
+    expect(closestToNextFlag([e("X.90", 7.5)])).toMatchObject({ next: "RED" });
+    expect(closestToNextFlag([e("X.90", 9), e("X.174", null)])).toBeNull();
   });
 });

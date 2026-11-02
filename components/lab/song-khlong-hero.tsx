@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { HadYaiScene, type SceneMark } from "@/components/lab/hadyai-scene";
-import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/lab/flag-criteria";
+import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import type { EstimatedFlag } from "@/domain/water/community-flags";
 import {
   freeboard,
