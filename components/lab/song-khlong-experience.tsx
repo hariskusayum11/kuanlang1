@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type Map as MlMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type { BridgeFlagEstimate } from "@/domain/water/community-flags";
 import {
   flowSpeed,
+  freeboard,
   r1SimulatedIntensity,
+  WATER_STATUS_LABEL,
+  WATER_TREND_LABEL,
   waterStatus,
+  waterTrend,
   type StationReading,
   type WaterStatus,
 } from "@/domain/water/station-status";
@@ -14,7 +19,7 @@ import {
 type LngLat = [number, number];
 interface CanalCollection {
   type: "FeatureCollection";
-  features: Array<{ type: "Feature"; properties: { canal: "utapao" | "r1"; name: string }; geometry: { type: "LineString"; coordinates: LngLat[] } }>;
+  features: Array<{ type: "Feature"; properties: { canal: "utapao" | "r1" | "wha"; name: string }; geometry: { type: "LineString"; coordinates: LngLat[] } }>;
 }
 interface Community { id: string; nameTh: string; lat: number; lng: number; boundary: LngLat[][][] | null }
 interface GridCell { bounds: [number, number, number, number]; households: number; avgDepthCm: number | null }
@@ -45,6 +50,39 @@ const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Im
 const placeName = (stationName: string) => stationName.replace(/^บ้าน/, "");
 
 const fmt = (n: number, digits = 2) => n.toLocaleString("th-TH", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+const FLAG_WORD = { GREEN: "ธงเขียว", YELLOW: "ธงเหลือง", RED: "ธงแดง", UNKNOWN: "ไม่ทราบ" } as const;
+
+/** เนื้อหาป๊อปอัปของหมุดจุดวัด — สร้างด้วย DOM (textContent) ไม่ใช้ innerHTML กับข้อมูลจากต้นทาง */
+function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "min-w-[220px] text-ink-900";
+  const add = (cls: string, text: string) => {
+    const el = document.createElement("p");
+    el.className = cls;
+    el.textContent = text;
+    root.append(el);
+  };
+  add("text-[11px] text-slate-500", `${bridge?.criterion.canal ?? (s.river || "คลองอู่ตะเภา")} · สถานีวัดน้ำกรมชลประทาน`);
+  add("text-base font-black leading-tight", bridge?.criterion.bridge ?? `จุดวัดน้ำ${placeName(s.name)}`);
+  const trend = waterTrend(s);
+  const diff = s.levelMsl !== null && s.previousMsl !== null ? s.levelMsl - s.previousMsl : null;
+  const trendText = trend === "UNKNOWN" ? "" : ` · ${WATER_TREND_LABEL[trend]}${diff !== null ? ` (${diff >= 0 ? "+" : ""}${fmt(diff)} ม.)` : ""}`;
+  add("mt-2 text-sm", `ระดับน้ำ ${s.levelMsl !== null ? fmt(s.levelMsl) : "—"} ม.รทก.${trendText}`);
+  const fb = freeboard(s);
+  add("text-sm", fb === null ? "ไม่ทราบระดับตลิ่ง" : fb > 0 ? `ต่ำกว่าตลิ่ง ${fmt(fb)} ม. · ${WATER_STATUS_LABEL[waterStatus(s)]}` : `ล้นตลิ่ง ${fmt(-fb)} ม.`);
+  if (bridge && bridge.levelMsl !== null && bridge.yellowMsl !== null && bridge.redMsl !== null) {
+    const next =
+      bridge.flag === "GREEN"
+        ? `อีก ${fmt(bridge.yellowMsl - bridge.levelMsl)} ม. ถึงธงเหลือง`
+        : bridge.flag === "YELLOW"
+          ? `อีก ${fmt(bridge.redMsl - bridge.levelMsl)} ม. ถึงธงแดง`
+          : "ถึงเกณฑ์ธงแดงแล้ว";
+    add("mt-2 rounded-lg bg-mist px-2 py-1 text-sm font-bold", `${FLAG_WORD[bridge.flag]} (โดยประมาณ) · ${next}`);
+  }
+  if (s.measuredAt) add("mt-2 text-[11px] text-slate-500", `วัดเมื่อ ${s.measuredAt.split(" ")[1] ?? s.measuredAt} น. · ข้อมูล: คลังข้อมูลน้ำแห่งชาติ`);
+  return root;
+}
 
 function gridGeoJson(cells: GridCell[]) {
   return {
@@ -78,6 +116,7 @@ export function SongKhlongExperience({
   sites,
   stations,
   markerStations = stations,
+  bridges = [],
 }: {
   canals: CanalCollection;
   communities: Community[];
@@ -86,6 +125,8 @@ export function SongKhlongExperience({
   stations: StationReading[];
   /** สถานีที่ปักหมุดบนแผนที่ (รวมสะพานคลองหวะที่ใช้ตัดสินธง) — ค่าเริ่มต้น = สถานีบนคลองอู่ตะเภา */
   markerStations?: StationReading[];
+  /** ธงโดยประมาณรายสะพาน — ใส่ในป๊อปอัปของหมุดสะพาน */
+  bridges?: BridgeFlagEstimate[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
@@ -95,6 +136,9 @@ export function SongKhlongExperience({
   // สถานีหลัก = ใกล้ควนลังที่สุด (ตัวสุดท้ายในลำดับต้นน้ำ → ควนลัง)
   const main = stations.at(-1) ?? null;
   const mainStatus: WaterStatus = main ? waterStatus(main) : "UNKNOWN";
+  // คลองหวะไหลตามสถานะของสถานีสะพานบ้านคลองหวะ (ไม่มีข้อมูล = ไหลช้า สีเทา)
+  const wha = markerStations.find((s) => s.code === "X.174");
+  const whaStatus: WaterStatus = wha ? waterStatus(wha) : "UNKNOWN";
 
   const grid = useMemo(() => gridGeoJson(floodGrid), [floodGrid]);
   const hasGrid = grid.features.length > 0;
@@ -170,10 +214,11 @@ export function SongKhlongExperience({
       });
 
       map.addSource("canals", { type: "geojson", data: canals });
-      for (const canal of ["utapao", "r1"] as const) {
+      for (const canal of ["utapao", "r1", "wha"] as const) {
         const filter: maplibregl.FilterSpecification = ["==", ["get", "canal"], canal];
-        map.addLayer({ id: `${canal}-glow`, type: "line", source: "canals", filter, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#38BDF8", "line-width": canal === "r1" ? 16 : 18, "line-blur": 10, "line-opacity": 0.55 } });
-        map.addLayer({ id: `${canal}-core`, type: "line", source: "canals", filter, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0EA5E9", "line-width": canal === "r1" ? 5 : 6 } });
+        const main = canal === "utapao";
+        map.addLayer({ id: `${canal}-glow`, type: "line", source: "canals", filter, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#38BDF8", "line-width": main ? 18 : 16, "line-blur": 10, "line-opacity": 0.55 } });
+        map.addLayer({ id: `${canal}-core`, type: "line", source: "canals", filter, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0EA5E9", "line-width": main ? 6 : 5 } });
         map.addLayer({ id: `${canal}-flow`, type: "line", source: "canals", filter, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#F0F9FF", "line-width": 2.6, "line-opacity": 0.95, "line-dasharray": DASH_SEQUENCE[0] } });
       }
 
@@ -211,29 +256,33 @@ export function SongKhlongExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- หมุดสถานี + สีคลองตามสถานะ ----------
+  // ---------- หมุดสถานี (กดแล้วขึ้นข้อมูล) + สีคลองตามสถานะ ----------
   // ป้ายแสดงชื่อพื้นที่อย่างเดียว ไม่ใส่รหัสสถานี (X.44 ฯลฯ) ที่คนทั่วไปไม่เข้าใจ
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     const markers = markerStations.map((s) => {
-      const el = document.createElement("div");
-      el.className = "flex items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20";
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "flex cursor-pointer items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20 hover:bg-ink-800";
+      el.setAttribute("aria-label", `ดูข้อมูลจุดวัดน้ำ${placeName(s.name)}`);
       const dot = document.createElement("span");
       dot.className = "inline-block h-3 w-3 rounded-full ring-2 ring-white/70";
       dot.style.background = STATUS_COLOR[waterStatus(s)];
       el.append(dot, `จุดวัดน้ำ${placeName(s.name)}`);
-      return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).addTo(map);
+      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "280px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.criterion.stationCode === s.code)));
+      return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map);
     });
     const color = STATUS_COLOR[mainStatus];
     map.setPaintProperty("utapao-glow", "line-color", color);
     map.setPaintProperty("r1-glow", "line-color", color);
+    map.setPaintProperty("wha-glow", "line-color", STATUS_COLOR[whaStatus]);
     // คลอง ร.1 = ภาพจำลอง: ความจางของแสงตามความแรงที่จำลองจากคลองอู่ตะเภา
     const r1 = r1SimulatedIntensity(mainStatus);
     map.setPaintProperty("r1-glow", "line-opacity", 0.2 + 0.45 * r1);
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
     return () => markers.forEach((m) => m.remove());
-  }, [ready, markerStations, mainStatus]);
+  }, [ready, markerStations, bridges, mainStatus, whaStatus]);
 
   // ---------- แอนิเมชันน้ำไหล ----------
   useEffect(() => {
@@ -241,19 +290,23 @@ export function SongKhlongExperience({
     if (!map || !ready || reducedMotion.current) return;
     const speedU = flowSpeed(mainStatus);
     const speedR = speedU * (0.5 + 0.5 * r1SimulatedIntensity(mainStatus));
+    const speedW = flowSpeed(whaStatus);
     let raf = 0;
     let lastU = -1;
     let lastR = -1;
+    let lastW = -1;
     const tick = (t: number) => {
       const stepU = Math.floor((t / 1000) * 9 * speedU) % DASH_SEQUENCE.length;
       const stepR = Math.floor((t / 1000) * 9 * speedR) % DASH_SEQUENCE.length;
       if (stepU !== lastU) { map.setPaintProperty("utapao-flow", "line-dasharray", DASH_SEQUENCE[stepU]); lastU = stepU; }
       if (stepR !== lastR) { map.setPaintProperty("r1-flow", "line-dasharray", DASH_SEQUENCE[stepR]); lastR = stepR; }
+      const stepW = Math.floor((t / 1000) * 9 * speedW) % DASH_SEQUENCE.length;
+      if (stepW !== lastW) { map.setPaintProperty("wha-flow", "line-dasharray", DASH_SEQUENCE[stepW]); lastW = stepW; }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [ready, mainStatus]);
+  }, [ready, mainStatus, whaStatus]);
 
   // ---------- ระดับน้ำย้อนหลัง (แถบเลื่อน) ----------
   useEffect(() => {
@@ -300,6 +353,13 @@ export function SongKhlongExperience({
         <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
           <span className="h-1 w-6 rounded-full bg-sky-300/60" />
           คลอง ร.1 · ภาพจำลอง
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+          <span className="h-1 w-6 rounded-full" style={{ background: STATUS_COLOR[whaStatus] }} />
+          คลองหวะ · ไหลตามระดับน้ำจริง
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+          กดจุดวัดน้ำเพื่อดูข้อมูล
         </span>
         <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
           <span className="h-2.5 w-4 rounded-sm border border-dashed border-orange-200 bg-orange-400/20" />

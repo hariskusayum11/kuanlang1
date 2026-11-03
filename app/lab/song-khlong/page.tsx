@@ -5,7 +5,7 @@ import { getPublicEmergencyContacts, getPublicMapData, getPublicStats } from "@/
 import { listPublicExternalLinks } from "@/lib/external-links/core";
 import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
-import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
+import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
 import { peakLagHours } from "@/domain/water/peak-lag";
 import { FlagCriteria } from "@/components/lab/flag-criteria";
 import { flagStatusFromReadings } from "@/lib/water/community-flag";
@@ -47,27 +47,27 @@ export default async function SongKhlongLabPage() {
     getPublicEmergencyContacts(),
     listPublicExternalLinks(),
   ]);
-  const mainId = feed.stations.at(-1)?.stationId ?? null;
   // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
   const flagStatus = flagStatusFromReadings(feed.readings);
+  // ระดับน้ำย้อนหลังของทุกจุดวัด (ภาพส่วนหัวเลือกดูได้ทีละจุด) — 3 วันล่าสุดแคช 10 นาที · พ.ย. 68 แคช 1 วัน
   const now = new Date();
-  const [recent, flood] = mainId
-    ? await Promise.all([
-        getStationHistory(mainId, bangkokDate(new Date(now.getTime() - 3 * 86_400_000)), bangkokDate(now)),
-        getStationHistory(mainId, FLOOD_2568.start, FLOOD_2568.end, FLOOD_2568.cacheSeconds),
-      ])
-    : [[], []];
-  // เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (เหตุการณ์ พ.ย. 68) — คู่ที่ข้อมูลผิดปกติได้ null และไม่แสดง
-  const upstreamFloods = await Promise.all(
-    feed.stations.slice(0, -1).map((s) =>
-      s.stationId ? getStationHistory(s.stationId, FLOOD_2568.start, FLOOD_2568.end, FLOOD_2568.cacheSeconds) : Promise.resolve([]),
+  const histories: Record<string, StationHistory> = Object.fromEntries(
+    await Promise.all(
+      feed.readings.map(async (r) => {
+        if (!r.stationId) return [r.code, { recent: [], flood: [] }] as const;
+        const [recent, flood] = await Promise.all([
+          getStationHistory(r.stationId, bangkokDate(new Date(now.getTime() - 3 * 86_400_000)), bangkokDate(now)),
+          getStationHistory(r.stationId, FLOOD_2568.start, FLOOD_2568.end, FLOOD_2568.cacheSeconds),
+        ]);
+        return [r.code, { recent, flood }] as const;
+      }),
     ),
   );
-  const floodByCode = new Map(feed.stations.map((s, i) => [s.code, i === feed.stations.length - 1 ? flood : upstreamFloods[i] ?? []]));
+  // เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (เหตุการณ์ พ.ย. 68) — คู่ที่ข้อมูลผิดปกติได้ null และไม่แสดง
   const lagHours = Object.fromEntries(
     feed.stations.slice(1).map((s, i) => {
       const up = feed.stations[i]!;
-      return [`${up.code}>${s.code}`, peakLagHours(floodByCode.get(up.code) ?? [], floodByCode.get(s.code) ?? [])];
+      return [`${up.code}>${s.code}`, peakLagHours(histories[up.code]?.flood ?? [], histories[s.code]?.flood ?? [])];
     }),
   );
 
@@ -75,8 +75,8 @@ export default async function SongKhlongLabPage() {
     <main className="bg-canvas">
       <SongKhlongHero
         stations={feed.stations}
-        recent={recent}
-        flood={flood}
+        readings={feed.readings}
+        histories={histories}
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
         flagStatus={flagStatus}
@@ -102,6 +102,7 @@ export default async function SongKhlongLabPage() {
               sites={mapData.sites}
               stations={feed.stations}
               markerStations={feed.readings}
+              bridges={flagStatus.bridges}
             />
           </div>
         </div>

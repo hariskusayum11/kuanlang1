@@ -302,17 +302,28 @@ function PowerLines({ poles }: { poles: number[] }) {
   );
 }
 
+/** เส้นเกณฑ์บนกำแพง (เช่น ธงเหลือง/ธงแดงของชุมชน) — ระดับ ม.รทก. ของจุดวัดที่ภาพแสดง */
+export interface SceneLine {
+  levelMsl: number;
+  label: string;
+  tone: "yellow" | "red";
+}
+const LINE_TONE: Record<SceneLine["tone"], { stroke: string; text: string }> = {
+  yellow: { stroke: "stroke-sun-500", text: "fill-sun-800" },
+  red: { stroke: "stroke-red-600", text: "fill-red-700" },
+};
+
 /**
- * ลูกศรวัดระยะ "ผิวน้ำ ↔ ตลิ่ง" บนกำแพง — ให้เห็นช่องว่างจริงในภาพพร้อมตัวเลข (มาตราส่วนเดียวกับบ้าน)
- * ต่ำกว่าตลิ่ง = ตัวเลขสีเข้ม · ล้นตลิ่ง = แดง · ไม่มีข้อมูล = ไม่วาด
+ * ลูกศรวัดระยะ "ผิวน้ำ ↔ เส้นเป้าหมาย" บนกำแพง (ค่าเริ่มต้น = ตลิ่ง; สะพานที่มีเกณฑ์ธง = เส้นธงถัดไป)
+ * ให้เห็นช่องว่างจริงในภาพพร้อมตัวเลข · ยังไม่ถึง = สีเข้ม · เกินแล้ว = แดง · ไม่มีข้อมูล = ไม่วาด
  */
-function GapMeasure({ waterY, levelMsl, bankMsl }: { waterY: number; levelMsl: number | null; bankMsl: number }) {
+function GapMeasure({ waterY, levelMsl, targetMsl, targetY, targetLabel }: { waterY: number; levelMsl: number | null; targetMsl: number; targetY: number; targetLabel: string }) {
   if (levelMsl === null || !Number.isFinite(levelMsl)) return null;
-  const gap = bankMsl - levelMsl;
+  const gap = targetMsl - levelMsl;
   const over = gap < 0;
-  const x = 1250;
-  const top = Math.min(GROUND, waterY);
-  const bottom = Math.max(GROUND, waterY);
+  const x = 1060;
+  const top = Math.min(targetY, waterY);
+  const bottom = Math.max(targetY, waterY);
   const tall = bottom - top > 36;
   const mid = (top + bottom) / 2;
   const tone = over ? "fill-red-600" : "fill-ink-900";
@@ -330,11 +341,11 @@ function GapMeasure({ waterY, levelMsl, bankMsl }: { waterY: number; levelMsl: n
       ) : null}
       <g style={{ paintOrder: "stroke" }} className="stroke-white/90" strokeWidth={8} strokeLinejoin="round">
         <text x={x + 30} y={mid + 10} fontSize={64} fontWeight={900} className={tone}>
-          {over ? "ล้น " : ""}
+          {over ? "เกิน " : "อีก "}
           {Math.abs(gap).toFixed(2)} ม.
         </text>
         <text x={x + 34} y={mid + 42} fontSize={22} fontWeight={700} className={over ? "fill-red-600" : "fill-ink-800"}>
-          {over ? "ผิวน้ำสูงกว่าตลิ่ง" : "จากผิวน้ำถึงตลิ่ง"}
+          {over ? `ผิวน้ำสูงกว่า${targetLabel}` : `จากผิวน้ำถึง${targetLabel}`}
         </text>
       </g>
     </g>
@@ -372,6 +383,8 @@ export function HadYaiScene({
   communityNames,
   animate,
   placeLabel,
+  lines = [],
+  target = null,
 }: {
   /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
   levelMsl: number | null;
@@ -380,11 +393,15 @@ export function HadYaiScene({
   historyMark: SceneMark | null;
   communityNames: string[];
   animate: boolean;
-  /** บอกว่าภาพนี้คือจุดวัดไหน (เช่น "จุดวัดน้ำหาดใหญ่ใน") — ไม่ให้สับสนกับสะพานที่ใช้ตัดสินธง */
+  /** บอกว่าภาพนี้คือจุดวัดไหน (เช่น "สะพานบ้านคลองหวะ") */
   placeLabel: string;
+  /** เส้นเกณฑ์เพิ่มจากตลิ่ง (เช่น ธงเหลือง/ธงแดง) */
+  lines?: SceneLine[];
+  /** เส้นที่ลูกศรวัดระยะชี้ไป — null = ตลิ่ง */
+  target?: { levelMsl: number; label: string } | null;
 }) {
   const waterY = mslToSceneY(levelMsl, bankMsl);
-  const gaugeTop = mslToSceneY(bankMsl + 3.6, bankMsl);
+  const gaugeTop = mslToSceneY(Math.max(bankMsl + 3.6, ...lines.map((l) => l.levelMsl + 1)), bankMsl);
   const bedMsl = groundMsl !== null && groundMsl < bankMsl ? groundMsl : bankMsl - 10;
   const ticks: number[] = [];
   for (let m = Math.ceil(bedMsl * 2) / 2; m <= bankMsl + 3.6; m += 0.5) ticks.push(m);
@@ -459,11 +476,21 @@ export function HadYaiScene({
         const whole = Math.abs(m - Math.round(m)) < 0.01;
         return <rect key={m} x={GAUGE_X + 4} y={y - 2.5} width={whole ? 24 : 13} height={5} className="fill-ink-800" />;
       })}
-      <Label x={GAUGE_X + 190} y={GROUND + 84} text={placeLabel} tone="ink" />
 
-      {/* ระดับตลิ่ง — เส้นเดียว (ไม่ใส่เกณฑ์ฉบับร่างบนกำแพง) */}
+      {/* ระดับตลิ่ง + เส้นเกณฑ์ธงของชุมชน (ถ้าจุดวัดนี้มีเกณฑ์) */}
       <line x1={GAUGE_X + 34} x2={SCENE.width} y1={GROUND} y2={GROUND} className="stroke-ink-800" strokeWidth={3} strokeDasharray="16 12" />
-      <text x={GAUGE_X + 46} y={GROUND + 34} fontSize={24} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={6} style={{ paintOrder: "stroke" }}>
+      {lines.map((l) => {
+        const y = mslToSceneY(l.levelMsl, bankMsl);
+        return (
+          <g key={l.label}>
+            <line x1={GAUGE_X + 34} x2={SCENE.width} y1={y} y2={y} className={LINE_TONE[l.tone].stroke} strokeWidth={4} strokeDasharray="18 10" />
+            <text x={GAUGE_X + 46} y={y - 10} fontSize={24} fontWeight={800} className={`${LINE_TONE[l.tone].text} stroke-white/90`} strokeWidth={6} style={{ paintOrder: "stroke" }}>
+              {l.label}
+            </text>
+          </g>
+        );
+      })}
+      <text x={GAUGE_X + 46} y={GROUND - 10} fontSize={24} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={6} style={{ paintOrder: "stroke" }}>
         ตลิ่ง
       </text>
 
@@ -478,7 +505,15 @@ export function HadYaiScene({
       </g>
 
       {/* เส้นน้ำท่วมในอดีต (วาดเหนือผิวน้ำให้อ่านได้เสมอ) */}
-      <GapMeasure waterY={waterY} levelMsl={levelMsl} bankMsl={bankMsl} />
+      <Label x={GAUGE_X + 160} y={gaugeTop - 30} text={placeLabel} tone="ink" />
+
+      <GapMeasure
+        waterY={waterY}
+        levelMsl={levelMsl}
+        targetMsl={target?.levelMsl ?? bankMsl}
+        targetY={target ? mslToSceneY(target.levelMsl, bankMsl) : GROUND}
+        targetLabel={target?.label ?? "ตลิ่ง"}
+      />
 
       {histY !== null && historyMark ? (
         <g>

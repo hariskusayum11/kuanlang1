@@ -1,18 +1,22 @@
 "use client";
 
-// ส่วนหัวหน้า "สองคลอง" — ภาพน้ำจริงเทียบบ้านริมคลอง (ดูง่าย เห็นน้ำ) แต่ใช้สิ่งที่เป็นของระบบนี้เป็นตัวนำ:
-// ธงเตือนภัยของชุมชน · ประโยคบอกสะพานที่ใกล้เกณฑ์ธง · ลูกศรวัดระยะผิวน้ำถึงตลิ่งในภาพ · การ์ดย้อนดูพร้อมหมุดเหตุการณ์
+// ส่วนหัวหน้า "สองคลอง" — ภาพน้ำจริงเทียบบ้านริมคลอง (ดูง่าย เห็นน้ำ) โดยใช้ของระบบนี้เป็นตัวนำ:
+// ธงเตือนภัยของชุมชน · เลือกดูจุดวัดได้ (ค่าเริ่มต้น = สะพานที่ใกล้เกณฑ์ธงที่สุด) · เส้นธงเหลือง/แดงบนกำแพง
+// · ลูกศรวัดระยะจากผิวน้ำถึงเส้นธงถัดไป · การ์ดย้อนดูพร้อมหมุดเหตุการณ์
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo-mark";
-import { HadYaiScene, type SceneMark } from "@/components/lab/hadyai-scene";
-import { BridgeFlagPanel } from "@/components/lab/bridge-flag-panel";
+import { HadYaiScene, type SceneLine, type SceneMark } from "@/components/lab/hadyai-scene";
 import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
-import { COMMUNITY_FLAG_SOURCE, type EstimatedFlag } from "@/domain/water/community-flags";
+import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
 
 type Mode = "live" | "recent" | "flood";
+export interface StationHistory {
+  recent: HistoryPoint[];
+  flood: HistoryPoint[];
+}
 
 // สีธงตามความหมายของระบบ: ปกติ = มิ้นต์ · เฝ้าระวัง = sun · อุทกภัย = red · ไม่ทราบ = slate
 const FLAG_TEXT: Record<EstimatedFlag, string> = {
@@ -28,9 +32,9 @@ const FLAG_ACTION: Record<EstimatedFlag, string> = {
   UNKNOWN: "ไม่มีข้อมูลระดับน้ำจากสะพานตอนนี้",
 };
 const TREND_PHRASE: Record<WaterTrend, string> = {
-  RISING: "กำลังขึ้น",
-  FALLING: "กำลังลด",
-  STEADY: "ทรงตัว",
+  RISING: "น้ำกำลังขึ้น",
+  FALLING: "น้ำกำลังลด",
+  STEADY: "น้ำทรงตัว",
   UNKNOWN: "",
 };
 const MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
@@ -46,20 +50,28 @@ function thaiStamp(at: string | null) {
   return { time: t ?? "", date: `${day} ${MONTHS[(m ?? 1) - 1] ?? ""} ${String(((y ?? 0) + 543) % 100).padStart(2, "0")}` };
 }
 
+/** เส้นถัดไปที่น้ำยังไม่ถึง (สะพานที่มีเกณฑ์ธง) — เกินแดงแล้วชี้เส้นแดง · ไม่มีเกณฑ์ = null (วัดถึงตลิ่ง) */
+function nextTarget(b: BridgeFlagEstimate | undefined, level: number | null) {
+  if (!b || b.yellowMsl === null || b.redMsl === null) return null;
+  if (level !== null && level >= b.yellowMsl) return { levelMsl: b.redMsl, label: "เกณฑ์ธงแดง" };
+  return { levelMsl: b.yellowMsl, label: "เกณฑ์ธงเหลือง" };
+}
+
 export function SongKhlongHero({
   stations,
-  recent,
-  flood,
+  readings,
+  histories,
   communityNames,
   feedError,
   flagStatus,
   lagHours,
 }: {
+  /** สถานีบนคลองอู่ตะเภา เรียงต้นน้ำ → ควนลัง (ตัวสุดท้าย = หาดใหญ่ใน) */
   stations: StationReading[];
-  /** ระดับน้ำรายชั่วโมง 3 วันล่าสุดของจุดวัดหลัก */
-  recent: HistoryPoint[];
-  /** ระดับน้ำรายชั่วโมงช่วงน้ำท่วมใหญ่ พ.ย. 2568 */
-  flood: HistoryPoint[];
+  /** ทุกสถานี (รวมสะพานบ้านคลองหวะ) */
+  readings: StationReading[];
+  /** ระดับน้ำย้อนหลังรายชั่วโมงตามรหัสสถานี (3 วันล่าสุด + น้ำท่วม พ.ย. 68) */
+  histories: Record<string, StationHistory>;
   communityNames: string[];
   feedError: string | null;
   /** ธงโดยประมาณจากเกณฑ์ของกลุ่มสองคลองควนลัง (ไม่ใช่ธงที่ประกาศ) */
@@ -67,22 +79,24 @@ export function SongKhlongHero({
   /** เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (ชม.) ตามคู่ "ต้นน้ำ>ปลายน้ำ" — null = ข้อมูลไม่พอ */
   lagHours: Record<string, number | null>;
 }) {
-  const main = stations.at(-1) ?? null; // หาดใหญ่ใน — ใกล้ควนลังที่สุด
   const { flag, closest } = flagStatus;
-  const trend = main ? waterTrend(main) : "UNKNOWN";
-  const fb = main ? freeboard(main) : null;
+  const main = stations.at(-1) ?? null; // หาดใหญ่ใน — ใกล้ควนลังที่สุด
   const latest = Object.values(flagStatus.measuredAt).filter((v): v is string => !!v).sort().at(-1) ?? main?.measuredAt ?? null;
-  const floodPeak = useMemo(() => peakOf(flood), [flood]);
-  // หมายเหตุเวลาที่ยอดน้ำเดินทางจากสะพานไปสถานีถัดไป (เหตุการณ์ พ.ย. 68) — แสดงเฉพาะคู่ที่ข้อมูลสมเหตุสมผล
-  const lagNotes = useMemo(() => {
-    const out: Record<string, string | null> = {};
-    stations.forEach((s, i) => {
-      const next = stations[i + 1];
-      const h = next ? lagHours[`${s.code}>${next.code}`] : null;
-      out[s.code] = h && next ? `ปี 68 ยอดน้ำจากจุดนี้ถึง${placeName(next.name)} ~${Math.round(h)} ชม.` : null;
+
+  // ตัวเลือกภาพ: สะพานที่ใช้ตัดสินธง + จุดวัดหาดใหญ่ใน · เริ่มที่สะพานใกล้เกณฑ์ที่สุด
+  const options = useMemo(() => {
+    const codes = [...flagStatus.bridges.map((b) => b.criterion.stationCode), ...(main ? [main.code] : [])];
+    return codes.flatMap((code) => {
+      const r = readings.find((x) => x.code === code);
+      return r && r.bankMsl !== null ? [{ reading: r, bridge: flagStatus.bridges.find((b) => b.criterion.stationCode === code) }] : [];
     });
-    return out;
-  }, [stations, lagHours]);
+  }, [flagStatus.bridges, readings, main]);
+  const closestCode = flagStatus.bridges.find((b) => b.criterion.bridge === closest?.bridge)?.criterion.stationCode;
+  const [selected, setSelected] = useState(closestCode ?? options[0]?.reading.code ?? "");
+  const current = options.find((o) => o.reading.code === selected) ?? options[0] ?? null;
+  const reading = current?.reading ?? null;
+  const bridge = current?.bridge;
+  const hist: StationHistory = (reading && histories[reading.code]) || { recent: [], flood: [] };
 
   const [mode, setMode] = useState<Mode>("live");
   const [index, setIndex] = useState(0);
@@ -100,23 +114,31 @@ export function SongKhlongHero({
   }, [finished]);
   useEffect(() => setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
 
-  const series = mode === "flood" ? flood : mode === "recent" ? recent : [];
+  const series = mode === "flood" ? hist.flood : mode === "recent" ? hist.recent : [];
   const point = mode === "live" ? null : (series[Math.min(index, series.length - 1)] ?? null);
-  const viewedLevel = point ? point.levelMsl : (main?.levelMsl ?? null);
-  const viewedStamp = point ? thaiStamp(point.at) : thaiStamp(main?.measuredAt ?? null);
+  const viewedLevel = point ? point.levelMsl : (reading?.levelMsl ?? null);
+  const viewedStamp = point ? thaiStamp(point.at) : thaiStamp(reading?.measuredAt ?? null);
+  const floodPeak = useMemo(() => peakOf(hist.flood), [hist.flood]);
 
-  // หมุดเหตุการณ์ของน้ำท่วม พ.ย. 68: ชั่วโมงแรกที่ล้นตลิ่ง และยอดสูงสุด
+  // หมุดเหตุการณ์ของน้ำท่วม พ.ย. 68 — สะพาน: ถึงธงเหลือง/แดง · หาดใหญ่ใน: เริ่มล้นตลิ่ง · ทุกจุด: สูงสุด
   const events = useMemo(() => {
-    const bank = main?.bankMsl;
-    if (bank == null) return [];
-    const over = flood.findIndex((p) => p.levelMsl > bank);
-    const peakAt = floodPeak ? flood.indexOf(floodPeak) : -1;
-    const at = (i: number) => `${thaiStamp(flood[i]!.at).date} ${thaiStamp(flood[i]!.at).time}`;
-    return [
-      over >= 0 ? { index: over, label: `เริ่มล้นตลิ่ง ${at(over)}` } : null,
-      peakAt >= 0 ? { index: peakAt, label: `สูงสุด ${at(peakAt)}` } : null,
-    ].filter((e): e is { index: number; label: string } => e !== null);
-  }, [flood, floodPeak, main?.bankMsl]);
+    if (!reading?.bankMsl) return [];
+    const at = (i: number) => `${thaiStamp(hist.flood[i]!.at).date} ${thaiStamp(hist.flood[i]!.at).time}`;
+    const first = (v: number) => hist.flood.findIndex((p) => p.levelMsl >= v);
+    const marks: Array<{ index: number; label: string }> = [];
+    if (bridge?.yellowMsl != null && bridge.redMsl != null) {
+      const y = first(bridge.yellowMsl);
+      const r = first(bridge.redMsl);
+      if (y >= 0) marks.push({ index: y, label: `ถึงธงเหลือง ${at(y)}` });
+      if (r >= 0) marks.push({ index: r, label: `ถึงธงแดง ${at(r)}` });
+    } else {
+      const over = hist.flood.findIndex((p) => p.levelMsl > reading.bankMsl!);
+      if (over >= 0) marks.push({ index: over, label: `เริ่มล้นตลิ่ง ${at(over)}` });
+    }
+    const peakAt = floodPeak ? hist.flood.indexOf(floodPeak) : -1;
+    if (peakAt >= 0) marks.push({ index: peakAt, label: `สูงสุด ${at(peakAt)}` });
+    return marks;
+  }, [hist.flood, floodPeak, reading?.bankMsl, bridge]);
 
   useEffect(() => {
     if (!playing) return;
@@ -139,11 +161,11 @@ export function SongKhlongHero({
     setFinished(false);
     if (m === "flood") {
       // เล่นน้ำขึ้นทันที · ผู้ที่ปิด motion ข้ามไปจุดสูงสุดเลย
-      const peakAt = floodPeak ? flood.indexOf(floodPeak) : 0;
+      const peakAt = floodPeak ? hist.flood.indexOf(floodPeak) : 0;
       setIndex(reduced ? Math.max(0, peakAt) : 0);
       if (!reduced) setPlaying(true);
     } else if (m === "recent") {
-      setIndex(Math.max(0, recent.length - 1));
+      setIndex(Math.max(0, hist.recent.length - 1));
     }
   };
   const jump = (i: number) => {
@@ -151,28 +173,54 @@ export function SongKhlongHero({
     setFinished(false);
     setIndex(i);
   };
+  const pick = (code: string) => {
+    setSelected(code);
+    setMode("live");
+    setPlaying(false);
+    setFinished(false);
+  };
 
-  const historyMark: SceneMark | null = floodPeak
-    ? {
-        levelMsl: floodPeak.levelMsl,
-        // ระดับ ม.รทก. ไม่ใช่ความลึก — บอกเป็น "สูงกว่าตลิ่ง" ที่จุดวัด เพื่อไม่ให้อ่านว่าน้ำลึก 10 เมตร
-        label:
-          main?.bankMsl != null && floodPeak.levelMsl > main.bankMsl
-            ? `น้ำท่วม พ.ย. 68 · สูงกว่าตลิ่ง ${fmt(floodPeak.levelMsl - main.bankMsl)} ม. (จุดวัดหาดใหญ่ใน)`
-            : "น้ำท่วม พ.ย. 68 · สูงสุดที่จุดวัดหาดใหญ่ใน",
-      }
-    : null;
+  const placeLabel = bridge ? bridge.criterion.bridge : reading ? `จุดวัดน้ำ${placeName(reading.name)}` : "";
+  const lines: SceneLine[] =
+    bridge?.yellowMsl != null && bridge.redMsl != null
+      ? [
+          { levelMsl: bridge.yellowMsl, label: "ธงเหลือง", tone: "yellow" },
+          { levelMsl: bridge.redMsl, label: "deck" in bridge.criterion.red ? "ธงแดง (จมสะพาน)" : "ธงแดง", tone: "red" },
+        ]
+      : [];
+  const target = nextTarget(bridge, viewedLevel);
+  const historyMark: SceneMark | null =
+    floodPeak && reading?.bankMsl != null
+      ? {
+          levelMsl: floodPeak.levelMsl,
+          // ระดับ ม.รทก. ไม่ใช่ความลึก — บอกเทียบตลิ่งของจุดวัดนี้
+          label:
+            floodPeak.levelMsl > reading.bankMsl
+              ? `น้ำท่วม พ.ย. 68 · สูงกว่าตลิ่ง ${fmt(floodPeak.levelMsl - reading.bankMsl)} ม.`
+              : `น้ำท่วม พ.ย. 68 · สูงสุด ${fmt(floodPeak.levelMsl)} ม.รทก.`,
+        }
+      : null;
+
+  // บรรทัดสรุปของจุดที่เลือก
+  const fb = reading ? freeboard(reading) : null;
+  const trend = reading ? TREND_PHRASE[waterTrend(reading)] : "";
+  const nextIdx = reading ? stations.findIndex((s) => s.code === reading.code) : -1;
+  const next = nextIdx >= 0 ? stations[nextIdx + 1] : undefined;
+  const lag = next && reading ? lagHours[`${reading.code}>${next.code}`] : null;
 
   const scene =
-    main && main.bankMsl !== null ? (
+    reading && reading.bankMsl !== null ? (
       <HadYaiScene
         levelMsl={viewedLevel}
-        bankMsl={main.bankMsl}
-        groundMsl={main.groundMsl}
+        bankMsl={reading.bankMsl}
+        groundMsl={reading.groundMsl}
         historyMark={historyMark}
-        communityNames={communityNames}
+        // ชื่อชุมชนบนบ้านแสดงเฉพาะภาพหาดใหญ่ใน (ใกล้ควนลัง) — ภาพสะพานอื่นไม่ให้อ่านว่าชุมชนท่วมเท่าระดับที่สะพาน
+        communityNames={reading.code === main?.code ? communityNames : []}
         animate={!reduced}
-        placeLabel={`จุดวัดน้ำ${placeName(main.name)}`}
+        placeLabel={placeLabel}
+        lines={lines}
+        target={target}
       />
     ) : null;
 
@@ -180,7 +228,7 @@ export function SongKhlongHero({
     <section className="relative isolate overflow-hidden bg-gradient-to-b from-brand-100 via-canvas to-mist md:min-h-dvh">
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
       <div className="absolute inset-0 hidden md:block">
-        {/* กว้างไม่เกิน 16:9 ของความสูงจอ — จอกว้างแนวนอนจะไม่ครอปด้านบน (เสาธง/ป้ายชุมชนไม่หาย)
+        {/* กว้างไม่เกิน 16:9 ของความสูงจอ — จอกว้างแนวนอนจะไม่ครอปด้านบน (ป้ายชุมชนไม่หาย)
             จอแคบกว่า 16:9 ใช้เต็มความกว้างแล้วครอปด้านซ้าย (ฝั่งข้อความ) แทน · ขอบซ้ายของภาพโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีของส่วนหัวโดยไม่มีรอยต่อ */}
         {scene ? (
           <div className="absolute inset-y-0 right-0 w-[min(100%,177.78dvh)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene}</div>
@@ -204,7 +252,7 @@ export function SongKhlongHero({
           </nav>
         </div>
 
-        <div className="mt-6 max-w-[38rem] md:mt-10">
+        <div className="mt-6 max-w-[36rem] md:mt-10">
           <p className="eyebrow text-sm text-brand-700">ควนลังตอนนี้ · ธงเตือนภัยชุมชน</p>
           <h1 className="mt-3 flex items-center gap-3 text-6xl font-black leading-[1.2] md:gap-5 md:text-8xl">
             <Flag level={flag} className="h-16 w-16 md:h-24 md:w-24" />
@@ -212,42 +260,61 @@ export function SongKhlongHero({
           </h1>
           <p className="mt-2 text-xl font-bold text-ink-900 md:text-2xl">{FLAG_ACTION[flag]}</p>
 
-          <div className="mt-5">
-            {flagStatus.bridges.length ? (
-              <BridgeFlagPanel
-                bridges={flagStatus.bridges}
-                measuredAt={flagStatus.measuredAt}
-                notes={lagNotes}
-                closestBridge={closest?.bridge ?? null}
-              />
-            ) : null}
-          </div>
-          <p className="mt-3 text-sm leading-6 text-slate-700">
-            {main ? (
-              <>
-                <b className="text-ink-900">ภาพน้ำ</b> คือคลองอู่ตะเภาที่จุดวัดน้ำ{placeName(main.name)} (ใกล้ควนลังที่สุด) —{" "}
-                {fb === null ? "ยังไม่ทราบระดับตลิ่ง" : fb > 0 ? <>ต่ำกว่าตลิ่ง <b className="text-ink-900">{fmt(fb)} ม.</b></> : <b className="text-red-600">ล้นตลิ่ง {fmt(-fb)} ม.</b>}
-                {TREND_PHRASE[trend] ? <> · น้ำ{TREND_PHRASE[trend]}</> : null}
-              </>
-            ) : (
-              feedError ?? "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้ ลองใหม่อีกครั้งภายหลัง"
-            )}
-          </p>
-          <p className="mt-2 text-xs leading-5 text-slate-500">
+          {/* เลือกจุดวัดที่ภาพแสดง — ธงประเมินจาก 3 สะพาน · หาดใหญ่ในใกล้ควนลังที่สุด */}
+          {options.length ? (
+            <div className="mt-5">
+              <p className="text-xs font-semibold text-slate-500">ธงดูจากระดับน้ำที่ 3 สะพาน · กดเพื่อดูในภาพ</p>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="tablist" aria-label="เลือกจุดวัดที่แสดงในภาพ">
+                {options.map((o) => {
+                  const on = o.reading.code === reading?.code;
+                  return (
+                    <button
+                      key={o.reading.code}
+                      type="button"
+                      role="tab"
+                      aria-selected={on}
+                      onClick={() => pick(o.reading.code)}
+                      className={`inline-flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm font-semibold ring-1 transition ${
+                        on ? "bg-ink-900 text-white ring-ink-900" : "bg-white/85 text-ink-900 ring-slate-200 hover:ring-brand-300"
+                      }`}
+                    >
+                      {o.bridge ? <Flag level={o.bridge.flag} className="h-5 w-5" /> : <span className="mx-1 h-2.5 w-2.5 rounded-full bg-brand-500" />}
+                      {placeName(o.reading.name)}
+                    </button>
+                  );
+                })}
+              </div>
+              {reading ? (
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  <b className="text-ink-900">{placeLabel}</b>
+                  {bridge ? <> · {bridge.criterion.canal}</> : <> · ใกล้ควนลังที่สุด</>}
+                  {" — "}
+                  {fb === null ? "ไม่ทราบระดับตลิ่ง" : fb > 0 ? <>ต่ำกว่าตลิ่ง {fmt(fb)} ม.</> : <b className="text-red-600">ล้นตลิ่ง {fmt(-fb)} ม.</b>}
+                  {trend ? <> · {trend}</> : null}
+                  {closestCode === reading.code ? <span className="ml-1 rounded-full bg-sun-100 px-2 py-0.5 text-xs font-bold text-sun-800">ใกล้เกณฑ์ธงที่สุด</span> : null}
+                  {lag && next ? <span className="block text-xs text-slate-500">ปี 68 ยอดน้ำจากจุดนี้ถึง{placeName(next.name)} ~{Math.round(lag)} ชม.</span> : null}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-slate-600">{feedError ?? "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้ ลองใหม่อีกครั้งภายหลัง"}</p>
+          )}
+
+          <p className="mt-3 text-xs leading-5 text-slate-500">
             {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
             <a href={COMMUNITY_FLAG_SOURCE.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 underline">
               ดูธงที่ประกาศจริง ↗
             </a>
           </p>
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <a href="tel:1784" className="btn btn-primary btn-lg">โทรสายด่วน ปภ. 1784</a>
             <a href="#map" className="btn btn-secondary btn-lg">ดูแผนที่ชุมชน ↓</a>
           </div>
 
-          {/* ย้อนดู — การ์ดในคอลัมน์ข้อความ พร้อมหมุดเหตุการณ์ */}
-          {main && (recent.length || flood.length) ? (
-            <div className="mt-6 rounded-3xl bg-white/85 p-4 shadow-sm ring-1 ring-slate-200 backdrop-blur-md">
+          {/* ย้อนดู — การ์ดในคอลัมน์ข้อความ พร้อมหมุดเหตุการณ์ของจุดที่เลือก */}
+          {reading && (hist.recent.length || hist.flood.length) ? (
+            <div className="mt-5 rounded-3xl bg-white/85 p-4 shadow-sm ring-1 ring-slate-200 backdrop-blur-md">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-bold text-ink-900">ย้อนดูระดับน้ำในภาพ</p>
                 <p className={`text-xs font-semibold ${mode === "live" ? "text-slate-500" : "text-brand-700"}`}>
@@ -258,8 +325,8 @@ export function SongKhlongHero({
                 {(
                   [
                     ["live", "ตอนนี้", true],
-                    ["recent", "3 วันล่าสุด", recent.length > 0],
-                    ["flood", "น้ำท่วม พ.ย. 68", flood.length > 0],
+                    ["recent", "3 วันล่าสุด", hist.recent.length > 0],
+                    ["flood", "น้ำท่วม พ.ย. 68", hist.flood.length > 0],
                   ] as const
                 ).filter(([, , ok]) => ok).map(([m, label]) => (
                   <button
@@ -315,7 +382,7 @@ export function SongKhlongHero({
                   ) : null}
                 </>
               ) : (
-                <p className="mt-2 text-xs text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับบ้านริมคลอง</p>
+                <p className="mt-2 text-xs text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
               )}
             </div>
           ) : null}

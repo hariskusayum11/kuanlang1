@@ -102,15 +102,3 @@ export function closestToNextFlag(bridges: readonly BridgeFlagEstimate[]): { bri
   return best;
 }
 
-/**
- * มาตราส่วนแถบธงของสะพานหนึ่ง (ใช้วาดแถบ เขียว → เหลือง → แดง พร้อมหมุดระดับน้ำ) — ค่าเป็น % ของความกว้างแถบ
- * ช่วงแถบ: ต่ำกว่าเกณฑ์เหลือง 3 ม. (หรือต่ำกว่าระดับน้ำ ถ้าน้ำต่ำกว่านั้น) ถึงเหนือเกณฑ์แดง 1 ม.
- * ไม่มีระดับน้ำ/เกณฑ์ = null (ห้ามวาดหมุดจากข้อมูลที่ไม่มี)
- */
-export function flagBarScale(b: BridgeFlagEstimate): { yellowPct: number; redPct: number; levelPct: number } | null {
-  if (b.levelMsl === null || !Number.isFinite(b.levelMsl) || b.yellowMsl === null || b.redMsl === null) return null;
-  const lo = Math.min(b.yellowMsl - 3, b.levelMsl - 0.5);
-  const hi = Math.max(b.redMsl + 1, b.levelMsl + 0.5);
-  const pct = (v: number) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
-  return { yellowPct: pct(b.yellowMsl), redPct: pct(b.redMsl), levelPct: pct(b.levelMsl) };
-}
