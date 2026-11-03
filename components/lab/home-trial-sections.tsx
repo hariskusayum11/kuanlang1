@@ -28,7 +28,7 @@ export function TrialSectionHeader({ id, eyebrow, title, lead }: { id: string; e
 /** เบอร์ฉุกเฉิน — แถบปุ่มโทรใต้ส่วนหัว (กดแล้วโทรทันที · แดง = วิกฤตจริง) */
 export function EmergencyStrip({ contacts }: { contacts: PublicEmergencyContact[] }) {
   return (
-    <section aria-labelledby="emergency-title" className="border-y border-slate-200 bg-white px-4 py-6 md:px-10">
+    <section aria-labelledby="emergency-title" className="border-y border-slate-200 bg-white px-4 py-5 md:px-10">
       <div className="mx-auto flex max-w-[1200px] flex-col gap-4 lg:flex-row lg:items-center">
         <div className="shrink-0 lg:w-44">
           <h2 id="emergency-title" className="text-lg font-black text-ink-900">
@@ -67,7 +67,7 @@ export function CommunityNumbers({ stats }: { stats: PublicStats }) {
     { value: stats.evacuationSites, label: "จุดพักพิง / จุดช่วยเหลือ", zero: "อยู่ระหว่างรวบรวมข้อมูล" },
   ];
   return (
-    <dl className="mt-8 grid grid-cols-3 divide-x divide-slate-200 rounded-3xl bg-white py-5 ring-1 ring-slate-200">
+    <dl className="mt-6 grid grid-cols-3 divide-x divide-slate-200 rounded-3xl bg-white py-5 ring-1 ring-slate-200">
       {items.map((it) => (
         <div key={it.label} className="flex flex-col px-4 text-center md:px-8">
           <dt className="order-2 mt-1 text-xs font-semibold leading-snug text-slate-600 md:text-sm">{it.label}</dt>
@@ -99,7 +99,7 @@ const STEP_DOT: Record<Tone, string> = {
 /** เตรียมพร้อม — 3 ช่วงเวลาเรียงเป็นขั้น (ไม่ใช่การ์ดไอคอน) */
 export function PrepareSteps() {
   return (
-    <section aria-labelledby="prepare-title" className="bg-white px-4 py-16 md:px-10 md:py-20">
+    <section aria-labelledby="prepare-title" className="bg-white px-4 py-10 md:px-10 md:py-14">
       <div className="mx-auto max-w-[1200px]">
         <TrialSectionHeader
           id="prepare-title"
@@ -107,7 +107,7 @@ export function PrepareSteps() {
           title="ก่อน ระหว่าง และหลังน้ำท่วม"
           lead="ทำตามลำดับนี้ พร้อมดูธงเตือนภัยของชุมชนประกอบ — ธงเหลืองให้อพยพผู้ป่วยติดเตียงและผู้ฟอกไตก่อน"
         />
-        <ol className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
+        <ol className="mt-6 grid gap-6 md:grid-cols-3 md:gap-8">
           {PREPARE_TIPS.map((tip, i) => (
             <li key={tip.title} className={`border-t-4 pt-5 ${STEP_BORDER[tip.tone]}`}>
               <p className="text-sm font-black tabular-nums text-slate-400">0{i + 1}</p>
@@ -131,7 +131,7 @@ export function PrepareSteps() {
 /** ร่วมเป็นเครือข่าย + ลิงก์ติดตามสถานการณ์ — ปิดท้ายหน้าในส่วนเดียว */
 export function JoinAndFollow({ links }: { links: ExternalLinkRow[] }) {
   return (
-    <section aria-labelledby="join-title" className="bg-canvas px-4 py-16 md:px-10 md:py-20">
+    <section aria-labelledby="join-title" className="bg-canvas px-4 py-10 md:px-10 md:py-14">
       <div className="mx-auto grid max-w-[1200px] gap-6 lg:grid-cols-[1.15fr_1fr]">
         <div className="relative overflow-hidden rounded-3xl bg-ink-900 p-6 text-white md:p-8">
           <p className="eyebrow text-sky-300">ร่วมเป็นเครือข่าย</p>
@@ -206,7 +206,7 @@ const SOURCES: Array<{ topic: string; source: string; href: string; note?: strin
 /** ที่มาของข้อมูลบนหน้านี้ — รวมไว้ที่เดียวแทนตัวหนังสือเล็กกระจายหลายจุด */
 export function DataCredits() {
   return (
-    <div className="bg-canvas px-4 pb-10 md:px-10">
+    <div className="bg-canvas px-4 pb-8 md:px-10">
       <div className="mx-auto max-w-[1200px] text-[11px] leading-5 text-slate-500">
         <p className="font-bold text-slate-700">ที่มาของข้อมูล (สำหรับอ้างอิง)</p>
         <ul className="mt-1.5 grid gap-x-6 gap-y-1 md:grid-cols-2">

@@ -29,7 +29,7 @@ export function FlagCriteria({
   measuredAt: Record<string, string | null>;
 }) {
   return (
-    <section id="flags" className="bg-mist px-4 py-14 md:px-10 md:py-20">
+    <section id="flags" className="bg-mist px-4 py-10 md:px-10 md:py-14">
       <div className="mx-auto max-w-[1200px]">
         <p className="eyebrow text-brand-700">ธงเตือนภัยชุมชน</p>
         <h2 className="mt-2 text-3xl font-black text-ink-900 md:text-4xl">ธงสีอะไร ต้องทำอะไร</h2>
@@ -39,7 +39,7 @@ export function FlagCriteria({
         </p>
 
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {COMMUNITY_FLAGS.map((f) => (
             <div key={f.level} className="card flex gap-3 p-4">
               <Flag level={f.level} />
@@ -51,7 +51,7 @@ export function FlagCriteria({
           ))}
         </div>
 
-        <h3 className="mt-12 text-xl font-bold text-ink-900">เกณฑ์ยกธงรายสะพาน เทียบระดับน้ำตอนนี้</h3>
+        <h3 className="mt-8 text-xl font-bold text-ink-900">เกณฑ์ยกธงรายสะพาน เทียบระดับน้ำตอนนี้</h3>
         <div className="card-flush mt-4 overflow-x-auto">
           <table className="w-full min-w-[46rem] text-left text-sm">
             <thead className="bg-white text-slate-500">

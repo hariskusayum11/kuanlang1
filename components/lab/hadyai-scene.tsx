@@ -379,12 +379,12 @@ function GapMeasure({ waterY, levelMsl, targetMsl, targetY, targetLabel }: { wat
           <line x1={x - 18} x2={x + 18} y1={bottom} y2={bottom} />
         </g>
       ) : null}
-      <g style={{ paintOrder: "stroke" }} className="stroke-white/90" strokeWidth={8} strokeLinejoin="round">
-        <text x={x + 30} y={mid + 10} fontSize={64} fontWeight={900} className={tone}>
+      <g style={{ paintOrder: "stroke" }} className="stroke-white/90" strokeWidth={9} strokeLinejoin="round">
+        <text x={x + 32} y={mid + 12} fontSize={78} fontWeight={900} className={tone}>
           {over ? "เกิน " : "อีก "}
           {Math.abs(gap).toFixed(2)} ม.
         </text>
-        <text x={x + 34} y={mid + 42} fontSize={22} fontWeight={700} className={over ? "fill-red-600" : "fill-ink-800"}>
+        <text x={x + 36} y={mid + 50} fontSize={27} fontWeight={700} className={over ? "fill-red-600" : "fill-ink-800"}>
           {over ? `ผิวน้ำสูงกว่า${targetLabel}` : `จากผิวน้ำถึง${targetLabel}`}
         </text>
       </g>
@@ -400,15 +400,17 @@ const HOUSES = [
   { x: 1480, w: 92, kind: RaisedConcreteHouse, labelY: GROUND - 4.2 * M - 96 },
 ] as const;
 
+// สระบน/ล่างและวรรณยุกต์ไม่กินความกว้าง — นับเฉพาะตัวที่วางบนบรรทัด
+const labelWidth = (text: string) => text.replace(/[ัิ-ฺ็-๎]/g, "").length * 13.8 + 36;
+
 function Label({ x, y, text, tone = "ink" }: { x: number; y: number; text: string; tone?: "ink" | "red" | "white" }) {
-  // สระบน/ล่างและวรรณยุกต์ไม่กินความกว้าง — นับเฉพาะตัวที่วางบนบรรทัด
-  const w = text.replace(/[ัิ-ฺ็-๎]/g, "").length * 11.6 + 30;
+  const w = labelWidth(text);
   const bg = tone === "red" ? "fill-red-600" : tone === "white" ? "fill-white/90" : "fill-ink-900/85";
   const fg = tone === "white" ? "fill-ink-900" : "fill-white";
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect x={-w / 2} y={-17} width={w} height={32} rx={16} className={bg} />
-      <text x={0} y={6} textAnchor="middle" fontSize={19} fontWeight={700} className={fg}>
+      <rect x={-w / 2} y={-20} width={w} height={38} rx={19} className={bg} />
+      <text x={0} y={7} textAnchor="middle" fontSize={23} fontWeight={700} className={fg}>
         {text}
       </text>
     </g>
@@ -547,13 +549,13 @@ export function HadYaiScene({
         return (
           <g key={l.label}>
             <line x1={GAUGE_X + 34} x2={SCENE.width} y1={y} y2={y} className={LINE_TONE[l.tone].stroke} strokeWidth={4} strokeDasharray="18 10" />
-            <text x={GAUGE_X + 46} y={y - 10} fontSize={24} fontWeight={800} className={`${LINE_TONE[l.tone].text} stroke-white/90`} strokeWidth={6} style={{ paintOrder: "stroke" }}>
+            <text x={GAUGE_X + 46} y={y - 12} fontSize={30} fontWeight={800} className={`${LINE_TONE[l.tone].text} stroke-white/90`} strokeWidth={7} style={{ paintOrder: "stroke" }}>
               {l.label}
             </text>
           </g>
         );
       })}
-      <text x={GAUGE_X + 46} y={GROUND - 10} fontSize={24} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={6} style={{ paintOrder: "stroke" }}>
+      <text x={GAUGE_X + 46} y={GROUND - 12} fontSize={30} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={7} style={{ paintOrder: "stroke" }}>
         ตลิ่ง
       </text>
 
@@ -568,7 +570,7 @@ export function HadYaiScene({
       </g>
 
       {/* เส้นน้ำท่วมในอดีต (วาดเหนือผิวน้ำให้อ่านได้เสมอ) */}
-      <Label x={GAUGE_X + 160} y={gaugeTop - 30} text={placeLabel} tone="ink" />
+      <Label x={GAUGE_X + 34 + labelWidth(placeLabel) / 2} y={gaugeTop - 34} text={placeLabel} tone="ink" />
 
       <GapMeasure
         waterY={waterY}
@@ -581,7 +583,7 @@ export function HadYaiScene({
       {histY !== null && historyMark ? (
         <g>
           <line x1={GAUGE_X + 34} x2={SCENE.width} y1={histY} y2={histY} className="stroke-red-600" strokeWidth={3} strokeDasharray="6 8" />
-          <Label x={GAUGE_X + 34 + (historyMark.label.replace(/[ัิ-ฺ็-๎]/g, "").length * 11.6 + 30) / 2 + 12} y={histY - 24} text={historyMark.label} tone="red" />
+          <Label x={GAUGE_X + 34 + labelWidth(historyMark.label) / 2 + 12} y={histY - 28} text={historyMark.label} tone="red" />
         </g>
       ) : null}
 

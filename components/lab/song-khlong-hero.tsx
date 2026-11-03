@@ -307,7 +307,7 @@ export function SongKhlongHero({
             ภาพจบเหนือแถบย้อนดู แถบจึงไม่บังเส้นขอบน้ำแม้น้ำต่ำ ·
             ใหญ่ที่สุดโดยไม่ครอปด้านบน และไม้วัด/เส้นธงไม่ไปอยู่ใต้คอลัมน์ข้อความ · ส่วนซ้ายที่ล้นจอถูกตัดโดย overflow-hidden · ขอบซ้ายของภาพโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีของส่วนหัวโดยไม่มีรอยต่อ */}
         {reading ? (
-          <div className="absolute bottom-24 right-0 h-[min(calc(100dvh_-_6rem),52.2vw)] w-[min(calc((100dvh_-_6rem)*2.27),118.5vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene(0)}</div>
+          <div className="absolute bottom-24 right-0 h-[min(calc(100dvh_-_6rem),54vw)] w-[min(calc((100dvh_-_6rem)*2.27),122.6vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene(0)}</div>
         ) : null}
       </div>
 

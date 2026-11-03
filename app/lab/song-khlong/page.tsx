@@ -108,7 +108,7 @@ export default async function SongKhlongLabPage({ searchParams }: { searchParams
       {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
       <EmergencyStrip contacts={contacts} />
       <FlagCriteria bridges={flagStatus.bridges} measuredAt={flagStatus.measuredAt} />
-      <section id="map" aria-labelledby="map-title" className="bg-canvas px-4 py-16 md:px-10 md:py-20">
+      <section id="map" aria-labelledby="map-title" className="bg-canvas px-4 py-10 md:px-10 md:py-14">
         <div className="mx-auto max-w-[1200px]">
           <TrialSectionHeader
             id="map-title"
