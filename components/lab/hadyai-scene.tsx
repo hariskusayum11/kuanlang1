@@ -5,6 +5,7 @@
 // บ้านและน้ำใช้มาตราส่วนเดียวกัน (domain/water/scene-geometry.ts) — น้ำสูงกว่าตลิ่งเท่าไร ในภาพก็ท่วมบ้านเท่านั้น
 // สีใช้คลาส Token ทั้งหมด · ไม่มี <defs>/gradient (ตามข้อบังคับ SVG ของระบบ)
 import { mslToSceneY, SCENE, wavePath } from "@/domain/water/scene-geometry";
+import type { DayPhase, RainLevel } from "@/domain/water/sky";
 
 const GROUND = SCENE.bankY;
 const M = SCENE.pxPerM;
@@ -22,6 +23,45 @@ const SKYLINE: Array<[number, number, number]> = [
   [1292, 76, 140], [1372, 48, 100], [1424, 66, 185], [1495, 54, 125], [1553, 60, 90],
 ];
 const RAIL_Y = GROUND + 35;
+/**
+ * กรอบที่แสดง: ตัดฟ้าด้านบนและท้องน้ำด้านล่างที่ว่างออก เพื่อให้บ้าน/น้ำ/เส้นธงใหญ่ขึ้น
+ * (ผิวน้ำต่ำสุดของทุกจุดวัดยังอยู่ในกรอบ · คำนวณพิกัดยังเป็นระบบ 1600×900 เดิม)
+ */
+export const SCENE_CROP = { top: 125, height: 705 } as const;
+
+/** ท้องฟ้าตามเวลา + เมฆ — วาดหลังสุด (หลังเขา) */
+function Sky({ phase, cloud, rain }: { phase: DayPhase; cloud: number; rain: RainLevel }) {
+  const clouds = rain !== "none" || cloud >= 60;
+  const cloudCls = rain === "none" ? (phase === "night" ? "fill-slate-500/60" : "fill-white/80") : phase === "night" ? "fill-slate-600/70" : "fill-slate-400/70";
+  return (
+    <g>
+      {phase === "night" ? (
+        <g>
+          {[[1180, 170], [1260, 210], [1340, 160], [1460, 200], [1540, 165], [980, 190], [1080, 160], [900, 215]].map(([x, y]) => (
+            <circle key={`${x}-${y}`} cx={x} cy={y} r={2} className="fill-white/80" />
+          ))}
+          {!clouds ? (
+            <g>
+              <circle cx={1500} cy={190} r={26} className="fill-sun-100" />
+              <circle cx={1512} cy={182} r={22} className="fill-ink-800" />
+            </g>
+          ) : null}
+        </g>
+      ) : !clouds ? (
+        <circle cx={1510} cy={200} r={34} className={phase === "day" ? "fill-sun-300" : "fill-sun-400/90"} />
+      ) : null}
+      {clouds
+        ? [[980, 215, 1], [1240, 200, 1.2], [1470, 222, 1.05]].map(([x, y, k]) => (
+            <g key={x} transform={`translate(${x} ${y}) scale(${k})`} className={cloudCls}>
+              <ellipse cx={0} cy={0} rx={70} ry={24} />
+              <ellipse cx={-30} cy={-14} rx={36} ry={26} />
+              <ellipse cx={22} cy={-20} rx={44} ry={32} />
+            </g>
+          ))
+        : null}
+    </g>
+  );
+}
 
 function Buddha({ x, y }: { x: number; y: number }) {
   // พระพุทธมงคลมหาราช (ปางห้ามญาติ ประทับยืน) — ภาพย่อแบบเรียบ ไม่ใส่รายละเอียดเกินจำเป็น
@@ -385,6 +425,10 @@ export function HadYaiScene({
   placeLabel,
   lines = [],
   target = null,
+  viewX = 0,
+  phase = "day",
+  rain = "none",
+  cloud = 0,
 }: {
   /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
   levelMsl: number | null;
@@ -399,6 +443,14 @@ export function HadYaiScene({
   lines?: SceneLine[];
   /** เส้นที่ลูกศรวัดระยะชี้ไป — null = ตลิ่ง */
   target?: { levelMsl: number; label: string } | null;
+  /** ขอบซ้ายของกรอบที่แสดง (มือถือเลื่อนไปฝั่งไม้วัด/บ้านเพื่อให้ภาพใหญ่ขึ้น) */
+  viewX?: number;
+  /** ช่วงเวลาของวัน — ท้องฟ้า/ความสว่างของภาพ */
+  phase?: DayPhase;
+  /** ฝนตอนนี้ (จากข้อมูลอากาศ) — ใช้เลือกเมฆ (เม็ดฝนวาดเป็นชั้นของส่วนหัว) */
+  rain?: RainLevel;
+  /** เมฆปกคลุม (%) */
+  cloud?: number;
 }) {
   const waterY = mslToSceneY(levelMsl, bankMsl);
   const gaugeTop = mslToSceneY(Math.max(bankMsl + 3.6, ...lines.map((l) => l.levelMsl + 1)), bankMsl);
@@ -408,7 +460,14 @@ export function HadYaiScene({
   const histY = historyMark ? mslToSceneY(historyMark.levelMsl, bankMsl) : null;
 
   return (
-    <svg viewBox={`0 0 ${SCENE.width} ${SCENE.height}`} preserveAspectRatio="xMaxYMax slice" className="h-full w-full" role="img" aria-label="ภาพประกอบคลองอู่ตะเภาที่หาดใหญ่ แสดงระดับน้ำเทียบตลิ่งและบ้านริมคลอง">
+    <svg
+      viewBox={`${viewX} ${SCENE_CROP.top} ${SCENE.width - viewX} ${SCENE_CROP.height}`}
+      preserveAspectRatio="xMaxYMax slice"
+      className="h-full w-full"
+      role="img"
+      aria-label="ภาพประกอบระดับน้ำที่จุดวัด เทียบตลิ่ง เส้นเกณฑ์ธง และบ้านริมคลอง"
+    >
+      <Sky phase={phase} cloud={cloud} rain={rain} />
       {/* เขาคอหงส์ + เขาชุมสัก */}
       <path d="M560 600 C760 520 940 290 1120 196 C1200 214 1262 300 1318 330 C1360 284 1396 236 1420 232 C1480 246 1546 340 1600 380 L1600 600 Z" className="fill-brand-200/70" />
       <path d="M1128 178 Q1270 210 1414 216" className="fill-none stroke-slate-500/70" strokeWidth={1.5} />
@@ -468,6 +527,10 @@ export function HadYaiScene({
           ))}
         </g>
       ))}
+
+      {/* โทนตามเวลา — กลางคืนมืดลง · รุ่งเช้า/โพล้เพล้อุ่นขึ้นเล็กน้อย (ไม้วัด น้ำ และป้ายวาดทับจึงยังอ่านชัด) */}
+      {phase === "night" ? <rect x={0} y={0} width={SCENE.width} height={SCENE.height} className="fill-ink-950/45" /> : null}
+      {phase === "dawn" || phase === "dusk" ? <rect x={0} y={0} width={SCENE.width} height={SCENE.height} className="fill-sun-700/10" /> : null}
 
       {/* ไม้วัดระดับน้ำ */}
       <rect x={GAUGE_X} y={gaugeTop} width={34} height={SCENE.height - gaugeTop} rx={4} className="fill-white stroke-slate-300" strokeWidth={2} />

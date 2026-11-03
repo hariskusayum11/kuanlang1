@@ -7,6 +7,11 @@ import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/wat
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
 import { peakLagHours } from "@/domain/water/peak-lag";
+import { getHatYaiWeather } from "@/lib/water/weather";
+import type { DayPhase, RainLevel } from "@/domain/water/sky";
+
+const PHASES: readonly DayPhase[] = ["dawn", "day", "dusk", "night"];
+const RAINS: readonly RainLevel[] = ["none", "light", "moderate", "heavy"];
 import { FlagCriteria } from "@/components/lab/flag-criteria";
 import { flagStatusFromReadings } from "@/lib/water/community-flag";
 import { PublicFooter } from "@/components/public/home-sections";
@@ -38,7 +43,11 @@ const FLOOD_2568 = { start: "2025-11-18", end: "2025-12-02", cacheSeconds: 86_40
  * ข้อมูลทั้งหมดเป็นระดับสาธารณะ: ชื่อ/เขตชุมชน · ช่องตารางน้ำท่วม ≥ 5 หลัง (ไม่มีพิกัดรายบ้าน) ·
  * จุดอพยพสาธารณะ · ระดับน้ำจากสถานีของรัฐ
  */
-export default async function SongKhlongLabPage() {
+export default async function SongKhlongLabPage({ searchParams }: { searchParams: Promise<{ sky?: string; rain?: string }> }) {
+  // ?sky=night / ?rain=heavy — พรีวิวภาพตามเวลา/อากาศ (รับเฉพาะค่าที่รู้จัก)
+  const sp = await searchParams;
+  const forcePhase = PHASES.find((p) => p === sp.sky);
+  const forceRain = RAINS.find((r) => r === sp.rain);
   const [mapData, feed, canalsText, stats, contacts, externalLinks] = await Promise.all([
     getPublicMapData(),
     getSongKhlongStations(),
@@ -47,6 +56,7 @@ export default async function SongKhlongLabPage() {
     getPublicEmergencyContacts(),
     listPublicExternalLinks(),
   ]);
+  const weather = await getHatYaiWeather();
   // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
   const flagStatus = flagStatusFromReadings(feed.readings);
   // ระดับน้ำย้อนหลังของทุกจุดวัด (ภาพส่วนหัวเลือกดูได้ทีละจุด) — 3 วันล่าสุดแคช 10 นาที · พ.ย. 68 แคช 1 วัน
@@ -81,6 +91,9 @@ export default async function SongKhlongLabPage() {
         feedError={feed.error}
         flagStatus={flagStatus}
         lagHours={lagHours}
+        weather={weather}
+        forcePhase={forcePhase}
+        forceRain={forceRain}
       />
       {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
       <EmergencyStrip contacts={contacts} />

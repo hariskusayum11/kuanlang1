@@ -199,6 +199,7 @@ export function DataCredits() {
         กรมชลประทาน · เกณฑ์ธง: กลุ่มสองคลองควนลัง / Hatyai City Climate (CC BY-SA 3.0) · เส้นคลอง © OpenStreetMap
         contributors · ภาพดาวเทียม Esri · ข้อมูลชุมชน: แบบสำรวจที่ตรวจแล้ว (ภาพรวมระดับพื้นที่) · ภาพบ้านและน้ำในส่วนหัวใช้มาตราส่วนเดียวกัน
         · เกณฑ์เฝ้าระวัง/เตือนภัยบนไม้วัดเป็นฉบับร่าง · รูปตัดขวางคลอง: กรมชลประทาน (สำรวจ ม.ค. 2569)
+        · สภาพอากาศในภาพส่วนหัว: Open-Meteo (CC BY 4.0)
         · แนวคิดนำเสนอระดับน้ำให้คนทั่วไปอ่านง่าย ได้แรงบันดาลใจจาก{" "}
         <a href="https://flood.pop.in.th/" target="_blank" rel="noopener noreferrer" className="underline">POPNIX Flood</a>
       </p>
