@@ -454,12 +454,8 @@ export function SongKhlongHero({
       {/* ย้อนดู — แถบยาวเต็มความกว้างใต้ภาพ พร้อมขีดหมุดเหตุการณ์บนแถบเลื่อน */}
       {hasReplay ? (
         <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-3 md:px-10">
-          {/* จอ ≥1536px (2xl): แถบย้อนดูชิดซ้าย + แคปซูลอากาศมุมขวาล่างในแถวเดียวกัน ·
-              จอแคบกว่า: ที่ไม่พอให้แถบเลื่อนเวลายาวพอ แคปซูลจึงลอยเหนือแถบชิดขวาแทน (ผูกกับขอบบนของแถบ ไม่ทับแม้แถบสูงขึ้น) */}
-          <div className="mx-auto flex max-w-[1500px] items-start gap-4">
-          <div className="min-w-0 flex-1 2xl:max-w-[1180px]">
           <div
-            className={`mx-auto flex max-w-[1180px] flex-col gap-3 rounded-[1.75rem] 2xl:max-w-none p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
+            className={`mx-auto flex max-w-[1180px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
               mode === "live" ? "bg-white/70 ring-slate-200 hover:bg-white/90 focus-within:bg-white/90" : "bg-white/90 shadow-lg ring-slate-200"
             }`}
           >
@@ -536,15 +532,13 @@ export function SongKhlongHero({
           {(mode === "flood" || mode === "forecast") && events.length ? (
             <p className={`mx-auto mt-1.5 max-w-[1180px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
           ) : null}
-          </div>
-          {weather ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 hidden px-10 md:block 2xl:pointer-events-auto 2xl:static 2xl:mb-0 2xl:ml-auto 2xl:mt-2.5 2xl:shrink-0 2xl:px-0">
-              <div className="pointer-events-auto mx-auto flex max-w-[1180px] justify-end">
-                <WeatherWidget weather={weather} daily={forecast.daily} dark={night} placement="up" />
-              </div>
-            </div>
-          ) : null}
-          </div>
+        </div>
+      ) : null}
+
+      {/* แคปซูลอากาศลอยอิสระมุมขวาล่างของส่วนหัว (จอกว้าง) — อยู่เหนือทุกชั้น ไม่ดันแถบย้อนดู · จอแคบอาจทับปลายแถบ */}
+      {weather && hasReplay ? (
+        <div className="absolute bottom-6 right-6 z-20 hidden md:block">
+          <WeatherWidget weather={weather} daily={forecast.daily} dark={night} placement="up" />
         </div>
       ) : null}
     </section>
