@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { freeboard, gaugeFill, levelPercent, peakOf, r1SimulatedIntensity, waterStatus, waterTrend } from "../../domain/water/station-status";
+import { freeboard, peakOf, r1SimulatedIntensity, waterStatus, waterTrend } from "../../domain/water/station-status";
 
 // สถานะน้ำจากสถานีวัด (ต้นแบบ /lab/song-khlong)
 
@@ -22,26 +22,6 @@ describe("waterTrend", () => {
     expect(waterTrend({ levelMsl: 0.29, previousMsl: 0.31 })).toBe("STEADY");
     expect(waterTrend({ levelMsl: 0.8, previousMsl: 1.0 })).toBe("FALLING");
     expect(waterTrend({ levelMsl: 1, previousMsl: null })).toBe("UNKNOWN");
-  });
-});
-
-describe("gaugeFill", () => {
-  it("สัดส่วนจากท้องน้ำถึงตลิ่ง", () => {
-    expect(gaugeFill({ levelMsl: 1.0, bankMsl: 7.15, groundMsl: -2.204 })).toBeCloseTo(0.342, 2);
-  });
-  it("ระดับพื้นผิดปกติ (สูงกว่าตลิ่ง) ใช้ฐาน 10 ม. ใต้ตลิ่ง", () => {
-    expect(gaugeFill({ levelMsl: 0.29, bankMsl: 5, groundMsl: 20.255 })).toBeCloseTo(0.529, 2);
-  });
-  it("ล้นตลิ่งแสดงได้ถึง 120%", () => {
-    expect(gaugeFill({ levelMsl: 20, bankMsl: 7, groundMsl: 0 })).toBe(1.2);
-  });
-});
-
-describe("levelPercent", () => {
-  it("ตรงกับ storage_percent ของ ThaiWater และไม่ตัดเพดาน", () => {
-    expect(levelPercent({ levelMsl: 1.19, bankMsl: 7.15, groundMsl: -2.204 })).toBeCloseTo(36.28, 1); // X.44 จริง
-    expect(levelPercent({ levelMsl: 9.97, bankMsl: 7.15, groundMsl: -2.204 })).toBeCloseTo(130.1, 0); // พ.ย. 68
-    expect(levelPercent({ levelMsl: null, bankMsl: 7.15, groundMsl: 0 })).toBeNull();
   });
 });
 

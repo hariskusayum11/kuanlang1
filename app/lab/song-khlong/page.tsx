@@ -6,8 +6,8 @@ import { listPublicExternalLinks } from "@/lib/external-links/core";
 import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
-import { CommunityHero } from "@/components/lab/community-hero";
-import { peakLagHours } from "@/domain/water/cross-section";
+import { RiverPath } from "@/components/lab/river-path";
+import { peakLagHours } from "@/domain/water/peak-lag";
 import { FlagCriteria } from "@/components/lab/flag-criteria";
 import { flagStatusFromReadings } from "@/lib/water/community-flag";
 import { PublicFooter } from "@/components/public/home-sections";
@@ -39,9 +39,7 @@ const FLOOD_2568 = { start: "2025-11-18", end: "2025-12-02", cacheSeconds: 86_40
  * ข้อมูลทั้งหมดเป็นระดับสาธารณะ: ชื่อ/เขตชุมชน · ช่องตารางน้ำท่วม ≥ 5 หลัง (ไม่มีพิกัดรายบ้าน) ·
  * จุดอพยพสาธารณะ · ระดับน้ำจากสถานีของรัฐ
  */
-export default async function SongKhlongLabPage({ searchParams }: { searchParams: Promise<{ hero?: string }> }) {
-  // ?hero=v1 = ส่วนหัวแบบเดิม (ภาพเมือง + ไม้วัด) เก็บไว้เทียบ · ค่าเริ่มต้น = แบบนำด้วยธงชุมชน
-  const { hero } = await searchParams;
+export default async function SongKhlongLabPage() {
   const [mapData, feed, canalsText, stats, contacts, externalLinks] = await Promise.all([
     getPublicMapData(),
     getSongKhlongStations(),
@@ -76,29 +74,23 @@ export default async function SongKhlongLabPage({ searchParams }: { searchParams
 
   return (
     <main className="bg-canvas">
-      {hero === "v1" ? (
-        <SongKhlongHero
-          stations={feed.stations}
-          recent={recent}
-          flood={flood}
-          communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
-          feedError={feed.error}
-          estimatedFlag={flagStatus.flag}
-        />
-      ) : (
-        <CommunityHero
-          stations={feed.stations}
-          recent={recent}
-          flood={flood}
-          flagStatus={flagStatus}
-          lagHours={lagHours}
-          communityCount={mapData.communities.length}
-          feedError={feed.error}
-        />
-      )}
+      <SongKhlongHero
+        stations={feed.stations}
+        recent={recent}
+        flood={flood}
+        communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
+        feedError={feed.error}
+        flagStatus={flagStatus}
+      />
+      {/* เส้นทางน้ำต้นน้ำ → ควนลัง (ธงรายสะพาน + เวลาที่ยอดน้ำเดินทางจากเหตุการณ์ พ.ย. 68) */}
+      <div className="bg-mist px-4 pb-8 md:px-10">
+        <div className="mx-auto max-w-[1200px] pt-2">
+          <RiverPath stations={feed.stations} bridges={flagStatus.bridges} lagHours={lagHours} communityCount={mapData.communities.length} />
+        </div>
+      </div>
       {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
       <EmergencyStrip contacts={contacts} />
-      <FlagCriteria bridges={flagStatus.bridges} flag={flagStatus.flag} measuredAt={flagStatus.measuredAt} showEstimate={hero === "v1"} />
+      <FlagCriteria bridges={flagStatus.bridges} measuredAt={flagStatus.measuredAt} />
       <section id="map" aria-labelledby="map-title" className="bg-canvas px-4 py-16 md:px-10 md:py-20">
         <div className="mx-auto max-w-[1200px]">
           <TrialSectionHeader

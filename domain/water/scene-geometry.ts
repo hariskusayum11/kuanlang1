@@ -3,7 +3,6 @@
 // ฉากยึด "ระดับตลิ่ง" ของสถานีไว้ที่ความสูงคงที่ (BANK_Y = ขอบบนกำแพงคลอง/พื้นดินที่บ้านตั้ง)
 // แล้วแปลงระดับน้ำ (ม.รทก.) เป็นพิกัด y ด้วยมาตราส่วนเดียวกับตัวบ้านในภาพ (ประตูสูง 2 ม. = 72px)
 // เพื่อให้ "น้ำท่วมสูงกว่าตลิ่ง 2.8 ม." ในภาพสูงเท่าที่เกิดจริงเมื่อเทียบกับบ้าน — ไม่ขยายให้ดูน่ากลัวเกินจริง
-import { STATUS_THRESHOLDS_M } from "./station-status";
 
 export const SCENE = {
   width: 1600,
@@ -21,15 +20,6 @@ export function mslToSceneY(levelMsl: number | null, bankMsl: number): number {
   if (levelMsl === null || !Number.isFinite(levelMsl) || !Number.isFinite(bankMsl)) return SCENE.height;
   const y = SCENE.bankY - (levelMsl - bankMsl) * SCENE.pxPerM;
   return Math.min(SCENE.height, Math.max(SCENE.topY, y));
-}
-
-/** เส้นบนไม้วัด: ตลิ่ง · เตือนภัย · เฝ้าระวัง (ระยะต่ำกว่าตลิ่งตามเกณฑ์ฉบับร่างใน station-status) */
-export function gaugeMarks(bankMsl: number) {
-  return {
-    bank: SCENE.bankY,
-    warning: mslToSceneY(bankMsl - STATUS_THRESHOLDS_M.warning, bankMsl),
-    watch: mslToSceneY(bankMsl - STATUS_THRESHOLDS_M.watch, bankMsl),
-  };
 }
 
 /** เส้นคลื่นปิดรูป (ยาว 2 เท่าความกว้างฉาก เพื่อเลื่อนวนได้ไม่สะดุด) — ผิวน้ำอยู่ที่ y = 0 ของกลุ่ม */

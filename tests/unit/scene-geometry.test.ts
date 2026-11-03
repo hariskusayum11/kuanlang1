@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gaugeMarks, mslToSceneY, SCENE, wavePath } from "../../domain/water/scene-geometry";
+import { mslToSceneY, SCENE, wavePath } from "../../domain/water/scene-geometry";
 
 // ฉากน้ำหน้า /lab/song-khlong — ระดับน้ำต้องวางถูกที่เมื่อเทียบตลิ่งและบ้าน
 
@@ -20,14 +20,6 @@ describe("mslToSceneY", () => {
   });
   it("ไม่เกินขอบบนของฉาก", () => {
     expect(mslToSceneY(100, 7.15)).toBe(SCENE.topY);
-  });
-});
-
-describe("gaugeMarks", () => {
-  it("เรียงจากบนลงล่าง ตลิ่ง → เตือนภัย → เฝ้าระวัง", () => {
-    const m = gaugeMarks(7.15);
-    expect(m.bank).toBeLessThan(m.warning);
-    expect(m.warning).toBeLessThan(m.watch);
   });
 });
 

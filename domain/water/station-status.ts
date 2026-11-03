@@ -71,27 +71,6 @@ export function waterTrend(r: Pick<StationReading, "levelMsl" | "previousMsl">):
   return diff > 0 ? "RISING" : "FALLING";
 }
 
-/**
- * สัดส่วนน้ำในไม้วัด 0–1 (ท้องน้ำ → ตลิ่ง) · เกินตลิ่งได้ถึง 1.2 เพื่อให้เห็นว่าล้น
- * ข้อมูลบางสถานีมีระดับพื้นสูงกว่าตลิ่ง (ค่าผิดปกติจากต้นทาง) → ใช้ฐาน 10 ม. ใต้ตลิ่งแทน
- */
-export function gaugeFill(r: Pick<StationReading, "levelMsl" | "bankMsl" | "groundMsl">): number | null {
-  if (!finite(r.levelMsl) || !finite(r.bankMsl)) return null;
-  const base = finite(r.groundMsl) && r.groundMsl < r.bankMsl ? r.groundMsl : r.bankMsl - 10;
-  const fill = (r.levelMsl - base) / (r.bankMsl - base);
-  return Math.max(0, Math.min(1.2, fill));
-}
-
-/**
- * ระดับน้ำเทียบความลึกถึงตลิ่ง (%) ไม่ตัดเพดาน — ตรงกับ storage_percent ของ ThaiWater
- * ใช้แสดงเป็นตัวเลข (เช่น น้ำท่วมใหญ่ = 130%) ส่วน gaugeFill ตัดที่ 120% เพื่อวาดไม้วัดเท่านั้น
- */
-export function levelPercent(r: Pick<StationReading, "levelMsl" | "bankMsl" | "groundMsl">): number | null {
-  if (!finite(r.levelMsl) || !finite(r.bankMsl)) return null;
-  const base = finite(r.groundMsl) && r.groundMsl < r.bankMsl ? r.groundMsl : r.bankMsl - 10;
-  return ((r.levelMsl - base) / (r.bankMsl - base)) * 100;
-}
-
 /** ความเร็วการไหลบนแผนที่ (เท่าของปกติ) — ยิ่งใกล้ตลิ่งยิ่งเร็ว */
 export function flowSpeed(status: WaterStatus): number {
   return { NORMAL: 1, WATCH: 1.6, WARNING: 2.4, OVERFLOW: 3.2, UNKNOWN: 0.6 }[status];

@@ -17,13 +17,6 @@ export const ESTIMATED_FLAG_LABEL: Record<EstimatedFlag, string> = {
   UNKNOWN: "ไม่ทราบ",
 };
 
-export const ESTIMATE_TEXT: Record<EstimatedFlag, string> = {
-  GREEN: "ทุกสะพานยังต่ำกว่าเกณฑ์ยกธงเหลือง",
-  YELLOW: "มีสะพานที่ระดับน้ำถึงเกณฑ์ยกธงเหลือง — เกณฑ์ชุมชนให้อพยพผู้ป่วยติดเตียงและผู้ฟอกไต",
-  RED: "มีสะพานที่ระดับน้ำถึงเกณฑ์ยกธงแดง — เกณฑ์ชุมชนให้อพยพกลุ่มเปราะบางและกลุ่มเสี่ยง",
-  UNKNOWN: "ไม่มีข้อมูลระดับน้ำของสะพานใดเลยในตอนนี้ — ดูธงที่ประกาศจากกลุ่มโดยตรง",
-};
-
 export function Flag({ level, className = "h-12 w-12" }: { level: FlagLevel | "UNKNOWN"; className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={`${className} shrink-0`} aria-hidden>
