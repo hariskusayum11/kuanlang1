@@ -308,10 +308,11 @@ export function SongKhlongHero({
     <section className={`relative isolate overflow-hidden bg-gradient-to-b md:min-h-dvh ${SKY_BG[phase]} ${rain !== "none" && !night ? "saturate-[.8]" : ""}`}>
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
       <div className="absolute inset-0 hidden md:block">
-        {/* ขนาดภาพ = min(สูงเต็มจอ, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 —
+        {/* ขนาดภาพ = min(สูงเต็มจอลบแถบย้อนดู 6rem, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 —
+            ภาพจบเหนือแถบย้อนดู แถบจึงไม่บังเส้นขอบน้ำแม้น้ำต่ำ ·
             ใหญ่ที่สุดโดยไม่ครอปด้านบน และไม้วัด/เส้นธงไม่ไปอยู่ใต้คอลัมน์ข้อความ · ส่วนซ้ายที่ล้นจอถูกตัดโดย overflow-hidden · ขอบซ้ายของภาพโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีของส่วนหัวโดยไม่มีรอยต่อ */}
         {reading ? (
-          <div className="absolute bottom-0 right-0 h-[min(100dvh,52.2vw)] w-[min(227dvh,118.5vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene(0)}</div>
+          <div className="absolute bottom-24 right-0 h-[min(calc(100dvh_-_6rem),52.2vw)] w-[min(calc((100dvh_-_6rem)*2.27),118.5vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene(0)}</div>
         ) : null}
       </div>
 
@@ -444,10 +445,10 @@ export function SongKhlongHero({
 
       {/* ย้อนดู — แถบยาวเต็มความกว้างใต้ภาพ พร้อมขีดหมุดเหตุการณ์บนแถบเลื่อน */}
       {reading && (hist.recent.length || hist.flood.length || forecastSeries.length) ? (
-        <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-6 md:px-10">
+        <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-3 md:px-10">
           <div
             className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
-              mode === "live" ? "bg-white/45 ring-white/50 backdrop-blur-[2px] hover:bg-white/85 focus-within:bg-white/85" : "bg-white/80 shadow-xl ring-slate-200 backdrop-blur-sm"
+              mode === "live" ? "bg-white/70 ring-slate-200 hover:bg-white/90 focus-within:bg-white/90" : "bg-white/90 shadow-lg ring-slate-200"
             }`}
           >
             <div className="shrink-0 leading-tight md:w-60">
