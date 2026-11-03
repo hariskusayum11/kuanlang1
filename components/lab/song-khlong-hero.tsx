@@ -206,7 +206,7 @@ export function SongKhlongHero({
 
         <div className="mt-6 max-w-[40rem] md:mt-10">
           <p className="eyebrow text-sm text-brand-700">คลองอู่ตะเภา · หาดใหญ่</p>
-          <h1 className="mt-2 text-[2.6rem] font-black leading-[1.12] tracking-tight text-ink-900 md:text-7xl">
+          <h1 className="mt-4 text-[2.6rem] font-black leading-[1.22] tracking-tight md:mt-5 text-ink-900 md:text-7xl">
             {main ? (
               <>
                 เมื่อ {liveStamp.time} น.
