@@ -11,8 +11,9 @@ import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
-import type { CurrentWeather, DailyForecast, HourlyWeather } from "@/lib/water/weather";
-import { DAILY_RAIN_LABEL, dailyRain, dayPhase, rainLevel, weatherLabel, type DailyRain, type DayPhase, type RainLevel } from "@/domain/water/sky";
+import type { DailyForecast, HourlyWeather, WeatherNow } from "@/lib/water/weather";
+import { WeatherWidget } from "@/components/lab/weather-widget";
+import { dayPhase, rainLevel, type DayPhase, type RainLevel } from "@/domain/water/sky";
 
 type Mode = "live" | "recent" | "flood" | "forecast";
 export interface StationHistory {
@@ -38,14 +39,6 @@ const TREND_PHRASE: Record<WaterTrend, string> = {
   FALLING: "น้ำกำลังลด",
   STEADY: "น้ำทรงตัว",
   UNKNOWN: "",
-};
-// ชิปพยากรณ์ฝนรายวัน: ฝนหนักขึ้นไปเป็น "คำเตือน" จึงใช้ sun · ไม่มีฝน/เล็กน้อยใช้โทนกลาง
-const DAILY_CHIP: Record<DailyRain, string> = {
-  none: "bg-white/80 text-slate-600 ring-slate-200",
-  light: "bg-white/80 text-brand-700 ring-brand-200",
-  moderate: "bg-brand-50 text-brand-800 ring-brand-300",
-  heavy: "bg-sun-100 text-sun-800 ring-sun-300",
-  veryHeavy: "bg-sun-300 text-ink-900 ring-sun-500",
 };
 // ความหนาแน่นของฝน: ขนาดลาย (เล็ก = ถี่) และความทึบ
 const RAIN_LAYER: Record<RainLevel, string> = {
@@ -108,7 +101,7 @@ export function SongKhlongHero({
   /** เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (ชม.) ตามคู่ "ต้นน้ำ>ปลายน้ำ" — null = ข้อมูลไม่พอ */
   lagHours: Record<string, number | null>;
   /** อากาศปัจจุบันที่หาดใหญ่ (Open-Meteo) — null = ไม่วาดฝน/เมฆ */
-  weather: CurrentWeather | null;
+  weather: WeatherNow | null;
   /** ฝน/เมฆรายชั่วโมงย้อนหลัง (แบบจำลอง) — ใช้ตอนย้อนดู ให้ภาพตรงกับชั่วโมงนั้น */
   rainHistory: { recent: HourlyWeather[]; flood: HourlyWeather[] };
   /** พยากรณ์ฝน (Open-Meteo) — รายวันแสดงเป็นชิป · รายชั่วโมงใช้เล่นท้องฟ้าในโหมดพยากรณ์ */
@@ -333,7 +326,13 @@ export function SongKhlongHero({
           </nav>
         </div>
 
-        <div className="mt-6 max-w-[36rem] md:mt-10">
+        {weather ? (
+          <div className="mt-4">
+            <WeatherWidget weather={weather} daily={forecast.daily} dark={night} />
+          </div>
+        ) : null}
+
+        <div className="mt-5 max-w-[36rem] md:mt-8">
           <p className={`eyebrow text-sm ${tone("text-brand-700", "text-sky-300")}`}>ควนลังตอนนี้ · ธงเตือนภัยชุมชน</p>
           <h1 className="mt-3 flex items-center gap-3 text-6xl font-black leading-[1.2] md:gap-5 md:text-8xl">
             <Flag level={flag} className="h-16 w-16 md:h-24 md:w-24" />
@@ -394,25 +393,9 @@ export function SongKhlongHero({
                 ฝนที่หาดใหญ่ {viewedStamp.date} {viewedStamp.time} น.: {pastWeather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ {Math.round(pastWeather.cloudCover)}%
                 <span className="font-normal"> (แบบจำลองย้อนหลัง อาจต่ำกว่าที่สถานีวัดได้จริง)</span>
               </span>
-            ) : !point && (weather || forceRain) ? (
+            ) : !point && forceRain ? (
               <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
-                อากาศหาดใหญ่ตอนนี้: {forceRain ? `(พรีวิว) ฝน${forceRain === "none" ? "ไม่ตก" : ""}` : weatherLabel(weather!.weatherCode)}
-                {weather && !forceRain ? ` · ฝน ${weather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ ${Math.round(weather.cloudCover)}%` : ""}
-              </span>
-            ) : null}
-            {forecast.daily.length ? (
-              <span className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                <span className={`font-semibold ${tone("text-slate-600", "text-slate-300")}`}>พยากรณ์ฝน:</span>
-                {forecast.daily.slice(0, 3).map((d, i) => {
-                  const lvl = dailyRain(d.rainMm);
-                  return (
-                    <span key={d.date} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ring-1 ${DAILY_CHIP[lvl]}`} title={DAILY_RAIN_LABEL[lvl]}>
-                      {i === 0 ? "วันนี้" : i === 1 ? "พรุ่งนี้" : thaiStamp(`${d.date} 00:00`).date}
-                      <b>{d.rainMm.toFixed(0)} มม.</b>
-                      {d.probability !== null ? <span className="font-normal opacity-80">{Math.round(d.probability)}%</span> : null}
-                    </span>
-                  );
-                })}
+                อากาศหาดใหญ่ (พรีวิว): ฝน{forceRain === "none" ? "ไม่ตก" : ""}
               </span>
             ) : null}
             {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}

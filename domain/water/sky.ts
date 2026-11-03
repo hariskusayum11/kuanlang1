@@ -57,3 +57,34 @@ export const DAILY_RAIN_LABEL: Record<DailyRain, string> = {
   heavy: "ฝนหนัก",
   veryHeavy: "ฝนหนักมาก",
 };
+
+/**
+ * ฝนกำลังจะมาไหม — ชั่วโมงแรกใน `withinHours` ชม. ข้างหน้าที่โอกาสฝน ≥ `threshold`%
+ * `next[0]` = ชั่วโมงนี้ · คืน { hours: ชั่วโมงจากนี้, probability } หรือ null (ไม่มีชั่วโมงไหนถึงเกณฑ์)
+ */
+export function rainSoon(next: ReadonlyArray<{ probability: number | null }>, threshold = 50, withinHours = 6): { hours: number; probability: number } | null {
+  for (let i = 0; i < Math.min(next.length, withinHours + 1); i++) {
+    const p = next[i]?.probability;
+    if (p !== null && p !== undefined && Number.isFinite(p) && p >= threshold) return { hours: i, probability: p };
+  }
+  return null;
+}
+
+/** ระดับคุณภาพอากาศตามดัชนี US AQI (มาตรฐานสหรัฐฯ ที่ Open-Meteo ให้มา) */
+export type AqiLevel = "good" | "moderate" | "sensitive" | "unhealthy" | "veryUnhealthy" | "unknown";
+export function aqiLevel(aqi: number | null): AqiLevel {
+  if (aqi === null || !Number.isFinite(aqi) || aqi < 0) return "unknown";
+  if (aqi <= 50) return "good";
+  if (aqi <= 100) return "moderate";
+  if (aqi <= 150) return "sensitive";
+  if (aqi <= 200) return "unhealthy";
+  return "veryUnhealthy";
+}
+export const AQI_LABEL: Record<AqiLevel, string> = {
+  good: "ดี",
+  moderate: "ปานกลาง",
+  sensitive: "มีผลต่อกลุ่มเสี่ยง",
+  unhealthy: "มีผลต่อสุขภาพ",
+  veryUnhealthy: "มีผลต่อสุขภาพมาก",
+  unknown: "ไม่ทราบ",
+};

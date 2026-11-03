@@ -145,6 +145,9 @@
   --animate-train-run: train-run 42s linear infinite;
   /* ฝนในภาพส่วนหัว — ลายเม็ดฝนเลื่อนเฉียงลงวนซ้ำ */
   --animate-rain-fall: rain-fall 0.5s linear infinite;
+  /* ลูกศรแนวโน้มบนหมุดจุดวัดน้ำ — ขยับขึ้น/ลงเบา ๆ ให้รู้สึกว่าน้ำกำลังขึ้นหรือลด */
+  --animate-trend-up: trend-up 1.4s ease-in-out infinite;
+  --animate-trend-down: trend-down 1.4s ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -201,6 +204,14 @@
 @keyframes rain-fall {
   from { background-position: 0 0; }
   to { background-position: -16px 64px; }
+}
+@keyframes trend-up {
+  0%, 100% { transform: translateY(1px); opacity: 0.75; }
+  50% { transform: translateY(-2px); opacity: 1; }
+}
+@keyframes trend-down {
+  0%, 100% { transform: translateY(-1px); opacity: 0.75; }
+  50% { transform: translateY(2px); opacity: 1; }
 }
 @keyframes train-run {
   from { transform: translateX(-30%); }
@@ -667,4 +678,10 @@
 }
 @utility animate-rain-fall {
   animation: var(--animate-rain-fall);
+}
+@utility animate-trend-up {
+  animation: var(--animate-trend-up);
+}
+@utility animate-trend-down {
+  animation: var(--animate-trend-down);
 }

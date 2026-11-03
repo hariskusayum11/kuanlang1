@@ -14,7 +14,10 @@ import {
   waterTrend,
   type StationReading,
   type WaterStatus,
+  type WaterTrend,
 } from "@/domain/water/station-status";
+import { DAILY_RAIN_LABEL, dailyRain, type DailyRain } from "@/domain/water/sky";
+import type { RainStation } from "@/lib/water/rain-stations";
 
 type LngLat = [number, number];
 interface CanalCollection {
@@ -45,11 +48,34 @@ const DASH_SEQUENCE: number[][] = [
 const EXTRUDE_PER_M = 22; // ความสูงแท่งน้ำบนแผนที่ (ม.) ต่อระดับน้ำจริง 1 ม. — ขยายให้เห็นชัด
 
 const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+// ชั้นอ้างอิงโปร่งใสของ Esri วางทับภาพดาวเทียม — ถนนและชื่อสถานที่ ให้รู้ว่าตรงไหนเป็นตรงไหน
+const ROADS = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}";
+const PLACES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+
+// ลูกศรแนวโน้มบนหมุดจุดวัดน้ำ — น้ำขึ้น = คำเตือน (sun) · น้ำลด = มิ้นต์ · ทรงตัว/ไม่ทราบ = slate
+const TREND_ARROW: Record<WaterTrend, { icon: string; cls: string }> = {
+  RISING: { icon: "▲", cls: "text-sun-600 animate-trend-up" },
+  FALLING: { icon: "▼", cls: "text-emerald-600 animate-trend-down" },
+  STEADY: { icon: "■", cls: "text-slate-500 text-[8px]" },
+  UNKNOWN: { icon: "•", cls: "text-slate-400" },
+};
+
+// หมุดจุดวัดฝนตามฝนสะสม 24 ชม. (เกณฑ์กรมอุตุนิยมวิทยา) — ฝนหนักขึ้นไปเป็นคำเตือน (sun) · ไม่มีฝน = slate
+const RAIN_PIN: Record<DailyRain, string> = {
+  none: "bg-white/90 text-slate-500 ring-slate-300",
+  light: "bg-white text-brand-700 ring-brand-300",
+  moderate: "bg-brand-500 text-white ring-brand-700",
+  heavy: "bg-sun-400 text-ink-900 ring-sun-600",
+  veryHeavy: "bg-sun-500 text-ink-900 ring-ink-900",
+};
+const DROP_PATH = "M6 0C6 0 0 7 0 10.5A6 6 0 0 0 12 10.5C12 7 6 0 6 0Z";
 
 /** "บ้านหาดใหญ่ใน" → "หาดใหญ่ใน" — แสดงชื่อพื้นที่แทนรหัสสถานี */
 const placeName = (stationName: string) => stationName.replace(/^บ้าน/, "");
 
 const fmt = (n: number, digits = 2) => n.toLocaleString("th-TH", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+const LEGEND = "inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur";
 
 const FLAG_WORD = { GREEN: "ธงเขียว", YELLOW: "ธงเหลือง", RED: "ธงแดง", UNKNOWN: "ไม่ทราบ" } as const;
 
@@ -63,7 +89,7 @@ function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined)
     el.textContent = text;
     root.append(el);
   };
-  add("text-[11px] text-slate-500", `${bridge?.criterion.canal ?? (s.river || "คลองอู่ตะเภา")} · สถานีวัดน้ำกรมชลประทาน`);
+  add("text-[11px] text-slate-500", `${bridge?.criterion.canal ?? (s.river || "คลองอู่ตะเภา")} · สถานีวัดระดับน้ำ กรมชลประทาน`);
   add("text-base font-black leading-tight", bridge?.criterion.bridge ?? `จุดวัดน้ำ${placeName(s.name)}`);
   const trend = waterTrend(s);
   const diff = s.levelMsl !== null && s.previousMsl !== null ? s.levelMsl - s.previousMsl : null;
@@ -80,7 +106,31 @@ function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined)
           : "ถึงเกณฑ์ธงแดงแล้ว";
     add("mt-2 rounded-lg bg-mist px-2 py-1 text-sm font-bold", `${FLAG_WORD[bridge.flag]} (โดยประมาณ) · ${next}`);
   }
-  if (s.measuredAt) add("mt-2 text-[11px] text-slate-500", `วัดเมื่อ ${s.measuredAt.split(" ")[1] ?? s.measuredAt} น. · ข้อมูล: คลังข้อมูลน้ำแห่งชาติ`);
+  if (s.measuredAt) add("mt-2 text-[11px] text-slate-500", `วัดเมื่อ ${s.measuredAt.split(" ")[1] ?? s.measuredAt} น.`);
+  add("text-[11px] text-slate-500", "ที่มา: คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) · สถานีของกรมชลประทาน");
+  if (bridge) add("text-[11px] text-slate-500", "เกณฑ์ธง: กลุ่มสองคลองควนลัง (hatyaicityclimate.org) · ท้องสะพานประมาณจากรูปตัดลำน้ำ ชป.");
+  return root;
+}
+
+/** ชื่อสถานีวัดฝน — สถานีที่ชื่อเป็นรหัส (เช่น "สถานี X.44") แสดงเป็นคำที่คนทั่วไปอ่านเข้าใจ */
+const rainStationName = (r: RainStation) => (/^สถานี\s*X\./.test(r.name) ? `สถานีวัดน้ำคลองอู่ตะเภา (${r.name.replace(/^สถานี\s*/, "")})` : r.name);
+
+/** เนื้อหาป๊อปอัปของหมุดจุดวัดฝน — DOM textContent เช่นเดียวกับหมุดจุดวัดน้ำ */
+function rainPopup(r: RainStation): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "min-w-[210px] text-ink-900";
+  const add = (cls: string, text: string) => {
+    const el = document.createElement("p");
+    el.className = cls;
+    el.textContent = text;
+    root.append(el);
+  };
+  add("text-[11px] text-slate-500", "สถานีวัดฝน");
+  add("text-base font-black leading-tight", rainStationName(r));
+  add("mt-2 text-sm", r.rain24h === null ? "ฝน 24 ชม.: ไม่มีข้อมูล" : `ฝนสะสม 24 ชม. ${fmt(r.rain24h, 1)} มม. · ${DAILY_RAIN_LABEL[dailyRain(r.rain24h)]}`);
+  if (r.rain1h !== null) add("text-sm", `ฝน 1 ชม. ล่าสุด ${fmt(r.rain1h, 1)} มม.`);
+  if (r.measuredAt) add("mt-2 text-[11px] text-slate-500", `ข้อมูลถึง ${r.measuredAt.split(" ")[1] ?? r.measuredAt} น. · ห่างควนลัง ~${fmt(r.distanceKm, 1)} กม.`);
+  add("text-[11px] text-slate-500", `ที่มา: คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) · สถานีของ${r.agency}`);
   return root;
 }
 
@@ -117,6 +167,7 @@ export function SongKhlongExperience({
   stations,
   markerStations = stations,
   bridges = [],
+  rainStations = [],
 }: {
   canals: CanalCollection;
   communities: Community[];
@@ -127,11 +178,14 @@ export function SongKhlongExperience({
   markerStations?: StationReading[];
   /** ธงโดยประมาณรายสะพาน — ใส่ในป๊อปอัปของหมุดสะพาน */
   bridges?: BridgeFlagEstimate[];
+  /** สถานีวัดฝนรอบควนลัง (ThaiWater rain_24h) */
+  rainStations?: RainStation[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const [ready, setReady] = useState(false);
   const [pitched, setPitched] = useState(true);
+  const [showRain, setShowRain] = useState(true);
 
   // สถานีหลัก = ใกล้ควนลังที่สุด (ตัวสุดท้ายในลำดับต้นน้ำ → ควนลัง)
   const main = stations.at(-1) ?? null;
@@ -170,12 +224,17 @@ export function SongKhlongExperience({
             tiles: [SATELLITE],
             tileSize: 256,
             maxzoom: 18,
-            attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> · Imagery © Esri, Maxar, Earthstar Geographics',
+            attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> · Imagery © Esri, Maxar, Earthstar Geographics · ถนน/ชื่อสถานที่ © Esri, HERE, Garmin, OpenStreetMap contributors',
           },
+          roads: { type: "raster", tiles: [ROADS], tileSize: 256, maxzoom: 18 },
+          places: { type: "raster", tiles: [PLACES], tileSize: 256, maxzoom: 18 },
         },
+        // ภาพดาวเทียมสีจริง (ไม่หรี่) + ถนนและชื่อสถานที่ทับบาง ๆ
         layers: [
-          { id: "bg", type: "background", paint: { "background-color": "#0B1437" } },
-          { id: "satellite", type: "raster", source: "satellite", paint: { "raster-brightness-max": 0.55, "raster-saturation": -0.45, "raster-contrast": 0.1 } },
+          { id: "bg", type: "background", paint: { "background-color": "#1E293B" } },
+          { id: "satellite", type: "raster", source: "satellite" },
+          { id: "roads", type: "raster", source: "roads", paint: { "raster-opacity": 0.55 } },
+          { id: "places", type: "raster", source: "places", paint: { "raster-opacity": 0.9 } },
         ],
       },
       center: reducedMotion.current ? center : [100.4398, 6.9312],
@@ -225,7 +284,7 @@ export function SongKhlongExperience({
       // ป้ายชื่อชุมชน · สถานี · จุดอพยพ (HTML marker — ไม่ต้องโหลดชุดฟอนต์ของ WebGL)
       for (const c of communities) {
         const el = document.createElement("div");
-        el.className = "pointer-events-none rounded-full bg-ink-900/70 px-2.5 py-1 text-[11px] font-semibold text-orange-100 ring-1 ring-orange-300/30 backdrop-blur";
+        el.className = "pointer-events-none rounded-full bg-ink-900/75 px-2.5 py-1 text-[11px] font-semibold text-orange-100 ring-1 ring-orange-300/40 backdrop-blur";
         el.textContent = c.nameTh;
         new maplibregl.Marker({ element: el }).setLngLat([c.lng, c.lat]).addTo(map);
       }
@@ -262,15 +321,38 @@ export function SongKhlongExperience({
     const map = mapRef.current;
     if (!map || !ready) return;
     const markers = markerStations.map((s) => {
+      const trend = waterTrend(s);
+      const diff = s.levelMsl !== null && s.previousMsl !== null ? s.levelMsl - s.previousMsl : null;
+      const fb = freeboard(s);
       const el = document.createElement("button");
       el.type = "button";
-      el.className = "flex cursor-pointer items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20 hover:bg-ink-800";
+      el.className = "flex cursor-pointer items-center gap-2 rounded-2xl bg-white/95 py-1 pl-1.5 pr-3 text-left text-ink-900 shadow-lg ring-1 ring-ink-900/10 hover:ring-brand-400";
       el.setAttribute("aria-label", `ดูข้อมูลจุดวัดน้ำ${placeName(s.name)}`);
       const dot = document.createElement("span");
-      dot.className = "inline-block h-3 w-3 rounded-full ring-2 ring-white/70";
+      dot.className = "inline-block h-3.5 w-3.5 shrink-0 rounded-full shadow ring-2 ring-white";
       dot.style.background = STATUS_COLOR[waterStatus(s)];
-      el.append(dot, `จุดวัดน้ำ${placeName(s.name)}`);
-      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "280px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.criterion.stationCode === s.code)));
+      const text = document.createElement("span");
+      text.className = "leading-tight";
+      const name = document.createElement("span");
+      name.className = "block text-[11px] font-bold";
+      name.textContent = `จุดวัดน้ำ${placeName(s.name)}`;
+      // บรรทัดสอง: ลูกศรแนวโน้ม + ต่างจากค่าก่อนหน้า + ระยะถึงตลิ่ง
+      const line = document.createElement("span");
+      line.className = "flex items-center gap-1 text-[11px] text-slate-600";
+      const arrow = document.createElement("span");
+      arrow.className = `inline-block ${TREND_ARROW[trend].cls}`;
+      arrow.textContent = TREND_ARROW[trend].icon;
+      const trendWord = document.createElement("b");
+      trendWord.className = trend === "RISING" ? "text-sun-700" : trend === "FALLING" ? "text-emerald-700" : "text-slate-600";
+      trendWord.textContent =
+        trend === "UNKNOWN" ? "ไม่มีค่าก่อนหน้า" : `${WATER_TREND_LABEL[trend]}${diff !== null && trend !== "STEADY" ? ` ${diff >= 0 ? "+" : "−"}${Math.round(Math.abs(diff) * 100)} ซม.` : ""}`;
+      const bank = document.createElement("span");
+      bank.className = fb !== null && fb <= 0 ? "font-bold text-red-600" : "";
+      bank.textContent = fb === null ? "" : fb > 0 ? `· ต่ำกว่าตลิ่ง ${fmt(fb)} ม.` : `· ล้นตลิ่ง ${fmt(-fb)} ม.`;
+      line.append(arrow, trendWord, bank);
+      text.append(name, line);
+      el.append(dot, text);
+      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "290px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.criterion.stationCode === s.code)));
       return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map);
     });
     const color = STATUS_COLOR[mainStatus];
@@ -283,6 +365,30 @@ export function SongKhlongExperience({
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
     return () => markers.forEach((m) => m.remove());
   }, [ready, markerStations, bridges, mainStatus, whaStatus]);
+
+  // ---------- หมุดจุดวัดฝน (ฝนสะสม 24 ชม.) ----------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !showRain) return;
+    const markers = rainStations.map((r) => {
+      const lvl = dailyRain(r.rain24h);
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = `flex cursor-pointer items-center gap-1 rounded-full py-0.5 pl-1.5 pr-2 text-[10px] font-bold shadow-md ring-1 ${RAIN_PIN[lvl]}`;
+      el.setAttribute("aria-label", `ดูข้อมูลจุดวัดฝน${rainStationName(r)}`);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 12 17");
+      svg.setAttribute("class", "h-3 w-2.5 fill-current");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", DROP_PATH);
+      svg.append(path);
+      el.append(svg, r.rain24h === null ? "—" : `${fmt(r.rain24h, r.rain24h >= 10 ? 0 : 1)} มม.`);
+      const popup = new maplibregl.Popup({ offset: 12, maxWidth: "280px" }).setDOMContent(rainPopup(r));
+      // ปักไว้ทางซ้ายของจุด — หมุดจุดวัดน้ำปักทางขวา จึงไม่ทับกันเมื่ออยู่สถานีเดียวกัน (เช่น หาดใหญ่ใน)
+      return new maplibregl.Marker({ element: el, anchor: "right", offset: [-4, 0] }).setLngLat([r.lng, r.lat]).setPopup(popup).addTo(map);
+    });
+    return () => markers.forEach((m) => m.remove());
+  }, [ready, rainStations, showRain]);
 
   // ---------- แอนิเมชันน้ำไหล ----------
   useEffect(() => {
@@ -344,24 +450,32 @@ export function SongKhlongExperience({
         <div ref={containerRef} className="h-full w-full" />
       </div>
 
-      {/* ---- คำอธิบายเส้น — ระดับน้ำปัจจุบันอยู่ที่ส่วนหัวของหน้าแล้ว จึงไม่ซ้ำในแผนที่ ---- */}
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-[11px] font-semibold md:left-6 md:top-6">
-        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+      {/* ---- คำอธิบายเส้นและหมุด — ระดับน้ำปัจจุบันอยู่ที่ส่วนหัวของหน้าแล้ว จึงไม่ซ้ำในแผนที่ ---- */}
+      <div className="absolute left-4 right-16 top-4 z-10 flex flex-wrap gap-2 text-[11px] font-semibold md:left-6 md:top-6">
+        <span className={LEGEND}>
           <span className="h-1 w-6 rounded-full" style={{ background: STATUS_COLOR[mainStatus] }} />
           คลองอู่ตะเภา · ไหลตามระดับน้ำจริง
         </span>
-        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+        <span className={LEGEND}>
           <span className="h-1 w-6 rounded-full bg-sky-300/60" />
           คลอง ร.1 · ภาพจำลอง
         </span>
-        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+        <span className={LEGEND}>
           <span className="h-1 w-6 rounded-full" style={{ background: STATUS_COLOR[whaStatus] }} />
           คลองหวะ · ไหลตามระดับน้ำจริง
         </span>
-        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
-          กดจุดวัดน้ำเพื่อดูข้อมูล
+        <span className={LEGEND}>
+          จุดวัดน้ำ: <span className="text-sun-300">▲ ขึ้น</span> <span className="text-emerald-300">▼ ลด</span> <span className="text-slate-300">■ ทรงตัว</span> · กดดูข้อมูล
         </span>
-        <span className="inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur">
+        {rainStations.length ? (
+          <button type="button" onClick={() => setShowRain((v) => !v)} aria-pressed={showRain} className={`${LEGEND} cursor-pointer hover:bg-ink-800`}>
+            <svg viewBox="0 0 12 17" className="h-3 w-2.5 fill-sky-300" aria-hidden>
+              <path d={DROP_PATH} />
+            </svg>
+            จุดวัดฝน (ฝน 24 ชม.) · {showRain ? "ซ่อน" : "แสดง"}
+          </button>
+        ) : null}
+        <span className={LEGEND}>
           <span className="h-2.5 w-4 rounded-sm border border-dashed border-orange-200 bg-orange-400/20" />
           เขตชุมชน
         </span>
@@ -413,8 +527,10 @@ export function SongKhlongExperience({
       </button>
 
       {/* ---- เครดิตและข้อจำกัด ---- */}
-      <p className="absolute bottom-9 right-16 z-10 hidden max-w-md text-right text-[10px] leading-4 text-slate-400 md:block">
-        เส้นคลอง © OpenStreetMap contributors · คลอง ร.1 ไม่มีสถานีวัด แสดงเป็นภาพจำลองตามระดับคลองอู่ตะเภา
+      <p className="absolute bottom-9 right-14 z-10 hidden max-w-md rounded-2xl bg-ink-900/75 px-3 py-2 text-right text-[10px] leading-4 text-slate-200 ring-1 ring-white/10 backdrop-blur md:block">
+        ที่มา: ระดับน้ำและฝน — คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) จากสถานีของกรมชลประทาน กรมทรัพยากรน้ำ สสน. และกรมอุตุนิยมวิทยา ·
+        ภาพดาวเทียม/ถนน — Esri · เส้นคลอง © OpenStreetMap contributors · ระดับน้ำท่วมจากแบบสำรวจ SKL-FRIS ·
+        คลอง ร.1 ไม่มีสถานีวัด แสดงเป็นภาพจำลองตามระดับคลองอู่ตะเภา
       </p>
     </div>
   );

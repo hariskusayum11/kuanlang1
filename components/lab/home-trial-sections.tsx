@@ -190,20 +190,42 @@ export function JoinAndFollow({ links }: { links: ExternalLinkRow[] }) {
   );
 }
 
+// ที่มาของข้อมูล — แยกรายการพร้อมลิงก์ต้นทาง เพื่อให้อ้างอิงได้
+const SOURCES: Array<{ topic: string; source: string; href: string; note?: string }> = [
+  { topic: "ระดับน้ำ", source: "คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) — สถานีโทรมาตรของกรมชลประทาน", href: "https://www.thaiwater.net/" },
+  { topic: "ฝนรายสถานี (แผนที่)", source: "คลังข้อมูลน้ำแห่งชาติ — สถานีของกรมชลประทาน กรมทรัพยากรน้ำ สสน. และกรมอุตุนิยมวิทยา", href: "https://www.thaiwater.net/" },
+  { topic: "ระดับสะพาน / รูปตัดคลอง", source: "รูปตัดขวางลำน้ำ กรมชลประทาน (สำรวจ ม.ค. 2569)", href: "https://www.rid.go.th/", note: "ท้องสะพานเป็นค่าประมาณจากคอสะพาน" },
+  { topic: "เกณฑ์ธง", source: "กลุ่มสองคลองควนลัง / Hatyai City Climate (CC BY-SA 3.0)", href: "https://hatyaicityclimate.org/zone/kuanlang", note: "ธงในหน้านี้ประเมินเอง ไม่ใช่ธงที่ประกาศ" },
+  { topic: "อากาศ · พยากรณ์ฝน · คุณภาพอากาศ", source: "Open-Meteo Forecast / Air Quality (CC BY 4.0)", href: "https://open-meteo.com/", note: "ค่าแบบจำลองสำหรับหาดใหญ่ ไม่ใช่ประกาศกรมอุตุนิยมวิทยา" },
+  { topic: "ฝนย้อนหลัง (น้ำท่วม พ.ย. 68)", source: "Open-Meteo Historical Weather — ERA5 (CC BY 4.0)", href: "https://open-meteo.com/en/docs/historical-weather-api", note: "อาจต่ำกว่าที่สถานีวัดได้จริง" },
+  { topic: "ภาพดาวเทียม · ถนน · ชื่อสถานที่", source: "Esri World Imagery / Reference layers", href: "https://www.esri.com/" },
+  { topic: "เส้นคลอง", source: "© OpenStreetMap contributors (ODbL)", href: "https://www.openstreetmap.org/copyright" },
+  { topic: "ข้อมูลชุมชน · ระดับน้ำที่เคยท่วม", source: "แบบสำรวจ SKL-FRIS ที่ตรวจแล้ว (ภาพรวมระดับพื้นที่ ไม่แสดงรายบ้าน)", href: "#map" },
+];
+
 /** ที่มาของข้อมูลบนหน้านี้ — รวมไว้ที่เดียวแทนตัวหนังสือเล็กกระจายหลายจุด */
 export function DataCredits() {
   return (
     <div className="bg-canvas px-4 pb-10 md:px-10">
-      <p className="mx-auto max-w-[1200px] text-[11px] leading-5 text-slate-500">
-        <b>ที่มาของข้อมูล</b> · ระดับน้ำ: คลังข้อมูลน้ำแห่งชาติ (สสน./กรมชลประทาน) · ระดับสะพาน: รูปตัดขวางลำน้ำปี 2569
-        กรมชลประทาน · เกณฑ์ธง: กลุ่มสองคลองควนลัง / Hatyai City Climate (CC BY-SA 3.0) · เส้นคลอง © OpenStreetMap
-        contributors · ภาพดาวเทียม Esri · ข้อมูลชุมชน: แบบสำรวจที่ตรวจแล้ว (ภาพรวมระดับพื้นที่) · ภาพบ้านและน้ำในส่วนหัวใช้มาตราส่วนเดียวกัน
-        · เกณฑ์เฝ้าระวัง/เตือนภัยบนไม้วัดเป็นฉบับร่าง · รูปตัดขวางคลอง: กรมชลประทาน (สำรวจ ม.ค. 2569)
-        · สภาพอากาศและพยากรณ์ฝน: Open-Meteo (CC BY 4.0) — ฝนย้อนหลังเป็นแบบจำลอง ERA5 อาจต่ำกว่าที่สถานีวัดได้จริง ·
-        พยากรณ์มีความไม่แน่นอน ไม่ใช่ประกาศของกรมอุตุนิยมวิทยา
-        · แนวคิดนำเสนอระดับน้ำให้คนทั่วไปอ่านง่าย ได้แรงบันดาลใจจาก{" "}
-        <a href="https://flood.pop.in.th/" target="_blank" rel="noopener noreferrer" className="underline">POPNIX Flood</a>
-      </p>
+      <div className="mx-auto max-w-[1200px] text-[11px] leading-5 text-slate-500">
+        <p className="font-bold text-slate-700">ที่มาของข้อมูล (สำหรับอ้างอิง)</p>
+        <ul className="mt-1.5 grid gap-x-6 gap-y-1 md:grid-cols-2">
+          {SOURCES.map((x) => (
+            <li key={x.topic}>
+              <b className="text-slate-600">{x.topic}:</b>{" "}
+              <a href={x.href} target={x.href.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" className="underline decoration-slate-300 hover:text-brand-700">
+                {x.source}
+              </a>
+              {x.note ? <span> · {x.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2">
+          ภาพบ้านและน้ำในส่วนหัวใช้มาตราส่วนเดียวกัน · เกณฑ์เฝ้าระวัง/เตือนภัยบนไม้วัดเป็นฉบับร่าง · แนวคิดนำเสนอระดับน้ำให้คนทั่วไปอ่านง่าย
+          ได้แรงบันดาลใจจาก{" "}
+          <a href="https://flood.pop.in.th/" target="_blank" rel="noopener noreferrer" className="underline">POPNIX Flood</a>
+        </p>
+      </div>
     </div>
   );
 }

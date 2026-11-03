@@ -1,7 +1,10 @@
 // สภาพอากาศปัจจุบันที่หาดใหญ่ (Open-Meteo · CC BY 4.0) — ใช้แต่งภาพส่วนหัว /lab/song-khlong เท่านั้น
 // ดึงที่ server แคช 10 นาที · ล้มเหลว = null (ภาพแสดงตามเวลาอย่างเดียว ไม่วาดฝน) · ไม่ใช่ข้อมูลเตือนภัย
 const ENDPOINT =
-  "https://api.open-meteo.com/v1/forecast?latitude=7.0&longitude=100.46&current=precipitation,cloud_cover,weather_code,is_day&timezone=Asia%2FBangkok";
+  "https://api.open-meteo.com/v1/forecast?latitude=7.0&longitude=100.46&timezone=Asia%2FBangkok&forecast_days=2" +
+  "&current=precipitation,cloud_cover,weather_code,is_day,temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m" +
+  "&hourly=temperature_2m,precipitation_probability,weather_code,is_day&daily=sunrise,sunset";
+const AIR_ENDPOINT = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=7.0&longitude=100.46&timezone=Asia%2FBangkok&current=us_aqi,pm2_5";
 
 export interface CurrentWeather {
   /** เวลาไทย "YYYY-MM-DDTHH:mm" ของค่าล่าสุด */
@@ -10,24 +13,102 @@ export interface CurrentWeather {
   rainMmPerHour: number;
   cloudCover: number;
   weatherCode: number;
+  temperature: number | null;
+  feelsLike: number | null;
+  humidity: number | null;
+  windKmh: number | null;
+  isDay: boolean;
 }
+
+/** ชั่วโมงข้างหน้า (การ์ดอากาศ) */
+export interface HourOutlook {
+  /** เวลาไทย "YYYY-MM-DD HH:mm" */
+  at: string;
+  temperature: number | null;
+  /** โอกาสฝน (%) */
+  probability: number | null;
+  weatherCode: number | null;
+  isDay: boolean;
+}
+
+export interface WeatherNow extends CurrentWeather {
+  /** ชั่วโมงนี้ + 6 ชม. ข้างหน้า */
+  next: HourOutlook[];
+  /** เวลาไทย "HH:mm" */
+  sunrise: string | null;
+  sunset: string | null;
+  /** ดัชนีคุณภาพอากาศ (US AQI) และ PM2.5 (µg/m³) — Open-Meteo Air Quality */
+  aqi: number | null;
+  pm25: number | null;
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 export function parseOpenMeteo(payload: unknown): CurrentWeather | null {
   const c = (payload as { current?: Record<string, unknown> })?.current;
   if (!c) return null;
-  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const precip = num(c.precipitation);
   const interval = num(c.interval) ?? 3600;
   const cloud = num(c.cloud_cover);
   const code = num(c.weather_code);
   if (typeof c.time !== "string" || precip === null || cloud === null || code === null || interval <= 0) return null;
-  return { time: c.time, rainMmPerHour: (precip * 3600) / interval, cloudCover: cloud, weatherCode: code };
+  return {
+    time: c.time,
+    rainMmPerHour: (precip * 3600) / interval,
+    cloudCover: cloud,
+    weatherCode: code,
+    temperature: num(c.temperature_2m),
+    feelsLike: num(c.apparent_temperature),
+    humidity: num(c.relative_humidity_2m),
+    windKmh: num(c.wind_speed_10m),
+    isDay: c.is_day !== 0,
+  };
 }
 
-export async function getHatYaiWeather(): Promise<CurrentWeather | null> {
+/** ชั่วโมงนี้ (ตามเวลาของค่าปัจจุบัน) + 6 ชม. ข้างหน้า จาก hourly ของ Open-Meteo */
+export function parseOutlook(payload: unknown, currentTime: string): HourOutlook[] {
+  const h = (payload as { hourly?: Record<string, unknown[]> })?.hourly;
+  if (!h || !Array.isArray(h.time)) return [];
+  const hour = currentTime.slice(0, 13); // "YYYY-MM-DDTHH"
+  const start = h.time.findIndex((t) => typeof t === "string" && t.slice(0, 13) >= hour);
+  if (start < 0) return [];
+  return h.time.slice(start, start + 7).flatMap((t, k) => {
+    const i = start + k;
+    if (typeof t !== "string") return [];
+    return [
+      {
+        at: t.replace("T", " "),
+        temperature: num(h.temperature_2m?.[i]),
+        probability: num(h.precipitation_probability?.[i]),
+        weatherCode: num(h.weather_code?.[i]),
+        isDay: h.is_day?.[i] !== 0,
+      },
+    ];
+  });
+}
+
+/** อากาศตอนนี้ที่หาดใหญ่ + รายชั่วโมงข้างหน้า + พระอาทิตย์ + คุณภาพอากาศ (แคช 10 นาที · ล้มเหลว = null) */
+export async function getHatYaiWeather(): Promise<WeatherNow | null> {
   try {
-    const res = await fetch(ENDPOINT, { next: { revalidate: 600 }, signal: AbortSignal.timeout(10_000) });
-    return res.ok ? parseOpenMeteo(await res.json()) : null;
+    const [res, air] = await Promise.all([
+      fetch(ENDPOINT, { next: { revalidate: 600 }, signal: AbortSignal.timeout(10_000) }),
+      fetch(AIR_ENDPOINT, { next: { revalidate: 1800 }, signal: AbortSignal.timeout(10_000) }).catch(() => null),
+    ]);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const current = parseOpenMeteo(json);
+    if (!current) return null;
+    const daily = (json as { daily?: { sunrise?: unknown[]; sunset?: unknown[] } }).daily;
+    const hhmm = (v: unknown) => (typeof v === "string" ? v.slice(11, 16) : null);
+    const airJson = air && air.ok ? ((await air.json()) as { current?: Record<string, unknown> }) : null;
+    return {
+      ...current,
+      next: parseOutlook(json, current.time),
+      sunrise: hhmm(daily?.sunrise?.[0]),
+      sunset: hhmm(daily?.sunset?.[0]),
+      aqi: num(airJson?.current?.us_aqi),
+      pm25: num(airJson?.current?.pm2_5),
+    };
   } catch {
     return null;
   }
