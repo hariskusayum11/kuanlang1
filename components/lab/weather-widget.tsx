@@ -66,6 +66,7 @@ export function WeatherWidget({
   placement?: "down" | "up";
 }) {
   const [open, setOpen] = useState(false);
+  const inline = placement === "up";
   const ref = useRef<HTMLDivElement>(null);
   const now = useBangkokNow();
 
@@ -102,21 +103,25 @@ export function WeatherWidget({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label="ดูรายละเอียดอากาศหาดใหญ่"
-        className={`flex items-center gap-3 rounded-full py-1.5 pl-4 pr-3 text-left shadow-sm ring-1 transition ${
-          dark ? "bg-white/10 text-white ring-white/25 hover:bg-white/20" : "bg-white/90 text-ink-900 ring-slate-200 hover:ring-brand-300"
+        className={`flex items-center gap-3 text-left transition ${
+          placement === "up"
+            ? // ฝังในแถบย้อนดู — ไม่มีกรอบซ้อนกรอบ ใช้พื้นจาง ๆ เมื่อชี้/เปิดแทน
+              `rounded-2xl px-3 py-1.5 text-ink-900 hover:bg-mist ${open ? "bg-mist" : ""}`
+            : `rounded-full py-1.5 pl-4 pr-3 shadow-sm ring-1 ${dark ? "bg-white/10 text-white ring-white/25 hover:bg-white/20" : "bg-white/90 text-ink-900 ring-slate-200 hover:ring-brand-300"}`
         }`}
       >
-        <span className="leading-tight">
+        {/* ฝังในแถบ (up) บนจอแคบ: ซ่อนนาฬิกา/ความชื้นก่อน เก็บ อุณหภูมิ + โอกาสฝน ไว้เสมอ */}
+        <span className={`leading-tight ${inline ? "hidden xl:block" : ""}`}>
           <b className="block text-base tabular-nums">{now?.time ?? "—"}</b>
           <span className={`block text-[11px] ${dark ? "text-slate-300" : "text-slate-500"}`}>
             {now ? `${DAYS[now.dow]} ${now.day} ${MONTHS_SHORT[now.month]}` : "หาดใหญ่"}
           </span>
         </span>
-        <span className={`h-8 w-px ${dark ? "bg-white/25" : "bg-slate-200"}`} />
+        <span className={`h-8 w-px ${dark ? "bg-white/25" : "bg-slate-200"} ${inline ? "hidden xl:block" : ""}`} />
         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">LIVE</span>
         <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="h-7 w-7" />
         <b className="text-xl tabular-nums">{fmt0(weather.temperature, "°")}</b>
-        <span className={`text-xs ${dark ? "text-slate-200" : "text-slate-600"}`}>💧{fmt0(weather.humidity, "%")}</span>
+        <span className={`text-xs ${dark ? "text-slate-200" : "text-slate-600"} ${inline ? "hidden xl:inline" : ""}`}>💧{fmt0(weather.humidity, "%")}</span>
         <span className={`text-xs ${dark ? "text-slate-200" : "text-slate-600"}`}>☂{fmt0(probNow, "%")}</span>
       </button>
 

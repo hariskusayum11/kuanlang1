@@ -433,12 +433,12 @@ export function SongKhlongHero({
       {hasReplay ? (
         <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-3 md:px-10">
           <div
-            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
+            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:flex-wrap md:items-center md:gap-x-5 md:gap-y-2 md:px-5 lg:flex-nowrap ${
               mode === "live" ? "bg-white/70 ring-slate-200 hover:bg-white/90 focus-within:bg-white/90" : "bg-white/90 shadow-lg ring-slate-200"
             }`}
           >
-            <div className="shrink-0 leading-tight md:w-60">
-              <p className="text-xs font-semibold text-slate-500">{mode === "forecast" ? "พยากรณ์ฝน · ระดับน้ำคงค่าตอนนี้" : `ย้อนดูระดับน้ำ · ${placeLabel}`}</p>
+            <div className="min-w-0 shrink-0 leading-tight md:w-44 xl:w-60">
+              <p className="truncate text-xs font-semibold text-slate-500">{mode === "forecast" ? "พยากรณ์ฝน · ระดับน้ำคงค่าตอนนี้" : `ย้อนดูระดับน้ำ · ${placeLabel}`}</p>
               <p className="whitespace-nowrap text-base font-black text-ink-900">{mode === "live" ? "ตอนนี้" : `${viewedStamp.date} · ${viewedStamp.time} น.`}</p>
               {mode !== "live" && viewedLevel !== null ? <p className="text-xs font-semibold text-slate-600">ระดับน้ำ {fmt(viewedLevel)} ม.รทก.</p> : null}
             </div>
@@ -504,10 +504,10 @@ export function SongKhlongHero({
                 </button>
               </div>
             ) : (
-              <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
+              <p className="min-w-0 flex-1 text-sm text-slate-500 md:hidden 2xl:block">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
             )}
             {weather ? (
-              <div className="shrink-0 self-end md:self-auto">
+              <div className="shrink-0 border-t border-slate-200 pt-2 md:ml-auto md:border-l md:border-t-0 md:pl-3 md:pt-0">
                 <WeatherWidget weather={weather} daily={forecast.daily} placement="up" />
               </div>
             ) : null}
