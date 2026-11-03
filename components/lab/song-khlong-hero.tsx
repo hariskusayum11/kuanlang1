@@ -297,6 +297,8 @@ export function SongKhlongHero({
       />
     ) : null;
 
+  const hasReplay = Boolean(reading && (hist.recent.length || hist.flood.length || forecastSeries.length));
+
   return (
     <section className={`relative isolate overflow-hidden bg-gradient-to-b md:min-h-dvh ${SKY_BG[phase]} ${rain !== "none" && !night ? "saturate-[.8]" : ""}`}>
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
@@ -326,7 +328,8 @@ export function SongKhlongHero({
           </nav>
         </div>
 
-        {weather ? (
+        {/* อากาศอยู่มุมขวาล่าง (ท้ายแถบย้อนดู) — ไม่มีแถบย้อนดูจึงวางใต้เมนูแทน */}
+        {weather && !hasReplay ? (
           <div className="mt-4">
             <WeatherWidget weather={weather} daily={forecast.daily} dark={night} />
           </div>
@@ -427,7 +430,7 @@ export function SongKhlongHero({
       {reading ? <div className="relative aspect-[820/705] w-full md:hidden">{scene(780)}</div> : null}
 
       {/* ย้อนดู — แถบยาวเต็มความกว้างใต้ภาพ พร้อมขีดหมุดเหตุการณ์บนแถบเลื่อน */}
-      {reading && (hist.recent.length || hist.flood.length || forecastSeries.length) ? (
+      {hasReplay ? (
         <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-3 md:px-10">
           <div
             className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
@@ -503,6 +506,11 @@ export function SongKhlongHero({
             ) : (
               <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
             )}
+            {weather ? (
+              <div className="shrink-0 self-end md:self-auto">
+                <WeatherWidget weather={weather} daily={forecast.daily} placement="up" />
+              </div>
+            ) : null}
           </div>
           {(mode === "flood" || mode === "forecast") && events.length ? (
             <p className={`mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>

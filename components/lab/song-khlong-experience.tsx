@@ -51,6 +51,18 @@ const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Im
 // ชั้นอ้างอิงโปร่งใสของ Esri วางทับภาพดาวเทียม — ถนนและชื่อสถานที่ ให้รู้ว่าตรงไหนเป็นตรงไหน
 const ROADS = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}";
 const PLACES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+const STREETS = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const TOPO = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}";
+const ESRI = 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a>';
+
+// แผนที่พื้นหลังที่ผู้ใช้เลือกได้ — แต่ละแบบเปิดชั้นภาพของตัวเอง (ชั้นอื่นซ่อน)
+type Basemap = "satellite" | "streets" | "topo";
+const BASEMAPS: Record<Basemap, { label: string; layers: string[] }> = {
+  satellite: { label: "ดาวเทียม", layers: ["satellite", "roads", "places"] },
+  streets: { label: "ถนน", layers: ["streets"] },
+  topo: { label: "ภูมิประเทศ", layers: ["topo"] },
+};
+const BASEMAP_LAYERS = ["satellite", "roads", "places", "streets", "topo"];
 
 // ลูกศรแนวโน้มบนหมุดจุดวัดน้ำ — น้ำขึ้น = คำเตือน (sun) · น้ำลด = มิ้นต์ · ทรงตัว/ไม่ทราบ = slate
 const TREND_ARROW: Record<WaterTrend, { icon: string; cls: string }> = {
@@ -75,7 +87,9 @@ const placeName = (stationName: string) => stationName.replace(/^บ้าน/, 
 
 const fmt = (n: number, digits = 2) => n.toLocaleString("th-TH", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-const LEGEND = "inline-flex items-center gap-2 rounded-full bg-ink-900/80 px-3 py-1.5 ring-1 ring-white/15 backdrop-blur";
+// แผง/ปุ่มบนแผนที่ — โทนขาวโปร่งแบบเดียวกับส่วนหัวของหน้า
+const PANEL = "bg-white/92 text-ink-900 shadow-lg ring-1 ring-slate-200 backdrop-blur-md";
+const ICON_BTN = `${PANEL} grid h-9 w-9 place-items-center rounded-full text-slate-700 hover:text-brand-700`;
 
 const FLAG_WORD = { GREEN: "ธงเขียว", YELLOW: "ธงเหลือง", RED: "ธงแดง", UNKNOWN: "ไม่ทราบ" } as const;
 
@@ -186,6 +200,14 @@ export function SongKhlongExperience({
   const [ready, setReady] = useState(false);
   const [pitched, setPitched] = useState(true);
   const [showRain, setShowRain] = useState(true);
+  const [basemap, setBasemap] = useState<Basemap>("satellite");
+  const [legendOpen, setLegendOpen] = useState(true);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  // เต็มจอ: ใช้ Fullscreen API ถ้ามี · ไม่มี (เช่น iPhone) = ขยายทับหน้าด้วย CSS แทน
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [nativeFull, setNativeFull] = useState(false);
+  const [cssFull, setCssFull] = useState(false);
+  const full = nativeFull || cssFull;
 
   // สถานีหลัก = ใกล้ควนลังที่สุด (ตัวสุดท้ายในลำดับต้นน้ำ → ควนลัง)
   const main = stations.at(-1) ?? null;
@@ -211,6 +233,7 @@ export function SongKhlongExperience({
   useEffect(() => {
     if (!containerRef.current) return;
     reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (window.innerWidth < 768) setLegendOpen(false);
     // เยื้องไปทางตะวันออกให้เห็นหมุดสะพานบ้านคลองหวะ (สะพานที่ใช้ตัดสินธง) ในมุมมองแรก
     const center: LngLat = [100.4665, 6.9885];
     const zoom = window.innerWidth < 768 ? 13 : 14;
@@ -224,17 +247,21 @@ export function SongKhlongExperience({
             tiles: [SATELLITE],
             tileSize: 256,
             maxzoom: 18,
-            attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> · Imagery © Esri, Maxar, Earthstar Geographics · ถนน/ชื่อสถานที่ © Esri, HERE, Garmin, OpenStreetMap contributors',
+            attribution: `${ESRI} · Imagery © Esri, Maxar, Earthstar Geographics · ถนน/ชื่อสถานที่ © Esri, HERE, Garmin, OpenStreetMap contributors`,
           },
           roads: { type: "raster", tiles: [ROADS], tileSize: 256, maxzoom: 18 },
           places: { type: "raster", tiles: [PLACES], tileSize: 256, maxzoom: 18 },
+          streets: { type: "raster", tiles: [STREETS], tileSize: 256, maxzoom: 19, attribution: `${ESRI} · © Esri, HERE, Garmin, USGS, OpenStreetMap contributors` },
+          topo: { type: "raster", tiles: [TOPO], tileSize: 256, maxzoom: 19, attribution: `${ESRI} · © Esri, HERE, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors` },
         },
-        // ภาพดาวเทียมสีจริง (ไม่หรี่) + ถนนและชื่อสถานที่ทับบาง ๆ
+        // ภาพดาวเทียมสีจริง (ไม่หรี่) + ถนนและชื่อสถานที่ทับบาง ๆ · แบบถนน/ภูมิประเทศซ่อนไว้จนกว่าจะเลือก
         layers: [
-          { id: "bg", type: "background", paint: { "background-color": "#1E293B" } },
+          { id: "bg", type: "background", paint: { "background-color": "#EAF0FF" } },
           { id: "satellite", type: "raster", source: "satellite" },
           { id: "roads", type: "raster", source: "roads", paint: { "raster-opacity": 0.55 } },
           { id: "places", type: "raster", source: "places", paint: { "raster-opacity": 0.9 } },
+          { id: "streets", type: "raster", source: "streets", layout: { visibility: "none" } },
+          { id: "topo", type: "raster", source: "topo", layout: { visibility: "none" } },
         ],
       },
       center: reducedMotion.current ? center : [100.4398, 6.9312],
@@ -284,7 +311,7 @@ export function SongKhlongExperience({
       // ป้ายชื่อชุมชน · สถานี · จุดอพยพ (HTML marker — ไม่ต้องโหลดชุดฟอนต์ของ WebGL)
       for (const c of communities) {
         const el = document.createElement("div");
-        el.className = "pointer-events-none rounded-full bg-ink-900/75 px-2.5 py-1 text-[11px] font-semibold text-orange-100 ring-1 ring-orange-300/40 backdrop-blur";
+        el.className = "pointer-events-none rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-ink-900 shadow-md ring-1 ring-orange-300 backdrop-blur";
         el.textContent = c.nameTh;
         new maplibregl.Marker({ element: el }).setLngLat([c.lng, c.lat]).addTo(map);
       }
@@ -294,6 +321,8 @@ export function SongKhlongExperience({
         el.title = s.name;
         new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map);
       }
+      // เครดิตของ MapLibre/Esri เริ่มแบบพับ (กดปุ่ม ⓘ มุมขวาล่างเพื่อดู) — ไม่ให้แถบยาวบังข้อมูล
+      containerRef.current?.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
       setReady(true);
       if (!reducedMotion.current && containerRef.current) {
         // เริ่มจากต้นน้ำ (บางศาลา) แล้วบินตามน้ำขึ้นมาที่ควนลัง — เมื่อเลื่อนมาเห็นแผนที่แล้วเท่านั้น
@@ -370,7 +399,11 @@ export function SongKhlongExperience({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !showRain) return;
+    // สถานีที่อยู่ใกล้กันจนป้ายทับ (ห่างแนวนอน < ~750 ม.) เรียงซ้อนลงทีละแถว แทนที่จะทับกันจนกดไม่ได้
+    const placed: RainStation[] = [];
     const markers = rainStations.map((r) => {
+      const stack = placed.filter((q) => Math.abs(q.lat - r.lat) < 0.002 && Math.abs(q.lng - r.lng) < 0.007).length;
+      placed.push(r);
       const lvl = dailyRain(r.rain24h);
       const el = document.createElement("button");
       el.type = "button";
@@ -385,7 +418,7 @@ export function SongKhlongExperience({
       el.append(svg, r.rain24h === null ? "—" : `${fmt(r.rain24h, r.rain24h >= 10 ? 0 : 1)} มม.`);
       const popup = new maplibregl.Popup({ offset: 12, maxWidth: "280px" }).setDOMContent(rainPopup(r));
       // ปักไว้ทางซ้ายของจุด — หมุดจุดวัดน้ำปักทางขวา จึงไม่ทับกันเมื่ออยู่สถานีเดียวกัน (เช่น หาดใหญ่ใน)
-      return new maplibregl.Marker({ element: el, anchor: "right", offset: [-4, 0] }).setLngLat([r.lng, r.lat]).setPopup(popup).addTo(map);
+      return new maplibregl.Marker({ element: el, anchor: "right", offset: [-4, stack * 22] }).setLngLat([r.lng, r.lat]).setPopup(popup).addTo(map);
     });
     return () => markers.forEach((m) => m.remove());
   }, [ready, rainStations, showRain]);
@@ -413,6 +446,52 @@ export function SongKhlongExperience({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [ready, mainStatus, whaStatus]);
+
+  // ---------- แผนที่พื้นหลัง ----------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const id of BASEMAP_LAYERS) map.setLayoutProperty(id, "visibility", BASEMAPS[basemap].layers.includes(id) ? "visible" : "none");
+  }, [ready, basemap]);
+
+  // ---------- เต็มจอ ----------
+  useEffect(() => {
+    const onChange = () => setNativeFull(document.fullscreenElement === wrapperRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // เต็มจอแล้วไม่ต้องกด Ctrl เพื่อซูม (ไม่มีหน้าให้เลื่อนแข่งกัน) · ขนาดกรอบเปลี่ยนต้องสั่ง resize
+    if (full) map.cooperativeGestures.disable();
+    else map.cooperativeGestures.enable();
+    const raf = requestAnimationFrame(() => map.resize());
+    if (!cssFull) return () => cancelAnimationFrame(raf);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setCssFull(false);
+    document.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [full, cssFull]);
+  const toggleFull = async () => {
+    if (document.fullscreenElement) return void (await document.exitFullscreen());
+    if (cssFull) return setCssFull(false);
+    const el = wrapperRef.current;
+    if (el?.requestFullscreen && document.fullscreenEnabled) {
+      try {
+        await el.requestFullscreen();
+        return;
+      } catch {
+        // ตกไปใช้แบบ CSS
+      }
+    }
+    setCssFull(true);
+  };
 
   // ---------- ระดับน้ำย้อนหลัง (แถบเลื่อน) ----------
   useEffect(() => {
@@ -444,52 +523,122 @@ export function SongKhlongExperience({
   };
 
   return (
-    <div className="relative h-[72vh] min-h-[520px] w-full overflow-hidden rounded-3xl bg-ink-900 text-white shadow-xl ring-1 ring-slate-200">
+    <div
+      ref={wrapperRef}
+      className={`overflow-hidden bg-mist text-ink-900 shadow-xl ring-1 ring-slate-200 [&:fullscreen]:h-full [&:fullscreen]:rounded-none ${
+        cssFull ? "fixed inset-0 z-[70] h-dvh w-full" : "relative h-[72vh] min-h-[520px] w-full rounded-3xl"
+      }`}
+    >
       {/* maplibre ใส่ position:relative ให้ container เอง จึงต้องให้ div นอกเป็นตัวกำหนดขนาด */}
       <div className="absolute inset-0">
         <div ref={containerRef} className="h-full w-full" />
       </div>
 
-      {/* ---- คำอธิบายเส้นและหมุด — ระดับน้ำปัจจุบันอยู่ที่ส่วนหัวของหน้าแล้ว จึงไม่ซ้ำในแผนที่ ---- */}
-      <div className="absolute left-4 right-16 top-4 z-10 flex flex-wrap gap-2 text-[11px] font-semibold md:left-6 md:top-6">
-        <span className={LEGEND}>
-          <span className="h-1 w-6 rounded-full" style={{ background: STATUS_COLOR[mainStatus] }} />
-          คลองอู่ตะเภา · ไหลตามระดับน้ำจริง
-        </span>
-        <span className={LEGEND}>
-          <span className="h-1 w-6 rounded-full bg-sky-300/60" />
-          คลอง ร.1 · ภาพจำลอง
-        </span>
-        <span className={LEGEND}>
-          <span className="h-1 w-6 rounded-full" style={{ background: STATUS_COLOR[whaStatus] }} />
-          คลองหวะ · ไหลตามระดับน้ำจริง
-        </span>
-        <span className={LEGEND}>
-          จุดวัดน้ำ: <span className="text-sun-300">▲ ขึ้น</span> <span className="text-emerald-300">▼ ลด</span> <span className="text-slate-300">■ ทรงตัว</span> · กดดูข้อมูล
-        </span>
-        {rainStations.length ? (
-          <button type="button" onClick={() => setShowRain((v) => !v)} aria-pressed={showRain} className={`${LEGEND} cursor-pointer hover:bg-ink-800`}>
-            <svg viewBox="0 0 12 17" className="h-3 w-2.5 fill-sky-300" aria-hidden>
-              <path d={DROP_PATH} />
+      {/* ---- เครื่องมือมุมขวาบน: เลือกแผนที่ · ที่มาข้อมูล · เต็มจอ ---- */}
+      <div className="absolute right-3 top-3 z-20 flex items-start gap-1.5 md:right-5 md:top-5">
+        <div role="radiogroup" aria-label="เลือกแบบแผนที่" className={`${PANEL} flex rounded-full p-1`}>
+          {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
+            <button
+              key={b}
+              type="button"
+              role="radio"
+              aria-checked={basemap === b}
+              onClick={() => setBasemap(b)}
+              className={`rounded-full px-2.5 py-1 text-xs font-bold transition md:px-3 ${basemap === b ? "bg-brand-600 text-white shadow" : "text-slate-600 hover:text-brand-700"}`}
+            >
+              {BASEMAPS[b].label}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <button type="button" onClick={() => setSourcesOpen((v) => !v)} aria-expanded={sourcesOpen} aria-label="ที่มาของข้อมูลบนแผนที่" title="ที่มาของข้อมูล" className={ICON_BTN}>
+            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden>
+              <circle cx="10" cy="10" r="8" className="fill-none stroke-current" strokeWidth="1.8" />
+              <path d="M10 9v5M10 6.2v.1" className="stroke-current" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            จุดวัดฝน (ฝน 24 ชม.) · {showRain ? "ซ่อน" : "แสดง"}
           </button>
+          {sourcesOpen ? (
+            <div className={`${PANEL} absolute right-0 top-full mt-2 w-[19rem] max-w-[calc(100vw-2rem)] rounded-2xl p-3 text-[11px] leading-5 text-slate-600`}>
+              <p className="flex items-center justify-between text-xs font-bold text-ink-900">
+                ที่มาของข้อมูลบนแผนที่
+                <button type="button" onClick={() => setSourcesOpen(false)} aria-label="ปิด" className="px-1 text-slate-400 hover:text-ink-900">✕</button>
+              </p>
+              <ul className="mt-1 space-y-1">
+                <li><b className="text-slate-700">ระดับน้ำ:</b> คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) — สถานีของกรมชลประทาน</li>
+                <li><b className="text-slate-700">ฝน:</b> คลังข้อมูลน้ำแห่งชาติ — สถานีของกรมชลประทาน กรมทรัพยากรน้ำ สสน. และกรมอุตุนิยมวิทยา</li>
+                <li><b className="text-slate-700">แผนที่พื้นหลัง:</b> Powered by Esri (ดาวเทียม Maxar, Earthstar Geographics · ถนน/ภูมิประเทศ HERE, Garmin, USGS, OpenStreetMap)</li>
+                <li><b className="text-slate-700">เส้นคลอง:</b> © OpenStreetMap contributors · คลอง ร.1 ไม่มีสถานีวัด แสดงเป็นภาพจำลองตามคลองอู่ตะเภา</li>
+                <li><b className="text-slate-700">ระดับน้ำที่เคยท่วม:</b> แบบสำรวจ SKL-FRIS ที่ตรวจแล้ว (ช่อง ~200 ม. อย่างน้อย 5 หลัง ไม่แสดงรายบ้าน)</li>
+              </ul>
+            </div>
+          ) : null}
+        </div>
+        <button type="button" onClick={toggleFull} aria-pressed={full} aria-label={full ? "ออกจากเต็มจอ" : "ขยายแผนที่เต็มจอ"} title={full ? "ออกจากเต็มจอ (Esc)" : "เต็มจอ"} className={ICON_BTN}>
+          <svg viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {full ? <path d="M7 3v4H3M13 3v4h4M7 17v-4H3M13 17v-4h4" /> : <path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" />}
+          </svg>
+        </button>
+      </div>
+
+      {/* ---- คำอธิบายเส้นและหมุด (พับได้) ---- */}
+      <div className={`${PANEL} absolute left-3 top-14 z-10 w-[15.5rem] rounded-2xl text-[11px] md:left-5 md:top-5`}>
+        <button type="button" onClick={() => setLegendOpen((v) => !v)} aria-expanded={legendOpen} className="flex w-full items-center justify-between px-3 py-2 text-xs font-bold">
+          คำอธิบายแผนที่
+          <span className="text-slate-400">{legendOpen ? "▴ ซ่อน" : "▾ แสดง"}</span>
+        </button>
+        {legendOpen ? (
+          <ul className="space-y-1.5 border-t border-slate-100 px-3 pb-3 pt-2 text-slate-700">
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-6 shrink-0 rounded-full" style={{ background: STATUS_COLOR[mainStatus] }} />
+              คลองอู่ตะเภา · ไหลตามระดับน้ำจริง
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-6 shrink-0 rounded-full" style={{ background: STATUS_COLOR[whaStatus] }} />
+              คลองหวะ · ไหลตามระดับน้ำจริง
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-1.5 w-6 shrink-0 rounded-full bg-sky-300" />
+              คลอง ร.1 · ภาพจำลอง
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="grid h-4 w-6 shrink-0 place-items-center">
+                <span className="h-3 w-3 rounded-full ring-2 ring-white shadow" style={{ background: STATUS_COLOR.NORMAL }} />
+              </span>
+              <span>
+                จุดวัดน้ำ <b className="text-sun-700">▲ขึ้น</b> <b className="text-emerald-700">▼ลด</b> <b className="text-slate-500">■ทรงตัว</b>
+              </span>
+            </li>
+            {rainStations.length ? (
+              <li>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <span className="grid h-4 w-6 shrink-0 place-items-center">
+                    <svg viewBox="0 0 12 17" className="h-3.5 w-3 fill-brand-500" aria-hidden>
+                      <path d={DROP_PATH} />
+                    </svg>
+                  </span>
+                  <span className="flex-1">จุดวัดฝน · ฝนสะสม 24 ชม.</span>
+                  <input type="checkbox" checked={showRain} onChange={(e) => setShowRain(e.target.checked)} className="h-3.5 w-3.5 accent-brand-600" aria-label="แสดงจุดวัดฝน" />
+                </label>
+              </li>
+            ) : null}
+            <li className="flex items-center gap-2">
+              <span className="h-3 w-6 shrink-0 rounded-sm border border-dashed border-orange-400 bg-orange-400/15" />
+              เขตชุมชน
+            </li>
+            <li className="pt-0.5 text-slate-500">กดหมุดเพื่อดูข้อมูลและที่มา</li>
+          </ul>
         ) : null}
-        <span className={LEGEND}>
-          <span className="h-2.5 w-4 rounded-sm border border-dashed border-orange-200 bg-orange-400/20" />
-          เขตชุมชน
-        </span>
       </div>
 
       {/* ---- ย้อนดูน้ำท่วมจากแบบสำรวจ ---- */}
-      <section className="absolute bottom-4 left-4 right-4 z-10 rounded-3xl bg-ink-900/80 p-4 shadow-2xl ring-1 ring-white/10 backdrop-blur-md md:left-6 md:right-auto md:w-[30rem] md:p-5">
+      <section className={`${PANEL} absolute bottom-3 left-3 right-3 z-10 rounded-3xl p-4 md:bottom-5 md:left-5 md:right-auto md:w-[30rem] md:p-5`}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold">ระดับน้ำที่ชาวบ้านเคยเจอ</h2>
-            <p className="text-[11px] text-slate-400">จากแบบสำรวจที่ตรวจแล้ว · แสดงเป็นช่องพื้นที่ ~200 ม. ที่มีอย่างน้อย 5 หลัง</p>
+            <p className="text-[11px] text-slate-500">จากแบบสำรวจที่ตรวจแล้ว · แสดงเป็นช่องพื้นที่ ~200 ม. ที่มีอย่างน้อย 5 หลัง</p>
           </div>
           {hasGrid ? (
-            <button type="button" onClick={play} disabled={playing} className="shrink-0 rounded-full bg-sky-400 px-4 py-2 text-xs font-bold text-ink-900 transition hover:bg-sky-300 disabled:opacity-60">
+            <button type="button" onClick={play} disabled={playing} className="btn btn-primary btn-sm shrink-0 disabled:opacity-60">
               {playing ? "กำลังเล่น…" : "▶ เล่นน้ำขึ้น"}
             </button>
           ) : null}
@@ -503,35 +652,28 @@ export function SongKhlongExperience({
             step={0.1}
             value={level}
             onChange={(e) => setLevel(Number(e.target.value))}
-            className="w-full accent-sky-400"
+            className="w-full accent-brand-600"
             aria-label="ระดับน้ำ (เมตร)"
           />
-          <span className="w-16 text-right text-lg font-bold tabular-nums">{fmt(level, 1)} ม.</span>
+          <span className="w-16 text-right text-lg font-black tabular-nums text-brand-700">{fmt(level, 1)} ม.</span>
         </div>
-        <p className="mt-1 text-xs text-slate-300">
+        <p className="mt-1 text-xs text-slate-600">
           {level > 0 ? (
             <>พื้นที่ที่น้ำเฉลี่ยเคยลึกอย่างน้อยระดับนี้ <b>{reached.cells.toLocaleString("th-TH")}</b> ช่อง · <b>{reached.households.toLocaleString("th-TH")}</b> หลัง</>
           ) : "ลากแถบหรือกด “เล่นน้ำขึ้น” เพื่อดูน้ำค่อย ๆ สูงขึ้น"}
         </p>
         </>) : (
           // ไม่มีข้อมูล = บอกตามจริง ห้ามวาดแถบ/ตัวเลขสมมติ
-          <p className="mt-3 rounded-2xl bg-white/5 px-3 py-2 text-xs text-slate-300">
+          <p className="mt-3 rounded-2xl bg-mist px-3 py-2 text-xs text-slate-600">
             ยังไม่มีพื้นที่ที่มีข้อมูลระดับน้ำท่วมจากแบบสำรวจที่ตรวจแล้วพอจะแสดง (ต้องมีอย่างน้อย 5 หลังต่อช่อง)
           </p>
         )}
       </section>
 
-      {/* ---- ปุ่มเครื่องมือ ---- */}
-      <button type="button" onClick={togglePitch} className="absolute bottom-40 left-4 z-10 hidden rounded-full bg-ink-900/80 px-3 py-2 text-xs font-semibold ring-1 ring-white/15 backdrop-blur md:bottom-6 md:left-[33rem] md:block">
+      {/* ---- ปุ่มมุมมอง ---- */}
+      <button type="button" onClick={togglePitch} className={`${PANEL} absolute bottom-5 left-[33rem] z-10 hidden rounded-full px-3 py-2 text-xs font-bold text-brand-700 md:block`}>
         {pitched ? "มุมบน 2D" : "มุมเอียง 3D"}
       </button>
-
-      {/* ---- เครดิตและข้อจำกัด ---- */}
-      <p className="absolute bottom-9 right-14 z-10 hidden max-w-md rounded-2xl bg-ink-900/75 px-3 py-2 text-right text-[10px] leading-4 text-slate-200 ring-1 ring-white/10 backdrop-blur md:block">
-        ที่มา: ระดับน้ำและฝน — คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) จากสถานีของกรมชลประทาน กรมทรัพยากรน้ำ สสน. และกรมอุตุนิยมวิทยา ·
-        ภาพดาวเทียม/ถนน — Esri · เส้นคลอง © OpenStreetMap contributors · ระดับน้ำท่วมจากแบบสำรวจ SKL-FRIS ·
-        คลอง ร.1 ไม่มีสถานีวัด แสดงเป็นภาพจำลองตามระดับคลองอู่ตะเภา
-      </p>
     </div>
   );
 }

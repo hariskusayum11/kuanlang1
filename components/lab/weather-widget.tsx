@@ -53,7 +53,18 @@ function useBangkokNow() {
   return { time: `${get("hour")}:${get("minute")}`, dow, day: Number(get("day")), month, yearBe: Number(get("year")) + 543 };
 }
 
-export function WeatherWidget({ weather, daily, dark = false }: { weather: WeatherNow; daily: DailyForecast[]; dark?: boolean }) {
+export function WeatherWidget({
+  weather,
+  daily,
+  dark = false,
+  placement = "down",
+}: {
+  weather: WeatherNow;
+  daily: DailyForecast[];
+  dark?: boolean;
+  /** down = การ์ดเปิดลงชิดซ้าย · up = เปิดขึ้นชิดขวา (วางมุมขวาล่าง) */
+  placement?: "down" | "up";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const now = useBangkokNow();
@@ -110,7 +121,11 @@ export function WeatherWidget({ weather, daily, dark = false }: { weather: Weath
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-full z-40 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-3xl md:max-h-[calc(100dvh-17rem)] bg-white p-4 text-ink-900 shadow-2xl ring-1 ring-slate-200">
+        <div
+          className={`absolute z-40 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-3xl ${
+            placement === "up" ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-8rem)]" : "left-0 top-full mt-2 md:max-h-[calc(100dvh-17rem)]"
+          } bg-white p-4 text-ink-900 shadow-2xl ring-1 ring-slate-200`}
+        >
           <p className="border-b border-slate-100 pb-2 text-sm">
             {now ? (
               <>
