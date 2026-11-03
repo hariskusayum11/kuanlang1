@@ -37,3 +37,23 @@ export function weatherLabel(code: number | null): string {
   if (code >= 95) return "พายุฝนฟ้าคะนอง";
   return "มีเมฆ";
 }
+
+/**
+ * ระดับฝนรายวัน (มม./วัน) ตามเกณฑ์กรมอุตุนิยมวิทยา:
+ * ไม่มีฝน < 0.1 · เล็กน้อย 0.1–10 · ปานกลาง 10.1–35 · หนัก 35.1–90 · หนักมาก > 90
+ */
+export type DailyRain = "none" | "light" | "moderate" | "heavy" | "veryHeavy";
+export function dailyRain(mm: number | null): DailyRain {
+  if (mm === null || !Number.isFinite(mm) || mm < 0.1) return "none";
+  if (mm <= 10) return "light";
+  if (mm <= 35) return "moderate";
+  if (mm <= 90) return "heavy";
+  return "veryHeavy";
+}
+export const DAILY_RAIN_LABEL: Record<DailyRain, string> = {
+  none: "ไม่มีฝน",
+  light: "ฝนเล็กน้อย",
+  moderate: "ฝนปานกลาง",
+  heavy: "ฝนหนัก",
+  veryHeavy: "ฝนหนักมาก",
+};

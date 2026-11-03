@@ -11,10 +11,10 @@ import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
-import type { CurrentWeather, HourlyWeather } from "@/lib/water/weather";
-import { dayPhase, rainLevel, weatherLabel, type DayPhase, type RainLevel } from "@/domain/water/sky";
+import type { CurrentWeather, DailyForecast, HourlyWeather } from "@/lib/water/weather";
+import { DAILY_RAIN_LABEL, dailyRain, dayPhase, rainLevel, weatherLabel, type DailyRain, type DayPhase, type RainLevel } from "@/domain/water/sky";
 
-type Mode = "live" | "recent" | "flood";
+type Mode = "live" | "recent" | "flood" | "forecast";
 export interface StationHistory {
   recent: HistoryPoint[];
   flood: HistoryPoint[];
@@ -38,6 +38,14 @@ const TREND_PHRASE: Record<WaterTrend, string> = {
   FALLING: "น้ำกำลังลด",
   STEADY: "น้ำทรงตัว",
   UNKNOWN: "",
+};
+// ชิปพยากรณ์ฝนรายวัน: ฝนหนักขึ้นไปเป็น "คำเตือน" จึงใช้ sun · ไม่มีฝน/เล็กน้อยใช้โทนกลาง
+const DAILY_CHIP: Record<DailyRain, string> = {
+  none: "bg-white/80 text-slate-600 ring-slate-200",
+  light: "bg-white/80 text-brand-700 ring-brand-200",
+  moderate: "bg-brand-50 text-brand-800 ring-brand-300",
+  heavy: "bg-sun-100 text-sun-800 ring-sun-300",
+  veryHeavy: "bg-sun-300 text-ink-900 ring-sun-500",
 };
 // ความหนาแน่นของฝน: ขนาดลาย (เล็ก = ถี่) และความทึบ
 const RAIN_LAYER: Record<RainLevel, string> = {
@@ -83,6 +91,7 @@ export function SongKhlongHero({
   lagHours,
   weather,
   rainHistory,
+  forecast,
   forcePhase,
   forceRain,
 }: {
@@ -102,6 +111,8 @@ export function SongKhlongHero({
   weather: CurrentWeather | null;
   /** ฝน/เมฆรายชั่วโมงย้อนหลัง (แบบจำลอง) — ใช้ตอนย้อนดู ให้ภาพตรงกับชั่วโมงนั้น */
   rainHistory: { recent: HourlyWeather[]; flood: HourlyWeather[] };
+  /** พยากรณ์ฝน (Open-Meteo) — รายวันแสดงเป็นชิป · รายชั่วโมงใช้เล่นท้องฟ้าในโหมดพยากรณ์ */
+  forecast: { daily: DailyForecast[]; hourly: HourlyWeather[] };
   /** บังคับช่วงเวลา/ฝน (พรีวิวผ่าน ?sky= และ ?rain=) */
   forcePhase?: DayPhase;
   forceRain?: RainLevel;
@@ -152,7 +163,11 @@ export function SongKhlongHero({
     return () => window.clearInterval(id);
   }, []);
 
-  const series = mode === "flood" ? hist.flood : mode === "recent" ? hist.recent : [];
+  const forecastSeries = useMemo(
+    () => (reading?.levelMsl != null ? forecast.hourly.map((h) => ({ at: h.at, levelMsl: reading.levelMsl! })) : []),
+    [forecast.hourly, reading?.levelMsl],
+  );
+  const series = mode === "flood" ? hist.flood : mode === "recent" ? hist.recent : mode === "forecast" ? forecastSeries : [];
   const point = mode === "live" ? null : (series[Math.min(index, series.length - 1)] ?? null);
   const viewedLevel = point ? point.levelMsl : (reading?.levelMsl ?? null);
   const viewedStamp = point ? thaiStamp(point.at) : thaiStamp(reading?.measuredAt ?? null);
@@ -161,9 +176,9 @@ export function SongKhlongHero({
   // ท้องฟ้า: ตอนนี้ = เวลา/อากาศปัจจุบัน · ย้อนดู = เวลาและฝนของชั่วโมงนั้น (ฝนจากแบบจำลองย้อนหลัง)
   const pastWeather = useMemo(() => {
     if (!point) return null;
-    const list = mode === "flood" ? rainHistory.flood : rainHistory.recent;
+    const list = mode === "flood" ? rainHistory.flood : mode === "forecast" ? forecast.hourly : rainHistory.recent;
     return list.find((w) => w.at === point.at) ?? null;
-  }, [point, mode, rainHistory]);
+  }, [point, mode, rainHistory, forecast.hourly]);
   const pointPhase = point ? dayPhase(Number(point.at.slice(11, 13)), Number(point.at.slice(14, 16))) : null;
   const phase = forcePhase ?? pointPhase ?? clockPhase;
   const rain = forceRain ?? rainLevel(point ? (pastWeather?.rainMmPerHour ?? null) : (weather?.rainMmPerHour ?? null));
@@ -174,6 +189,12 @@ export function SongKhlongHero({
 
   // หมุดเหตุการณ์ของน้ำท่วม พ.ย. 68 — สะพาน: ถึงธงเหลือง/แดง · หาดใหญ่ใน: เริ่มล้นตลิ่ง · ทุกจุด: สูงสุด
   const events = useMemo(() => {
+    if (mode === "forecast") {
+      const peak = forecast.hourly.reduce<{ i: number; mm: number }>((b, h, i) => (h.rainMmPerHour > b.mm ? { i, mm: h.rainMmPerHour } : b), { i: -1, mm: 0 });
+      if (peak.i < 0 || peak.mm < 0.1) return [];
+      const st = thaiStamp(forecast.hourly[peak.i]!.at);
+      return [{ index: peak.i, label: `ฝนหนักสุด ${st.date} ${st.time} (${peak.mm.toFixed(1)} มม./ชม.)` }];
+    }
     if (!reading?.bankMsl) return [];
     const at = (i: number) => `${thaiStamp(hist.flood[i]!.at).date} ${thaiStamp(hist.flood[i]!.at).time}`;
     const first = (v: number) => hist.flood.findIndex((p) => p.levelMsl >= v);
@@ -190,7 +211,7 @@ export function SongKhlongHero({
     const peakAt = floodPeak ? hist.flood.indexOf(floodPeak) : -1;
     if (peakAt >= 0) marks.push({ index: peakAt, label: `สูงสุด ${at(peakAt)}` });
     return marks;
-  }, [hist.flood, floodPeak, reading?.bankMsl, bridge]);
+  }, [hist.flood, floodPeak, reading?.bankMsl, bridge, mode, forecast.hourly]);
 
   useEffect(() => {
     if (!playing) return;
@@ -218,6 +239,9 @@ export function SongKhlongHero({
       if (!reduced) setPlaying(true);
     } else if (m === "recent") {
       setIndex(Math.max(0, hist.recent.length - 1));
+    } else if (m === "forecast") {
+      setIndex(0);
+      if (!reduced) setPlaying(true);
     }
   };
   const jump = (i: number) => {
@@ -359,7 +383,12 @@ export function SongKhlongHero({
           )}
 
           <p className={`mt-3 text-xs leading-5 ${tone("text-slate-500", "text-slate-400")}`}>
-            {point && pastWeather && !forceRain ? (
+            {mode === "forecast" && pastWeather && !forceRain ? (
+              <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
+                พยากรณ์ฝน {viewedStamp.date} {viewedStamp.time} น.: {pastWeather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ {Math.round(pastWeather.cloudCover)}%
+                <span className="font-normal"> (ระดับน้ำในภาพเป็นค่าตอนนี้ — ยังไม่มีพยากรณ์ระดับน้ำ)</span>
+              </span>
+            ) : point && pastWeather && !forceRain ? (
               <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
                 ฝนที่หาดใหญ่ {viewedStamp.date} {viewedStamp.time} น.: {pastWeather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ {Math.round(pastWeather.cloudCover)}%
                 <span className="font-normal"> (แบบจำลองย้อนหลัง อาจต่ำกว่าที่สถานีวัดได้จริง)</span>
@@ -368,6 +397,21 @@ export function SongKhlongHero({
               <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
                 อากาศหาดใหญ่ตอนนี้: {forceRain ? `(พรีวิว) ฝน${forceRain === "none" ? "ไม่ตก" : ""}` : weatherLabel(weather!.weatherCode)}
                 {weather && !forceRain ? ` · ฝน ${weather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ ${Math.round(weather.cloudCover)}%` : ""}
+              </span>
+            ) : null}
+            {forecast.daily.length ? (
+              <span className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                <span className={`font-semibold ${tone("text-slate-600", "text-slate-300")}`}>พยากรณ์ฝน:</span>
+                {forecast.daily.slice(0, 3).map((d, i) => {
+                  const lvl = dailyRain(d.rainMm);
+                  return (
+                    <span key={d.date} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ring-1 ${DAILY_CHIP[lvl]}`} title={DAILY_RAIN_LABEL[lvl]}>
+                      {i === 0 ? "วันนี้" : i === 1 ? "พรุ่งนี้" : thaiStamp(`${d.date} 00:00`).date}
+                      <b>{d.rainMm.toFixed(0)} มม.</b>
+                      {d.probability !== null ? <span className="font-normal opacity-80">{Math.round(d.probability)}%</span> : null}
+                    </span>
+                  );
+                })}
               </span>
             ) : null}
             {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
@@ -399,11 +443,15 @@ export function SongKhlongHero({
       {reading ? <div className="relative aspect-[820/705] w-full md:hidden">{scene(780)}</div> : null}
 
       {/* ย้อนดู — แถบยาวเต็มความกว้างใต้ภาพ พร้อมขีดหมุดเหตุการณ์บนแถบเลื่อน */}
-      {reading && (hist.recent.length || hist.flood.length) ? (
+      {reading && (hist.recent.length || hist.flood.length || forecastSeries.length) ? (
         <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-6 md:px-10">
-          <div className="mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] bg-white/90 p-3 shadow-xl ring-1 ring-slate-200 backdrop-blur-md md:flex-row md:items-center md:gap-5 md:px-5">
+          <div
+            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
+              mode === "live" ? "bg-white/45 ring-white/50 backdrop-blur-[2px] hover:bg-white/85 focus-within:bg-white/85" : "bg-white/80 shadow-xl ring-slate-200 backdrop-blur-sm"
+            }`}
+          >
             <div className="shrink-0 leading-tight md:w-60">
-              <p className="text-xs font-semibold text-slate-500">ย้อนดูระดับน้ำ · {placeLabel}</p>
+              <p className="text-xs font-semibold text-slate-500">{mode === "forecast" ? "พยากรณ์ฝน · ระดับน้ำคงค่าตอนนี้" : `ย้อนดูระดับน้ำ · ${placeLabel}`}</p>
               <p className="whitespace-nowrap text-base font-black text-ink-900">{mode === "live" ? "ตอนนี้" : `${viewedStamp.date} · ${viewedStamp.time} น.`}</p>
               {mode !== "live" && viewedLevel !== null ? <p className="text-xs font-semibold text-slate-600">ระดับน้ำ {fmt(viewedLevel)} ม.รทก.</p> : null}
             </div>
@@ -413,6 +461,7 @@ export function SongKhlongHero({
                   ["live", "ตอนนี้", true],
                   ["recent", "3 วันล่าสุด", hist.recent.length > 0],
                   ["flood", "น้ำท่วม พ.ย. 68", hist.flood.length > 0],
+                  ["forecast", "พยากรณ์ฝน 3 วัน", forecastSeries.length > 0],
                 ] as const
               ).filter(([, , ok]) => ok).map(([m, label]) => (
                 <button
@@ -438,7 +487,7 @@ export function SongKhlongHero({
                     className="w-full accent-brand-600"
                     aria-label="เลือกเวลาที่ต้องการดูระดับน้ำ"
                   />
-                  {mode === "flood"
+                  {mode === "flood" || mode === "forecast"
                     ? events.map((e) => (
                         <button
                           key={e.label}
@@ -471,7 +520,7 @@ export function SongKhlongHero({
               <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
             )}
           </div>
-          {mode === "flood" && events.length ? (
+          {(mode === "flood" || mode === "forecast") && events.length ? (
             <p className={`mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
           ) : null}
         </div>

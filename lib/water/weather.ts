@@ -71,3 +71,46 @@ export async function getRainHistory(range: { start: string; end: string } | { r
     return [];
   }
 }
+
+export interface DailyForecast {
+  /** "YYYY-MM-DD" (เวลาไทย) */
+  date: string;
+  rainMm: number;
+  /** โอกาสฝนสูงสุดของวัน (%) */
+  probability: number | null;
+  weatherCode: number | null;
+}
+
+export function parseOpenMeteoDaily(payload: unknown): DailyForecast[] {
+  const d = (payload as { daily?: { time?: unknown[]; precipitation_sum?: unknown[]; precipitation_probability_max?: unknown[]; weather_code?: unknown[] } })?.daily;
+  if (!d || !Array.isArray(d.time) || !Array.isArray(d.precipitation_sum)) return [];
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return d.time.flatMap((t, i) => {
+    const mm = num(d.precipitation_sum?.[i]);
+    if (typeof t !== "string" || mm === null) return [];
+    return [{ date: t, rainMm: mm, probability: num(d.precipitation_probability_max?.[i]), weatherCode: num(d.weather_code?.[i]) }];
+  });
+}
+
+/**
+ * พยากรณ์ฝนที่หาดใหญ่ (Open-Meteo · แบบจำลองพยากรณ์อากาศ) — รายวัน 4 วัน + รายชั่วโมงตั้งแต่ชั่วโมงนี้ไป 72 ชม.
+ * แคช 30 นาที · ล้มเหลว = รายการว่าง · พยากรณ์มีความไม่แน่นอน ไม่ใช่ประกาศเตือนภัย
+ */
+export async function getRainForecast(): Promise<{ daily: DailyForecast[]; hourly: HourlyWeather[] }> {
+  const url =
+    "https://api.open-meteo.com/v1/forecast?latitude=7.0&longitude=100.46&timezone=Asia%2FBangkok&forecast_days=4" +
+    "&daily=precipitation_sum,precipitation_probability_max,weather_code&hourly=precipitation,cloud_cover";
+  try {
+    const res = await fetch(url, { next: { revalidate: 1800 }, signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return { daily: [], hourly: [] };
+    const json = await res.json();
+    // ตัดชั่วโมงที่ผ่านไปแล้ว (เทียบเวลาไทย) และเก็บ 72 ชม. ข้างหน้า
+    const nowHour = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" })
+      .format(new Date())
+      .replace(/:\d\d$/, "");
+    const hourly = parseOpenMeteoHourly(json).filter((h) => h.at.slice(0, 13) >= nowHour.slice(0, 13)).slice(0, 72);
+    return { daily: parseOpenMeteoDaily(json), hourly };
+  } catch {
+    return { daily: [], hourly: [] };
+  }
+}

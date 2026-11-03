@@ -7,7 +7,7 @@ import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/wat
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
 import { peakLagHours } from "@/domain/water/peak-lag";
-import { getHatYaiWeather, getRainHistory } from "@/lib/water/weather";
+import { getHatYaiWeather, getRainForecast, getRainHistory } from "@/lib/water/weather";
 import type { DayPhase, RainLevel } from "@/domain/water/sky";
 
 const PHASES: readonly DayPhase[] = ["dawn", "day", "dusk", "night"];
@@ -57,10 +57,11 @@ export default async function SongKhlongLabPage({ searchParams }: { searchParams
     listPublicExternalLinks(),
   ]);
   // อากาศตอนนี้ + ฝนรายชั่วโมงย้อนหลัง (3 วัน และช่วงน้ำท่วม พ.ย. 68) — ใช้แต่งท้องฟ้าของภาพตอนย้อนดู
-  const [weather, recentRain, floodRain] = await Promise.all([
+  const [weather, recentRain, floodRain, forecast] = await Promise.all([
     getHatYaiWeather(),
     getRainHistory({ recentDays: 3 }),
     getRainHistory({ start: FLOOD_2568.start, end: FLOOD_2568.end }),
+    getRainForecast(),
   ]);
   // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
   const flagStatus = flagStatusFromReadings(feed.readings);
@@ -98,6 +99,7 @@ export default async function SongKhlongLabPage({ searchParams }: { searchParams
         lagHours={lagHours}
         weather={weather}
         rainHistory={{ recent: recentRain, flood: floodRain }}
+        forecast={forecast}
         forcePhase={forcePhase}
         forceRain={forceRain}
       />

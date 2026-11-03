@@ -67,3 +67,22 @@ describe("parseOpenMeteoHourly", () => {
     expect(parseOpenMeteoHourly({})).toEqual([]);
   });
 });
+
+describe("พยากรณ์ฝนรายวัน", () => {
+  it("dailyRain ตามเกณฑ์กรมอุตุนิยมวิทยา", async () => {
+    const { dailyRain } = await import("../../domain/water/sky");
+    expect(dailyRain(0)).toBe("none");
+    expect(dailyRain(8.5)).toBe("light");
+    expect(dailyRain(19.4)).toBe("moderate");
+    expect(dailyRain(60)).toBe("heavy");
+    expect(dailyRain(180)).toBe("veryHeavy");
+    expect(dailyRain(null)).toBe("none");
+  });
+  it("parseOpenMeteoDaily", async () => {
+    const { parseOpenMeteoDaily } = await import("../../lib/water/weather");
+    expect(
+      parseOpenMeteoDaily({ daily: { time: ["2026-11-04", "2026-11-05"], precipitation_sum: [12.1, null], precipitation_probability_max: [100, 95], weather_code: [95, 95] } }),
+    ).toEqual([{ date: "2026-11-04", rainMm: 12.1, probability: 100, weatherCode: 95 }]);
+    expect(parseOpenMeteoDaily({})).toEqual([]);
+  });
+});
