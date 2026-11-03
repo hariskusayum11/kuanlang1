@@ -328,9 +328,9 @@ export function SongKhlongHero({
           </nav>
         </div>
 
-        {/* อากาศอยู่มุมขวาล่าง (ท้ายแถบย้อนดู) — ไม่มีแถบย้อนดูจึงวางใต้เมนูแทน */}
-        {weather && !hasReplay ? (
-          <div className="mt-4">
+        {/* อากาศ: มือถืออยู่ใต้เมนู · จอกว้างลอยมุมขวาล่างเหนือแถบย้อนดู (ไม่มีแถบย้อนดู = อยู่ใต้เมนูทุกจอ) */}
+        {weather ? (
+          <div className={`mt-4 ${hasReplay ? "md:hidden" : ""}`}>
             <WeatherWidget weather={weather} daily={forecast.daily} dark={night} />
           </div>
         ) : null}
@@ -432,13 +432,21 @@ export function SongKhlongHero({
       {/* ย้อนดู — แถบยาวเต็มความกว้างใต้ภาพ พร้อมขีดหมุดเหตุการณ์บนแถบเลื่อน */}
       {hasReplay ? (
         <div className="relative z-10 px-4 pb-5 md:absolute md:inset-x-0 md:bottom-3 md:px-10">
+          {/* แคปซูลอากาศลอยเหนือแถบ — ผูกกับขอบบนของแถบ จึงไม่ทับแม้แถบสูงขึ้น (เช่น มีแถวหมุดเหตุการณ์) */}
+          {weather ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 hidden px-10 md:block">
+              <div className="pointer-events-auto mx-auto flex max-w-[1500px] justify-end">
+                <WeatherWidget weather={weather} daily={forecast.daily} dark={night} placement="up" />
+              </div>
+            </div>
+          ) : null}
           <div
-            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:flex-wrap md:items-center md:gap-x-5 md:gap-y-2 md:px-5 lg:flex-nowrap ${
+            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
               mode === "live" ? "bg-white/70 ring-slate-200 hover:bg-white/90 focus-within:bg-white/90" : "bg-white/90 shadow-lg ring-slate-200"
             }`}
           >
-            <div className="min-w-0 shrink-0 leading-tight md:w-44 xl:w-60">
-              <p className="truncate text-xs font-semibold text-slate-500">{mode === "forecast" ? "พยากรณ์ฝน · ระดับน้ำคงค่าตอนนี้" : `ย้อนดูระดับน้ำ · ${placeLabel}`}</p>
+            <div className="shrink-0 leading-tight md:w-60">
+              <p className="text-xs font-semibold text-slate-500">{mode === "forecast" ? "พยากรณ์ฝน · ระดับน้ำคงค่าตอนนี้" : `ย้อนดูระดับน้ำ · ${placeLabel}`}</p>
               <p className="whitespace-nowrap text-base font-black text-ink-900">{mode === "live" ? "ตอนนี้" : `${viewedStamp.date} · ${viewedStamp.time} น.`}</p>
               {mode !== "live" && viewedLevel !== null ? <p className="text-xs font-semibold text-slate-600">ระดับน้ำ {fmt(viewedLevel)} ม.รทก.</p> : null}
             </div>
@@ -504,13 +512,8 @@ export function SongKhlongHero({
                 </button>
               </div>
             ) : (
-              <p className="min-w-0 flex-1 text-sm text-slate-500 md:hidden 2xl:block">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
+              <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
             )}
-            {weather ? (
-              <div className="shrink-0 border-t border-slate-200 pt-2 md:ml-auto md:border-l md:border-t-0 md:pl-3 md:pt-0">
-                <WeatherWidget weather={weather} daily={forecast.daily} placement="up" />
-              </div>
-            ) : null}
           </div>
           {(mode === "flood" || mode === "forecast") && events.length ? (
             <p className={`mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
