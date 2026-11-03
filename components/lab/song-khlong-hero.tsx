@@ -11,7 +11,7 @@ import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
-import type { CurrentWeather } from "@/lib/water/weather";
+import type { CurrentWeather, HourlyWeather } from "@/lib/water/weather";
 import { dayPhase, rainLevel, weatherLabel, type DayPhase, type RainLevel } from "@/domain/water/sky";
 
 type Mode = "live" | "recent" | "flood";
@@ -82,6 +82,7 @@ export function SongKhlongHero({
   flagStatus,
   lagHours,
   weather,
+  rainHistory,
   forcePhase,
   forceRain,
 }: {
@@ -99,6 +100,8 @@ export function SongKhlongHero({
   lagHours: Record<string, number | null>;
   /** อากาศปัจจุบันที่หาดใหญ่ (Open-Meteo) — null = ไม่วาดฝน/เมฆ */
   weather: CurrentWeather | null;
+  /** ฝน/เมฆรายชั่วโมงย้อนหลัง (แบบจำลอง) — ใช้ตอนย้อนดู ให้ภาพตรงกับชั่วโมงนั้น */
+  rainHistory: { recent: HourlyWeather[]; flood: HourlyWeather[] };
   /** บังคับช่วงเวลา/ฝน (พรีวิวผ่าน ?sky= และ ?rain=) */
   forcePhase?: DayPhase;
   forceRain?: RainLevel;
@@ -148,18 +151,26 @@ export function SongKhlongHero({
     const id = window.setInterval(tick, 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const phase = forcePhase ?? clockPhase;
-  const rain = forceRain ?? rainLevel(weather?.rainMmPerHour ?? null);
-  const cloud = forceRain && forceRain !== "none" ? 90 : (weather?.cloudCover ?? 0);
-  const night = phase === "night";
-  /** สีตัวอักษรตามพื้น — กลางคืนพื้นมืดจึงใช้สีอ่อน */
-  const tone = (day: string, dark: string) => (night ? dark : day);
 
   const series = mode === "flood" ? hist.flood : mode === "recent" ? hist.recent : [];
   const point = mode === "live" ? null : (series[Math.min(index, series.length - 1)] ?? null);
   const viewedLevel = point ? point.levelMsl : (reading?.levelMsl ?? null);
   const viewedStamp = point ? thaiStamp(point.at) : thaiStamp(reading?.measuredAt ?? null);
   const floodPeak = useMemo(() => peakOf(hist.flood), [hist.flood]);
+
+  // ท้องฟ้า: ตอนนี้ = เวลา/อากาศปัจจุบัน · ย้อนดู = เวลาและฝนของชั่วโมงนั้น (ฝนจากแบบจำลองย้อนหลัง)
+  const pastWeather = useMemo(() => {
+    if (!point) return null;
+    const list = mode === "flood" ? rainHistory.flood : rainHistory.recent;
+    return list.find((w) => w.at === point.at) ?? null;
+  }, [point, mode, rainHistory]);
+  const pointPhase = point ? dayPhase(Number(point.at.slice(11, 13)), Number(point.at.slice(14, 16))) : null;
+  const phase = forcePhase ?? pointPhase ?? clockPhase;
+  const rain = forceRain ?? rainLevel(point ? (pastWeather?.rainMmPerHour ?? null) : (weather?.rainMmPerHour ?? null));
+  const cloud = forceRain && forceRain !== "none" ? 90 : point ? (pastWeather?.cloudCover ?? 0) : (weather?.cloudCover ?? 0);
+  const night = phase === "night";
+  /** สีตัวอักษรตามพื้น — กลางคืนพื้นมืดจึงใช้สีอ่อน */
+  const tone = (day: string, dark: string) => (night ? dark : day);
 
   // หมุดเหตุการณ์ของน้ำท่วม พ.ย. 68 — สะพาน: ถึงธงเหลือง/แดง · หาดใหญ่ใน: เริ่มล้นตลิ่ง · ทุกจุด: สูงสุด
   const events = useMemo(() => {
@@ -348,7 +359,12 @@ export function SongKhlongHero({
           )}
 
           <p className={`mt-3 text-xs leading-5 ${tone("text-slate-500", "text-slate-400")}`}>
-            {weather || forceRain ? (
+            {point && pastWeather && !forceRain ? (
+              <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
+                ฝนที่หาดใหญ่ {viewedStamp.date} {viewedStamp.time} น.: {pastWeather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ {Math.round(pastWeather.cloudCover)}%
+                <span className="font-normal"> (แบบจำลองย้อนหลัง อาจต่ำกว่าที่สถานีวัดได้จริง)</span>
+              </span>
+            ) : !point && (weather || forceRain) ? (
               <span className={`mb-1 block font-semibold ${tone("text-slate-700", "text-slate-200")}`}>
                 อากาศหาดใหญ่ตอนนี้: {forceRain ? `(พรีวิว) ฝน${forceRain === "none" ? "ไม่ตก" : ""}` : weatherLabel(weather!.weatherCode)}
                 {weather && !forceRain ? ` · ฝน ${weather.rainMmPerHour.toFixed(1)} มม./ชม. · เมฆ ${Math.round(weather.cloudCover)}%` : ""}
@@ -456,7 +472,7 @@ export function SongKhlongHero({
             )}
           </div>
           {mode === "flood" && events.length ? (
-            <p className="mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold text-red-700 md:px-5">{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
+            <p className={`mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
           ) : null}
         </div>
       ) : null}

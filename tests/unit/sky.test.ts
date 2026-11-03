@@ -53,3 +53,17 @@ describe("parseOpenMeteo", () => {
     expect(parseOpenMeteo(null)).toBeNull();
   });
 });
+
+describe("parseOpenMeteoHourly", () => {
+  it("แปลงเวลาให้ตรงรูปแบบข้อมูลระดับน้ำ และข้ามชั่วโมงที่ไม่มีค่า", async () => {
+    const { parseOpenMeteoHourly } = await import("../../lib/water/weather");
+    const out = parseOpenMeteoHourly({
+      hourly: { time: ["2025-11-20T04:00", "2025-11-20T05:00", "2025-11-20T06:00"], precipitation: [45.5, null, 3], cloud_cover: [100, 100, null] },
+    });
+    expect(out).toEqual([
+      { at: "2025-11-20 04:00", rainMmPerHour: 45.5, cloudCover: 100 },
+      { at: "2025-11-20 06:00", rainMmPerHour: 3, cloudCover: 0 },
+    ]);
+    expect(parseOpenMeteoHourly({})).toEqual([]);
+  });
+});

@@ -32,3 +32,42 @@ export async function getHatYaiWeather(): Promise<CurrentWeather | null> {
     return null;
   }
 }
+
+/** ฝน/เมฆรายชั่วโมง — เวลาไทยรูปแบบเดียวกับข้อมูลระดับน้ำ ("YYYY-MM-DD HH:mm") เพื่อจับคู่ทีละชั่วโมง */
+export interface HourlyWeather {
+  at: string;
+  rainMmPerHour: number;
+  cloudCover: number;
+}
+
+export function parseOpenMeteoHourly(payload: unknown): HourlyWeather[] {
+  const h = (payload as { hourly?: { time?: unknown[]; precipitation?: unknown[]; cloud_cover?: unknown[] } })?.hourly;
+  if (!h || !Array.isArray(h.time) || !Array.isArray(h.precipitation)) return [];
+  return h.time.flatMap((t, i) => {
+    const mm = h.precipitation?.[i];
+    const cloud = h.cloud_cover?.[i];
+    if (typeof t !== "string" || typeof mm !== "number" || !Number.isFinite(mm)) return [];
+    return [{ at: t.replace("T", " "), rainMmPerHour: mm, cloudCover: typeof cloud === "number" && Number.isFinite(cloud) ? cloud : 0 }];
+  });
+}
+
+const HOURLY = "hourly=precipitation,cloud_cover&latitude=7.0&longitude=100.46&timezone=Asia%2FBangkok";
+
+/**
+ * ฝนรายชั่วโมงย้อนหลังที่หาดใหญ่
+ * - ช่วงในอดีต (`start`–`end`) = แบบจำลองย้อนหลัง ERA5 ผ่าน Open-Meteo Archive (ข้อมูลไม่เปลี่ยน แคช 1 วัน)
+ * - `recentDays` = ข้อมูลล่าสุดของ Open-Meteo (แคช 10 นาที)
+ * ⚠️ แบบจำลองความละเอียด ~25 กม. มักต่ำกว่าฝนที่สถานีวัดได้จริงในพายุหนัก — ใช้แต่งภาพ ไม่ใช่ข้อมูลเตือนภัย
+ */
+export async function getRainHistory(range: { start: string; end: string } | { recentDays: number }): Promise<HourlyWeather[]> {
+  const url =
+    "recentDays" in range
+      ? `https://api.open-meteo.com/v1/forecast?${HOURLY}&past_days=${range.recentDays}&forecast_days=1`
+      : `https://archive-api.open-meteo.com/v1/archive?${HOURLY}&start_date=${range.start}&end_date=${range.end}`;
+  try {
+    const res = await fetch(url, { next: { revalidate: "recentDays" in range ? 600 : 86_400 }, signal: AbortSignal.timeout(15_000) });
+    return res.ok ? parseOpenMeteoHourly(await res.json()) : [];
+  } catch {
+    return [];
+  }
+}
