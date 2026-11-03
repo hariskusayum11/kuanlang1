@@ -31,11 +31,14 @@ export function FlagCriteria({
   bridges,
   flag,
   measuredAt,
+  showEstimate = true,
 }: {
   bridges: BridgeFlagEstimate[];
   flag: EstimatedFlag;
   /** เวลาวัดล่าสุดของแต่ละสถานี (เวลาไทย) ตามรหัสสถานี */
   measuredAt: Record<string, string | null>;
+  /** แสดงกล่องธงโดยประมาณ — ปิดเมื่อส่วนหัวของหน้าแสดงธงเด่นอยู่แล้ว */
+  showEstimate?: boolean;
 }) {
   return (
     <section id="flags" className="bg-mist px-4 py-14 md:px-10 md:py-20">
@@ -47,22 +50,24 @@ export function FlagCriteria({
           หลังดูระดับน้ำที่สะพานผ่านกล้อง CCTV
         </p>
 
-        {/* ธงโดยประมาณ */}
-        <div className={`mt-8 flex flex-col gap-4 rounded-3xl p-5 ring-2 md:flex-row md:items-center md:p-6 ${ESTIMATE_RING[flag]}`}>
-          <Flag level={flag} className="h-20 w-20" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-slate-600">ธงโดยประมาณจากระดับน้ำตอนนี้</p>
-            <p className="text-3xl font-black text-ink-900">{ESTIMATED_FLAG_LABEL[flag]}</p>
-            <p className="mt-1 text-sm leading-6 text-slate-700">{ESTIMATE_TEXT[flag]}</p>
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              ⚠️ ไม่ใช่ธงที่ประกาศ — คำนวณจากเกณฑ์ของกลุ่มกับระดับน้ำสถานีกรมชลประทาน โดยใช้ระดับคอสะพานล่างจากรูปตัดขวางปี 2569 แทนท้องสะพาน
-              (ยังไม่มีค่าท้องสะพานทางการ) · ธงแดงมีไซเรนไม่มีเกณฑ์เป็นตัวเลขจึงไม่ประเมิน
-            </p>
+        {/* ธงโดยประมาณ — ซ่อนเมื่อส่วนหัวแสดงธงอยู่แล้ว (ส่วนหัวแบบนำด้วยธง) */}
+        {showEstimate ? (
+          <div className={`mt-8 flex flex-col gap-4 rounded-3xl p-5 ring-2 md:flex-row md:items-center md:p-6 ${ESTIMATE_RING[flag]}`}>
+            <Flag level={flag} className="h-20 w-20" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-600">ธงโดยประมาณจากระดับน้ำตอนนี้</p>
+              <p className="text-3xl font-black text-ink-900">{ESTIMATED_FLAG_LABEL[flag]}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-700">{ESTIMATE_TEXT[flag]}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                ⚠️ ไม่ใช่ธงที่ประกาศ — คำนวณจากเกณฑ์ของกลุ่มกับระดับน้ำสถานีกรมชลประทาน โดยใช้ระดับคอสะพานล่างจากรูปตัดขวางปี 2569 แทนท้องสะพาน
+                (ยังไม่มีค่าท้องสะพานทางการ) · ธงแดงมีไซเรนไม่มีเกณฑ์เป็นตัวเลขจึงไม่ประเมิน
+              </p>
+            </div>
+            <a href={COMMUNITY_FLAG_SOURCE.url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-md self-start md:self-center">
+              ดูธงที่ประกาศจริง ↗
+            </a>
           </div>
-          <a href={COMMUNITY_FLAG_SOURCE.url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-md self-start md:self-center">
-            ดูธงที่ประกาศจริง ↗
-          </a>
-        </div>
+        ) : null}
 
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {COMMUNITY_FLAGS.map((f) => (
