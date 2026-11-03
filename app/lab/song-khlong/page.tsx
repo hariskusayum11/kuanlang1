@@ -6,7 +6,6 @@ import { listPublicExternalLinks } from "@/lib/external-links/core";
 import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero } from "@/components/lab/song-khlong-hero";
-import { RiverPath } from "@/components/lab/river-path";
 import { peakLagHours } from "@/domain/water/peak-lag";
 import { FlagCriteria } from "@/components/lab/flag-criteria";
 import { flagStatusFromReadings } from "@/lib/water/community-flag";
@@ -81,13 +80,8 @@ export default async function SongKhlongLabPage() {
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
         flagStatus={flagStatus}
+        lagHours={lagHours}
       />
-      {/* เส้นทางน้ำต้นน้ำ → ควนลัง (ธงรายสะพาน + เวลาที่ยอดน้ำเดินทางจากเหตุการณ์ พ.ย. 68) */}
-      <div className="bg-mist px-4 pb-8 md:px-10">
-        <div className="mx-auto max-w-[1200px] pt-2">
-          <RiverPath stations={feed.stations} bridges={flagStatus.bridges} lagHours={lagHours} communityCount={mapData.communities.length} />
-        </div>
-      </div>
       {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
       <EmergencyStrip contacts={contacts} />
       <FlagCriteria bridges={flagStatus.bridges} measuredAt={flagStatus.measuredAt} />
@@ -107,6 +101,7 @@ export default async function SongKhlongLabPage() {
               floodGrid={mapData.floodGrid.map((c) => ({ bounds: c.bounds, households: c.households, avgDepthCm: c.avgDepthCm }))}
               sites={mapData.sites}
               stations={feed.stations}
+              markerStations={feed.readings}
             />
           </div>
         </div>

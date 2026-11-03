@@ -77,12 +77,15 @@ export function SongKhlongExperience({
   floodGrid,
   sites,
   stations,
+  markerStations = stations,
 }: {
   canals: CanalCollection;
   communities: Community[];
   floodGrid: GridCell[];
   sites: Site[];
   stations: StationReading[];
+  /** สถานีที่ปักหมุดบนแผนที่ (รวมสะพานคลองหวะที่ใช้ตัดสินธง) — ค่าเริ่มต้น = สถานีบนคลองอู่ตะเภา */
+  markerStations?: StationReading[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
@@ -110,8 +113,9 @@ export function SongKhlongExperience({
   useEffect(() => {
     if (!containerRef.current) return;
     reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const center: LngLat = [100.4515, 6.9885];
-    const zoom = window.innerWidth < 768 ? 13.4 : 14.4;
+    // เยื้องไปทางตะวันออกให้เห็นหมุดสะพานบ้านคลองหวะ (สะพานที่ใช้ตัดสินธง) ในมุมมองแรก
+    const center: LngLat = [100.4665, 6.9885];
+    const zoom = window.innerWidth < 768 ? 13 : 14;
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: {
@@ -212,7 +216,7 @@ export function SongKhlongExperience({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const markers = stations.map((s) => {
+    const markers = markerStations.map((s) => {
       const el = document.createElement("div");
       el.className = "flex items-center gap-1.5 rounded-full bg-ink-900/85 py-1 pl-1 pr-2.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/20";
       const dot = document.createElement("span");
@@ -229,7 +233,7 @@ export function SongKhlongExperience({
     map.setPaintProperty("r1-glow", "line-opacity", 0.2 + 0.45 * r1);
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
     return () => markers.forEach((m) => m.remove());
-  }, [ready, stations, mainStatus]);
+  }, [ready, markerStations, mainStatus]);
 
   // ---------- แอนิเมชันน้ำไหล ----------
   useEffect(() => {

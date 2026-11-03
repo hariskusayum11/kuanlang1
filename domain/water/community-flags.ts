@@ -32,6 +32,8 @@ export type FlagThreshold = { belowSoffitM: number } | { deck: true };
 
 export interface BridgeCriterion {
   bridge: string;
+  /** ลำน้ำที่สะพานนี้ข้าม */
+  canal: string;
   /** สถานีโทรมาตรของกรมชลประทาน (ThaiWater) ที่ตั้งอยู่ที่สะพานนี้ */
   stationCode: string;
   yellow: FlagThreshold;
@@ -39,9 +41,9 @@ export interface BridgeCriterion {
 }
 
 export const FLAG_BRIDGE_CRITERIA: readonly BridgeCriterion[] = [
-  { bridge: "สะพานบ้านคลองหวะ", stationCode: "X.174", yellow: { belowSoffitM: 4 }, red: { belowSoffitM: 3 } },
-  { bridge: "สะพานม่วงก็อง", stationCode: "X.173A", yellow: { belowSoffitM: 1 }, red: { deck: true } },
-  { bridge: "สะพานบางศาลา", stationCode: "X.90", yellow: { belowSoffitM: 3 }, red: { belowSoffitM: 2 } },
+  { bridge: "สะพานบ้านคลองหวะ", canal: "คลองหวะ", stationCode: "X.174", yellow: { belowSoffitM: 4 }, red: { belowSoffitM: 3 } },
+  { bridge: "สะพานม่วงก็อง", canal: "คลองอู่ตะเภา (ต้นน้ำ)", stationCode: "X.173A", yellow: { belowSoffitM: 1 }, red: { deck: true } },
+  { bridge: "สะพานบางศาลา", canal: "คลองอู่ตะเภา", stationCode: "X.90", yellow: { belowSoffitM: 3 }, red: { belowSoffitM: 2 } },
 ];
 
 /** ระดับอ้างอิงของสะพาน (ม.รทก.) — กรมชลประทาน รูปตัดขวางลำน้ำประจำปี 2569 (สำรวจ ม.ค. 2569) */
@@ -98,4 +100,17 @@ export function closestToNextFlag(bridges: readonly BridgeFlagEstimate[]): { bri
     if (!best || meters < best.meters) best = { bridge: b.criterion.bridge, next, meters };
   }
   return best;
+}
+
+/**
+ * มาตราส่วนแถบธงของสะพานหนึ่ง (ใช้วาดแถบ เขียว → เหลือง → แดง พร้อมหมุดระดับน้ำ) — ค่าเป็น % ของความกว้างแถบ
+ * ช่วงแถบ: ต่ำกว่าเกณฑ์เหลือง 3 ม. (หรือต่ำกว่าระดับน้ำ ถ้าน้ำต่ำกว่านั้น) ถึงเหนือเกณฑ์แดง 1 ม.
+ * ไม่มีระดับน้ำ/เกณฑ์ = null (ห้ามวาดหมุดจากข้อมูลที่ไม่มี)
+ */
+export function flagBarScale(b: BridgeFlagEstimate): { yellowPct: number; redPct: number; levelPct: number } | null {
+  if (b.levelMsl === null || !Number.isFinite(b.levelMsl) || b.yellowMsl === null || b.redMsl === null) return null;
+  const lo = Math.min(b.yellowMsl - 3, b.levelMsl - 0.5);
+  const hi = Math.max(b.redMsl + 1, b.levelMsl + 0.5);
+  const pct = (v: number) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  return { yellowPct: pct(b.yellowMsl), redPct: pct(b.redMsl), levelPct: pct(b.levelMsl) };
 }

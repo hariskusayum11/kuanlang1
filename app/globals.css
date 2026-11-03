@@ -143,7 +143,6 @@
   --animate-wave-drift: wave-drift 9s linear infinite;
   --animate-wave-drift-slow: wave-drift 15s linear infinite;
   --animate-train-run: train-run 42s linear infinite;
-  --animate-flag-wave: flag-wave 2.8s ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -196,11 +195,6 @@
 @keyframes wave-drift {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
-}
-/* ธงโบกบนเสา — ยึดขอบซ้าย (เสา) แล้วบิดปลายธง */
-@keyframes flag-wave {
-  0%, 100% { transform: skewY(0deg) scaleX(1); }
-  50% { transform: skewY(-5deg) scaleX(0.95); }
 }
 @keyframes train-run {
   from { transform: translateX(-30%); }
@@ -664,7 +658,4 @@
 }
 @utility animate-train-run {
   animation: var(--animate-train-run);
-}
-@utility animate-flag-wave {
-  animation: var(--animate-flag-wave);
 }

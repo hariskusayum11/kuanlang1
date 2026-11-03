@@ -4,6 +4,7 @@ import {
   closestToNextFlag,
   estimateBridgeFlag,
   estimateCommunityFlag,
+  flagBarScale,
   FLAG_BRIDGE_CRITERIA,
   thresholdMsl,
 } from "../../domain/water/community-flags";
@@ -70,5 +71,22 @@ describe("closestToNextFlag", () => {
   it("สะพานที่เป็นธงเหลืองแล้ววัดระยะถึงธงแดง · ไม่มีข้อมูล/แดงแล้ว = ข้าม", () => {
     expect(closestToNextFlag([e("X.90", 7.5)])).toMatchObject({ next: "RED" });
     expect(closestToNextFlag([e("X.90", 9), e("X.174", null)])).toBeNull();
+  });
+});
+
+describe("flagBarScale", () => {
+  it("หมุดอยู่ก่อนช่วงเหลืองเมื่อยังเป็นธงเขียว และเรียงเหลือง < แดง", () => {
+    const s = flagBarScale(estimateBridgeFlag(bridge("X.174"), 4.78))!;
+    expect(s.levelPct).toBeLessThan(s.yellowPct);
+    expect(s.yellowPct).toBeLessThan(s.redPct);
+    expect(s.redPct).toBeLessThan(100);
+  });
+  it("น้ำเกินเกณฑ์แดงหมุดอยู่หลังเส้นแดงแต่ไม่เกิน 100%", () => {
+    const s = flagBarScale(estimateBridgeFlag(bridge("X.90"), 12))!;
+    expect(s.levelPct).toBeGreaterThan(s.redPct);
+    expect(s.levelPct).toBeLessThanOrEqual(100);
+  });
+  it("ไม่มีระดับน้ำ = ไม่วาด", () => {
+    expect(flagBarScale(estimateBridgeFlag(bridge("X.90"), null))).toBeNull();
   });
 });

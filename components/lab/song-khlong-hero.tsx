@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { HadYaiScene, type SceneMark } from "@/components/lab/hadyai-scene";
+import { BridgeFlagPanel } from "@/components/lab/bridge-flag-panel";
 import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import { COMMUNITY_FLAG_SOURCE, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
@@ -52,6 +53,7 @@ export function SongKhlongHero({
   communityNames,
   feedError,
   flagStatus,
+  lagHours,
 }: {
   stations: StationReading[];
   /** ระดับน้ำรายชั่วโมง 3 วันล่าสุดของจุดวัดหลัก */
@@ -62,6 +64,8 @@ export function SongKhlongHero({
   feedError: string | null;
   /** ธงโดยประมาณจากเกณฑ์ของกลุ่มสองคลองควนลัง (ไม่ใช่ธงที่ประกาศ) */
   flagStatus: CommunityFlagStatus;
+  /** เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (ชม.) ตามคู่ "ต้นน้ำ>ปลายน้ำ" — null = ข้อมูลไม่พอ */
+  lagHours: Record<string, number | null>;
 }) {
   const main = stations.at(-1) ?? null; // หาดใหญ่ใน — ใกล้ควนลังที่สุด
   const { flag, closest } = flagStatus;
@@ -69,6 +73,16 @@ export function SongKhlongHero({
   const fb = main ? freeboard(main) : null;
   const latest = Object.values(flagStatus.measuredAt).filter((v): v is string => !!v).sort().at(-1) ?? main?.measuredAt ?? null;
   const floodPeak = useMemo(() => peakOf(flood), [flood]);
+  // หมายเหตุเวลาที่ยอดน้ำเดินทางจากสะพานไปสถานีถัดไป (เหตุการณ์ พ.ย. 68) — แสดงเฉพาะคู่ที่ข้อมูลสมเหตุสมผล
+  const lagNotes = useMemo(() => {
+    const out: Record<string, string | null> = {};
+    stations.forEach((s, i) => {
+      const next = stations[i + 1];
+      const h = next ? lagHours[`${s.code}>${next.code}`] : null;
+      out[s.code] = h && next ? `ปี 68 ยอดน้ำจากจุดนี้ถึง${placeName(next.name)} ~${Math.round(h)} ชม.` : null;
+    });
+    return out;
+  }, [stations, lagHours]);
 
   const [mode, setMode] = useState<Mode>("live");
   const [index, setIndex] = useState(0);
@@ -158,7 +172,7 @@ export function SongKhlongHero({
         historyMark={historyMark}
         communityNames={communityNames}
         animate={!reduced}
-        flag={flag}
+        placeLabel={`จุดวัดน้ำ${placeName(main.name)}`}
       />
     ) : null;
 
@@ -198,18 +212,22 @@ export function SongKhlongHero({
           </h1>
           <p className="mt-2 text-xl font-bold text-ink-900 md:text-2xl">{FLAG_ACTION[flag]}</p>
 
-          <p className="mt-5 text-base leading-7 text-slate-700 md:text-lg md:leading-8">
+          <div className="mt-5">
+            {flagStatus.bridges.length ? (
+              <BridgeFlagPanel
+                bridges={flagStatus.bridges}
+                measuredAt={flagStatus.measuredAt}
+                notes={lagNotes}
+                closestBridge={closest?.bridge ?? null}
+              />
+            ) : null}
+          </div>
+          <p className="mt-3 text-sm leading-6 text-slate-700">
             {main ? (
               <>
-                น้ำคลองอู่ตะเภา{TREND_PHRASE[trend] ? <b className="text-ink-900">{TREND_PHRASE[trend]}</b> : null} — ที่{placeName(main.name)}{" "}
+                <b className="text-ink-900">ภาพน้ำ</b> คือคลองอู่ตะเภาที่จุดวัดน้ำ{placeName(main.name)} (ใกล้ควนลังที่สุด) —{" "}
                 {fb === null ? "ยังไม่ทราบระดับตลิ่ง" : fb > 0 ? <>ต่ำกว่าตลิ่ง <b className="text-ink-900">{fmt(fb)} ม.</b></> : <b className="text-red-600">ล้นตลิ่ง {fmt(-fb)} ม.</b>}
-                {closest ? (
-                  <>
-                    <br />
-                    ใกล้เกณฑ์ธงที่สุดคือ<b className="text-ink-900">{closest.bridge}</b> อีก <b className="text-ink-900">{fmt(closest.meters)} ม.</b> ถึง
-                    {closest.next === "YELLOW" ? "ธงเหลือง" : "ธงแดง"}
-                  </>
-                ) : null}
+                {TREND_PHRASE[trend] ? <> · น้ำ{TREND_PHRASE[trend]}</> : null}
               </>
             ) : (
               feedError ?? "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้ ลองใหม่อีกครั้งภายหลัง"

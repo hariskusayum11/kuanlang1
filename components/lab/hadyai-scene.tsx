@@ -5,7 +5,6 @@
 // บ้านและน้ำใช้มาตราส่วนเดียวกัน (domain/water/scene-geometry.ts) — น้ำสูงกว่าตลิ่งเท่าไร ในภาพก็ท่วมบ้านเท่านั้น
 // สีใช้คลาส Token ทั้งหมด · ไม่มี <defs>/gradient (ตามข้อบังคับ SVG ของระบบ)
 import { mslToSceneY, SCENE, wavePath } from "@/domain/water/scene-geometry";
-import type { EstimatedFlag } from "@/domain/water/community-flags";
 
 const GROUND = SCENE.bankY;
 const M = SCENE.pxPerM;
@@ -303,40 +302,6 @@ function PowerLines({ poles }: { poles: number[] }) {
   );
 }
 
-// สีธงตามความหมายของระบบ: ปกติ = มิ้นต์ · เฝ้าระวัง = sun · อุทกภัย = red · ไม่ทราบ = slate
-const POLE_FLAG_FILL: Record<EstimatedFlag, string> = {
-  GREEN: "fill-emerald-500",
-  YELLOW: "fill-sun-400",
-  RED: "fill-red-600",
-  UNKNOWN: "fill-slate-300",
-};
-
-/** เสาธงเตือนภัยชุมชนริมคลอง — สีตามธงโดยประมาณ (ชื่อธงอยู่ที่หัวข้อใหญ่แล้ว จึงไม่มีป้ายซ้ำ) · ธงสะบัดไปทางซ้าย */
-function FlagPole({ x, flag, animate }: { x: number; flag: EstimatedFlag; animate: boolean }) {
-  const top = GROUND - 9.5 * M;
-  return (
-    <g>
-      <rect x={x - 22} y={GROUND - 14} width={44} height={16} rx={3} className="fill-slate-400" />
-      <rect x={x - 5} y={top} width={10} height={GROUND - top} rx={4} className="fill-slate-300" />
-      <rect x={x - 1} y={top} width={3} height={GROUND - top} className="fill-white/60" />
-      <circle cx={x} cy={top - 4} r={9} className="fill-slate-400" />
-      <g transform={`translate(${2 * x} 0) scale(-1 1)`}>
-        <g className={animate ? "animate-flag-wave" : undefined} style={{ transformBox: "fill-box", transformOrigin: "left center" }}>
-          {/* ธงสามเหลี่ยม (ชายธง) — ไม่ให้คล้ายธงชาติ */}
-          <path
-            d={`M${x + 5} ${top + 4} Q${x + 100} ${top + 20} ${x + 200} ${top + 58} Q${x + 100} ${top + 96} ${x + 5} ${top + 112} Z`}
-            className={POLE_FLAG_FILL[flag]}
-          />
-          <path
-            d={`M${x + 5} ${top + 4} Q${x + 100} ${top + 20} ${x + 200} ${top + 58} Q${x + 100} ${top + 34} ${x + 5} ${top + 26} Z`}
-            className="fill-white/25"
-          />
-        </g>
-      </g>
-    </g>
-  );
-}
-
 /**
  * ลูกศรวัดระยะ "ผิวน้ำ ↔ ตลิ่ง" บนกำแพง — ให้เห็นช่องว่างจริงในภาพพร้อมตัวเลข (มาตราส่วนเดียวกับบ้าน)
  * ต่ำกว่าตลิ่ง = ตัวเลขสีเข้ม · ล้นตลิ่ง = แดง · ไม่มีข้อมูล = ไม่วาด
@@ -406,7 +371,7 @@ export function HadYaiScene({
   historyMark,
   communityNames,
   animate,
-  flag,
+  placeLabel,
 }: {
   /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
   levelMsl: number | null;
@@ -415,8 +380,8 @@ export function HadYaiScene({
   historyMark: SceneMark | null;
   communityNames: string[];
   animate: boolean;
-  /** ธงเตือนภัยชุมชนโดยประมาณ — แสดงบนเสาธงริมคลอง */
-  flag: EstimatedFlag;
+  /** บอกว่าภาพนี้คือจุดวัดไหน (เช่น "จุดวัดน้ำหาดใหญ่ใน") — ไม่ให้สับสนกับสะพานที่ใช้ตัดสินธง */
+  placeLabel: string;
 }) {
   const waterY = mslToSceneY(levelMsl, bankMsl);
   const gaugeTop = mslToSceneY(bankMsl + 3.6, bankMsl);
@@ -462,7 +427,6 @@ export function HadYaiScene({
       <rect x={0} y={GROUND - 14} width={SCENE.width} height={20} className="fill-emerald-200" />
       {[120, 330, 560].map((x, i) => <RubberTree key={x} x={x} h={150 + (i % 2) * 40} />)}
       {[240, 470].map((x, i) => <Palm key={x} x={x} h={200 + i * 18} />)}
-      <FlagPole x={826} flag={flag} animate={animate} />
       {[1056, 1206, 1336, 1472, 1594].map((x, i) => (i % 2 ? <Palm key={x} x={x} h={230} /> : <RubberTree key={x} x={x} h={190} />))}
 
       {HOUSES.map(({ x, w, kind: House }) => (
@@ -495,6 +459,8 @@ export function HadYaiScene({
         const whole = Math.abs(m - Math.round(m)) < 0.01;
         return <rect key={m} x={GAUGE_X + 4} y={y - 2.5} width={whole ? 24 : 13} height={5} className="fill-ink-800" />;
       })}
+      <Label x={GAUGE_X + 190} y={GROUND + 84} text={placeLabel} tone="ink" />
+
       {/* ระดับตลิ่ง — เส้นเดียว (ไม่ใส่เกณฑ์ฉบับร่างบนกำแพง) */}
       <line x1={GAUGE_X + 34} x2={SCENE.width} y1={GROUND} y2={GROUND} className="stroke-ink-800" strokeWidth={3} strokeDasharray="16 12" />
       <text x={GAUGE_X + 46} y={GROUND + 34} fontSize={24} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={6} style={{ paintOrder: "stroke" }}>
