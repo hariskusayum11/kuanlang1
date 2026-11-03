@@ -28,6 +28,8 @@ const RAIL_Y = GROUND + 35;
  * (ผิวน้ำต่ำสุดของทุกจุดวัดยังอยู่ในกรอบ · คำนวณพิกัดยังเป็นระบบ 1600×900 เดิม)
  */
 export const SCENE_CROP = { top: 125, height: 705 } as const;
+/** ขอบล่างของกรอบที่แสดง (หน่วยฉาก) */
+const BOTTOM = SCENE_CROP.top + SCENE_CROP.height;
 
 /** ท้องฟ้าตามเวลา + เมฆ — วาดหลังสุด (หลังเขา) */
 function Sky({ phase, cloud, rain }: { phase: DayPhase; cloud: number; rain: RainLevel }) {
@@ -395,7 +397,7 @@ function GapMeasure({ waterY, levelMsl, targetMsl, targetY, targetLabel }: { wat
 const HOUSES = [
   { x: 926, w: 104, kind: RaisedWoodHouse, labelY: GROUND - 4.3 * M - 102 },
   { x: 1064, w: 116, kind: ConcreteHouse, labelY: GROUND - 3.1 * M - 92 },
-  { x: 1212, w: 96, kind: Shophouse, labelY: GROUND - 6.6 * M - 96 },
+  { x: 1212, w: 96, kind: Shophouse, labelY: GROUND - 6.6 * M - 44 }, // ตึกสูงสุด — ป้ายชิดหลังคา ไม่ให้ลอยขึ้นไปใต้แถบเมนู
   { x: 1342, w: 104, kind: HalfWoodHouse, labelY: GROUND - 5.4 * M - 100 },
   { x: 1480, w: 92, kind: RaisedConcreteHouse, labelY: GROUND - 4.2 * M - 96 },
 ] as const;
@@ -431,6 +433,7 @@ export function HadYaiScene({
   phase = "day",
   rain = "none",
   cloud = 0,
+  extendBottom = 0,
 }: {
   /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
   levelMsl: number | null;
@@ -453,6 +456,8 @@ export function HadYaiScene({
   rain?: RainLevel;
   /** เมฆปกคลุม (%) */
   cloud?: number;
+  /** ต่อภาพลงด้านล่าง (หน่วยฉาก) — ให้น้ำ/กำแพงไหลลงใต้แถบย้อนดูโดยเส้นผิวน้ำยังอยู่เหนือแถบ */
+  extendBottom?: number;
 }) {
   const waterY = mslToSceneY(levelMsl, bankMsl);
   const gaugeTop = mslToSceneY(Math.max(bankMsl + 3.6, ...lines.map((l) => l.levelMsl + 1)), bankMsl);
@@ -463,7 +468,7 @@ export function HadYaiScene({
 
   return (
     <svg
-      viewBox={`${viewX} ${SCENE_CROP.top} ${SCENE.width - viewX} ${SCENE_CROP.height}`}
+      viewBox={`${viewX} ${SCENE_CROP.top} ${SCENE.width - viewX} ${SCENE_CROP.height + extendBottom}`}
       preserveAspectRatio="xMaxYMax slice"
       className="h-full w-full"
       role="img"
@@ -519,9 +524,9 @@ export function HadYaiScene({
       ))}
 
       {/* กำแพงคลอง */}
-      <rect x={0} y={GROUND} width={SCENE.width} height={SCENE.height - GROUND} className="fill-slate-300" />
+      <rect x={0} y={GROUND} width={SCENE.width} height={BOTTOM - GROUND + extendBottom} className="fill-slate-300" />
       <rect x={0} y={GROUND} width={SCENE.width} height={12} className="fill-slate-400" />
-      {Array.from({ length: 8 }, (_, r) => (
+      {Array.from({ length: 8 + Math.ceil(extendBottom / 56) }, (_, r) => (
         <g key={r}>
           <rect x={0} y={GROUND + 12 + (r + 1) * 56} width={SCENE.width} height={2} className="fill-slate-400/50" />
           {Array.from({ length: 11 }, (_, c) => (
@@ -531,11 +536,11 @@ export function HadYaiScene({
       ))}
 
       {/* โทนตามเวลา — กลางคืนมืดลง · รุ่งเช้า/โพล้เพล้อุ่นขึ้นเล็กน้อย (ไม้วัด น้ำ และป้ายวาดทับจึงยังอ่านชัด) */}
-      {phase === "night" ? <rect x={0} y={0} width={SCENE.width} height={SCENE.height} className="fill-ink-950/45" /> : null}
-      {phase === "dawn" || phase === "dusk" ? <rect x={0} y={0} width={SCENE.width} height={SCENE.height} className="fill-sun-700/10" /> : null}
+      {phase === "night" ? <rect x={0} y={0} width={SCENE.width} height={BOTTOM + extendBottom} className="fill-ink-950/45" /> : null}
+      {phase === "dawn" || phase === "dusk" ? <rect x={0} y={0} width={SCENE.width} height={BOTTOM + extendBottom} className="fill-sun-700/10" /> : null}
 
       {/* ไม้วัดระดับน้ำ */}
-      <rect x={GAUGE_X} y={gaugeTop} width={34} height={SCENE.height - gaugeTop} rx={4} className="fill-white stroke-slate-300" strokeWidth={2} />
+      <rect x={GAUGE_X} y={gaugeTop} width={34} height={BOTTOM - gaugeTop + extendBottom} rx={4} className="fill-white stroke-slate-300" strokeWidth={2} />
       {ticks.map((m) => {
         const y = mslToSceneY(m, bankMsl);
         const whole = Math.abs(m - Math.round(m)) < 0.01;
@@ -562,10 +567,10 @@ export function HadYaiScene({
       {/* ผิวน้ำ — ระดับจริงจากสถานี */}
       <g style={{ transform: `translateY(${waterY}px)`, transition: "transform 700ms cubic-bezier(.2,.8,.2,1)" }}>
         <g className={animate ? "animate-wave-drift-slow" : undefined} style={{ transformBox: "fill-box" }}>
-          <path d={wavePath(10, 200, SCENE.height)} className="fill-sky-400/55" transform="translate(0 -6)" />
+          <path d={wavePath(10, 200, SCENE.height + extendBottom)} className="fill-sky-400/55" transform="translate(0 -6)" />
         </g>
         <g className={animate ? "animate-wave-drift" : undefined} style={{ transformBox: "fill-box" }}>
-          <path d={wavePath(7, 160, SCENE.height)} className="fill-brand-500/75" />
+          <path d={wavePath(7, 160, SCENE.height + extendBottom)} className="fill-brand-500/75" />
         </g>
       </g>
 

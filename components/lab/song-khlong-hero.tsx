@@ -3,10 +3,10 @@
 // ส่วนหัวหน้า "สองคลอง" — ภาพน้ำจริงเทียบบ้านริมคลอง (ดูง่าย เห็นน้ำ) โดยใช้ของระบบนี้เป็นตัวนำ:
 // ธงเตือนภัยของชุมชน · เลือกดูจุดวัดได้ (ค่าเริ่มต้น = สะพานที่ใกล้เกณฑ์ธงที่สุด) · เส้นธงเหลือง/แดงบนกำแพง
 // · ลูกศรวัดระยะจากผิวน้ำถึงเส้นธงถัดไป · การ์ดย้อนดูพร้อมหมุดเหตุการณ์
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo-mark";
-import { HadYaiScene, type SceneLine, type SceneMark } from "@/components/lab/hadyai-scene";
+import { HadYaiScene, SCENE_CROP, type SceneLine, type SceneMark } from "@/components/lab/hadyai-scene";
 import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
 import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
@@ -277,10 +277,11 @@ export function SongKhlongHero({
   const next = nextIdx >= 0 ? stations[nextIdx + 1] : undefined;
   const lag = next && reading ? lagHours[`${reading.code}>${next.code}`] : null;
 
-  const scene = (viewX: number) =>
+  const scene = (viewX: number, extendBottom = 0) =>
     reading && reading.bankMsl !== null ? (
       <HadYaiScene
         viewX={viewX}
+        extendBottom={extendBottom}
         phase={phase}
         rain={rain}
         cloud={cloud}
@@ -297,17 +298,38 @@ export function SongKhlongHero({
       />
     ) : null;
 
+  const sceneBoxRef = useRef<HTMLDivElement>(null);
+  const [extendUnits, setExtendUnits] = useState(100);
+  useEffect(() => {
+    const el = sceneBoxRef.current;
+    if (!el) return;
+    const measure = () => {
+      const extra = parseFloat(getComputedStyle(document.documentElement).fontSize) * 6;
+      const main = el.clientHeight - extra;
+      if (main > 0) setExtendUnits(Math.round((extra * SCENE_CROP.height) / main));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [reading]);
+
   const hasReplay = Boolean(reading && (hist.recent.length || hist.flood.length || forecastSeries.length));
 
   return (
     <section className={`relative isolate overflow-hidden bg-gradient-to-b md:min-h-dvh ${SKY_BG[phase]} ${rain !== "none" && !night ? "saturate-[.8]" : ""}`}>
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
       <div className="absolute inset-0 hidden md:block">
-        {/* ขนาดภาพ = min(สูงเต็มจอลบแถบย้อนดู 6rem, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 —
-            ภาพจบเหนือแถบย้อนดู แถบจึงไม่บังเส้นขอบน้ำแม้น้ำต่ำ ·
-            ใหญ่ที่สุดโดยไม่ครอปด้านบน และไม้วัด/เส้นธงไม่ไปอยู่ใต้คอลัมน์ข้อความ · ส่วนซ้ายที่ล้นจอถูกตัดโดย overflow-hidden · ขอบซ้ายของภาพโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีของส่วนหัวโดยไม่มีรอยต่อ */}
+        {/* ขนาดภาพ = min(สูงเต็มจอลบแถบย้อนดู 6rem, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 + ส่วนต่อด้านล่าง 6rem —
+            ส่วนต่อเป็นน้ำ/กำแพงที่ไหลลงไปใต้แถบย้อนดู (แถบลอยอยู่บนน้ำ) ส่วนเส้นผิวน้ำ/ไม้วัด/เส้นธงยังอยู่เหนือแถบเสมอ ·
+            ไม้วัด/เส้นธงไม่ไปอยู่ใต้คอลัมน์ข้อความ · ส่วนซ้ายที่ล้นจอถูกตัดโดย overflow-hidden · ขอบซ้ายโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีโดยไม่มีรอยต่อ */}
         {reading ? (
-          <div className="absolute bottom-24 right-0 h-[min(calc(100dvh_-_6rem),54vw)] w-[min(calc((100dvh_-_6rem)*2.27),122.6vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]">{scene(0)}</div>
+          <div
+            ref={sceneBoxRef}
+            className="absolute bottom-0 right-0 h-[calc(min(100dvh_-_6rem,54vw)_+_6rem)] w-[min(calc((100dvh_-_6rem)*2.27),122.6vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+          >
+            {scene(0, extendUnits)}
+          </div>
         ) : null}
       </div>
 
@@ -435,13 +457,13 @@ export function SongKhlongHero({
           {/* แคปซูลอากาศลอยเหนือแถบ — ผูกกับขอบบนของแถบ จึงไม่ทับแม้แถบสูงขึ้น (เช่น มีแถวหมุดเหตุการณ์) */}
           {weather ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 hidden px-10 md:block">
-              <div className="pointer-events-auto mx-auto flex max-w-[1500px] justify-end">
+              <div className="pointer-events-auto mx-auto flex max-w-[1180px] justify-end">
                 <WeatherWidget weather={weather} daily={forecast.daily} dark={night} placement="up" />
               </div>
             </div>
           ) : null}
           <div
-            className={`mx-auto flex max-w-[1500px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
+            className={`mx-auto flex max-w-[1180px] flex-col gap-3 rounded-[1.75rem] p-3 ring-1 transition-colors md:flex-row md:items-center md:gap-5 md:px-5 ${
               mode === "live" ? "bg-white/70 ring-slate-200 hover:bg-white/90 focus-within:bg-white/90" : "bg-white/90 shadow-lg ring-slate-200"
             }`}
           >
@@ -512,11 +534,11 @@ export function SongKhlongHero({
                 </button>
               </div>
             ) : (
-              <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” เพื่อดูน้ำขึ้นจริงทีละชั่วโมงเทียบกับเส้นธงและบ้านริมคลอง</p>
+              <p className="flex-1 text-sm text-slate-500">กด “น้ำท่วม พ.ย. 68” ดูน้ำขึ้นจริงทีละชั่วโมง</p>
             )}
           </div>
           {(mode === "flood" || mode === "forecast") && events.length ? (
-            <p className={`mx-auto mt-1.5 max-w-[1500px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
+            <p className={`mx-auto mt-1.5 max-w-[1180px] px-2 text-[11px] font-semibold md:px-5 ${tone("text-red-700", "text-red-300")}`}>{events.map((e) => `⚑ ${e.label}`).join("   ·   ")}</p>
           ) : null}
         </div>
       ) : null}
