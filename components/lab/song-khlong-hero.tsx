@@ -304,7 +304,7 @@ export function SongKhlongHero({
     const el = sceneBoxRef.current;
     if (!el) return;
     const measure = () => {
-      const extra = parseFloat(getComputedStyle(document.documentElement).fontSize) * 6;
+      const extra = parseFloat(getComputedStyle(document.documentElement).fontSize) * 4.5;
       const main = el.clientHeight - extra;
       if (main > 0) setExtendUnits(Math.round((extra * SCENE_CROP.height) / main));
     };
@@ -320,13 +320,13 @@ export function SongKhlongHero({
     <section className={`relative isolate overflow-hidden bg-gradient-to-b md:min-h-dvh ${SKY_BG[phase]} ${rain !== "none" && !night ? "saturate-[.8]" : ""}`}>
       {/* ฉาก: มือถืออยู่ใต้ข้อความ · จอกว้างเป็นพื้นหลังเต็มจอ */}
       <div className="absolute inset-0 hidden md:block">
-        {/* ขนาดภาพ = min(สูงเต็มจอลบแถบย้อนดู 6rem, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 + ส่วนต่อด้านล่าง 6rem —
-            ส่วนต่อเป็นน้ำ/กำแพงที่ไหลลงไปใต้แถบย้อนดู (แถบลอยอยู่บนน้ำ) ส่วนเส้นผิวน้ำ/ไม้วัด/เส้นธงยังอยู่เหนือแถบเสมอ ·
+        {/* ขนาดภาพ = min(สูงเต็มจอลบแถบย้อนดู 6rem, กว้างพอให้เห็น 1350 หน่วยจากขวา) ตามสัดส่วนกรอบ 1600×705 + ส่วนต่อด้านล่าง 4.5rem (ภาพจึงเลื่อนลง 1.5rem ให้ป้ายชื่อชุมชนพ้นแถบเมนู · มากกว่านี้เส้นผิวน้ำตอนน้ำต่ำจะชนแคปซูลอากาศ) —
+            ส่วนต่อเป็นน้ำ/กำแพงที่ไหลลงไปใต้แถบย้อนดู (แถบลอยอยู่บนน้ำ) ส่วนเส้นผิวน้ำยังอยู่เหนือแถบเมื่อน้ำต่ำกว่าตลิ่งไม่เกินราว 7 ม. ·
             ไม้วัด/เส้นธงไม่ไปอยู่ใต้คอลัมน์ข้อความ · ส่วนซ้ายที่ล้นจอถูกตัดโดย overflow-hidden · ขอบซ้ายโปร่งใสด้วย mask จึงกลืนกับพื้นไล่สีโดยไม่มีรอยต่อ */}
         {reading ? (
           <div
             ref={sceneBoxRef}
-            className="absolute bottom-0 right-0 h-[calc(min(100dvh_-_6rem,54vw)_+_6rem)] w-[min(calc((100dvh_-_6rem)*2.27),122.6vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+            className="absolute bottom-0 right-0 h-[calc(min(100dvh_-_6rem,54vw)_+_4.5rem)] w-[min(calc((100dvh_-_6rem)*2.27),122.6vw)] [mask-image:linear-gradient(to_right,transparent,black_45%)]"
           >
             {scene(0, extendUnits)}
           </div>
