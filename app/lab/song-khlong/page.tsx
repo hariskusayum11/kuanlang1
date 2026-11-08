@@ -121,7 +121,7 @@ export default async function SongKhlongLabPage({ searchParams }: { searchParams
             <SongKhlongExperience
               canals={JSON.parse(canalsText)}
               communities={mapData.communities.map((c) => ({ id: c.id, nameTh: c.nameTh, lat: c.lat, lng: c.lng, boundary: c.boundary }))}
-              floodGrid={mapData.floodGrid.map((c) => ({ bounds: c.bounds, households: c.households, avgDepthCm: c.avgDepthCm }))}
+              floodGrid={mapData.floodGrid}
               sites={mapData.sites}
               stations={feed.stations}
               markerStations={feed.readings}

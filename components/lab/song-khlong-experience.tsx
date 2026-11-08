@@ -18,6 +18,9 @@ import {
 } from "@/domain/water/station-status";
 import { DAILY_RAIN_LABEL, dailyRain, type DailyRain } from "@/domain/water/sky";
 import type { RainStation } from "@/lib/water/rain-stations";
+import { FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
+import { GRID_METRIC_LABELS, GRID_MIN_HOUSEHOLDS, gridLegend, gridLevel, type FloodGridCell, type GridMetric } from "@/domain/geo/flood-grid";
+import { gridPopup } from "@/components/public/flood-grid-popup";
 
 type LngLat = [number, number];
 interface CanalCollection {
@@ -25,7 +28,6 @@ interface CanalCollection {
   features: Array<{ type: "Feature"; properties: { canal: "utapao" | "r1" | "wha"; name: string }; geometry: { type: "LineString"; coordinates: LngLat[] } }>;
 }
 interface Community { id: string; nameTh: string; lat: number; lng: number; boundary: LngLat[][][] | null }
-interface GridCell { bounds: [number, number, number, number]; households: number; avgDepthCm: number | null }
 interface Site { id: string; name: string; type: string | null; lat: number; lng: number }
 
 /*
@@ -46,6 +48,16 @@ const DASH_SEQUENCE: number[][] = [
   [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5],
 ];
 const EXTRUDE_PER_M = 22; // ความสูงแท่งน้ำบนแผนที่ (ม.) ต่อระดับน้ำจริง 1 ม. — ขยายให้เห็นชัด
+const FLAT_CELL_M = 20; // ตัวชี้วัดที่ไม่ใช่ความลึก — วาดเป็นแผ่นบาง ๆ สูงเท่ากันทุกช่อง
+
+// ความรุนแรงน้ำท่วม (docs/39) — ตัวชี้วัดชุดเดียวกับแผนที่หน้าแรก · "off" = ไม่แสดง
+type SeverityChoice = GridMetric | "off";
+const SEVERITY_CHOICES: { value: SeverityChoice; label: string }[] = [
+  { value: "depth", label: "ระดับน้ำที่เคยท่วม" },
+  { value: "belowRoad", label: "บ้านพื้นต่ำกว่าถนน" },
+  { value: "duration", label: "จำนวนวันที่ท่วม" },
+  { value: "off", label: "ไม่แสดง" },
+];
 
 const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 // ชั้นอ้างอิงโปร่งใสของ Esri วางทับภาพดาวเทียม — ถนนและชื่อสถานที่ ให้รู้ว่าตรงไหนเป็นตรงไหน
@@ -148,19 +160,22 @@ function rainPopup(r: RainStation): HTMLElement {
   return root;
 }
 
-function gridGeoJson(cells: GridCell[]) {
+function gridGeoJson(cells: FloodGridCell[]) {
   return {
     type: "FeatureCollection" as const,
-    features: cells
-      .filter((c) => c.avgDepthCm !== null && c.avgDepthCm > 0)
-      .map((c) => {
-        const [s, w, n, e] = c.bounds;
-        return {
-          type: "Feature" as const,
-          properties: { d: (c.avgDepthCm ?? 0) / 100, hh: c.households },
-          geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
-        };
-      }),
+    features: cells.map((c, i) => {
+      const [s, w, n, e] = c.bounds;
+      const levels: Record<string, number> = {};
+      for (const m of ["depth", "belowRoad", "duration"] as const) {
+        const lv = gridLevel(c, m);
+        if (lv !== null) levels[`lv_${m}`] = lv;
+      }
+      return {
+        type: "Feature" as const,
+        properties: { i, d: (c.avgDepthCm ?? 0) / 100, hh: c.households, ...levels },
+        geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+      };
+    }),
   };
 }
 
@@ -185,7 +200,8 @@ export function SongKhlongExperience({
 }: {
   canals: CanalCollection;
   communities: Community[];
-  floodGrid: GridCell[];
+  /** ช่องความรุนแรงน้ำท่วม ~200 ม. (≥ 5 หลัง · ไม่มีพิกัดรายบ้าน) — ชุดเดียวกับแผนที่หน้าแรก */
+  floodGrid: FloodGridCell[];
   sites: Site[];
   stations: StationReading[];
   /** สถานีที่ปักหมุดบนแผนที่ (รวมสะพานคลองหวะที่ใช้ตัดสินธง) — ค่าเริ่มต้น = สถานีบนคลองอู่ตะเภา */
@@ -218,6 +234,10 @@ export function SongKhlongExperience({
 
   const grid = useMemo(() => gridGeoJson(floodGrid), [floodGrid]);
   const hasGrid = grid.features.length > 0;
+  const [severity, setSeverity] = useState<SeverityChoice>(floodGrid.length ? "depth" : "off");
+  const heatColors = useRef<string[]>([]);
+  const severityCells = severity === "off" ? 0 : grid.features.filter((f) => `lv_${severity}` in f.properties).length;
+  const severityLegend = severity === "off" ? [] : [...gridLegend(severity, FLOOD_DEPTH_BINS.map((b) => ({ level: b.level, label: b.label })))].reverse();
   // ปัดลงทีละ 0.1 ม. — ถ้าปัดขึ้น ตำแหน่งสูงสุดจะไม่มีช่องไหนลึกถึงและตัวนับขึ้น 0
   const maxDepth = useMemo(() => Math.max(0.1, Math.floor(Math.max(0, ...grid.features.map((f) => f.properties.d)) * 10) / 10), [grid]);
   const [level, setLevel] = useState(maxDepth);
@@ -286,18 +306,25 @@ export function SongKhlongExperience({
       map.addLayer({ id: "community-fill", type: "fill", source: "communities", paint: { "fill-color": "#FF6A00", "fill-opacity": 0.08 } });
       map.addLayer({ id: "community-line", type: "line", source: "communities", paint: { "line-color": "#FFB27A", "line-width": 1.4, "line-dasharray": [2, 2], "line-opacity": 0.8 } });
 
+      // สีช่องจาก Token --heat-1…9 (ชุดเดียวกับแผนที่หน้าแรก) — WebGL ใช้ var() ไม่ได้ จึงอ่านค่าจริงจาก CSS
+      const css = getComputedStyle(document.documentElement);
+      heatColors.current = FLOOD_DEPTH_BINS.map((b) => css.getPropertyValue(heatVar(b.level)).trim() || "#2563EB");
       map.addSource("grid", { type: "geojson", data: grid });
       map.addLayer({
         id: "grid-water",
         type: "fill-extrusion",
         source: "grid",
-        paint: {
-          "fill-extrusion-color": ["interpolate", ["linear"], ["get", "d"], 0.5, "#7DD3FC", 2, "#38BDF8", 3.5, "#2563EB", 5, "#1E3A8A", 8, "#172554"],
-          "fill-extrusion-height": ["*", ["min", ["get", "d"], maxDepth], EXTRUDE_PER_M],
-          "fill-extrusion-base": 0,
-          "fill-extrusion-opacity": 0.72,
-        },
+        layout: { visibility: "none" },
+        paint: { "fill-extrusion-color": "#2563EB", "fill-extrusion-height": 0, "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.72 },
       });
+      // กดช่อง = ค่าเฉลี่ยทั้ง 3 ตัวชี้วัด + จำนวนหลังที่ตอบ (ป๊อปอัปเดียวกับหน้าแรก)
+      map.on("click", "grid-water", (e) => {
+        const idx = e.features?.[0]?.properties?.i;
+        const cell = typeof idx === "number" ? floodGrid[idx] : undefined;
+        if (cell) new maplibregl.Popup({ maxWidth: "270px" }).setLngLat(e.lngLat).setHTML(gridPopup(cell)).addTo(map);
+      });
+      map.on("mouseenter", "grid-water", () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", "grid-water", () => (map.getCanvas().style.cursor = ""));
 
       map.addSource("canals", { type: "geojson", data: canals });
       for (const canal of ["utapao", "r1", "wha"] as const) {
@@ -493,12 +520,30 @@ export function SongKhlongExperience({
     setCssFull(true);
   };
 
-  // ---------- ระดับน้ำย้อนหลัง (แถบเลื่อน) ----------
+  // ---------- ความรุนแรงน้ำท่วม: ตัวชี้วัด + ระดับน้ำ (แถบเลื่อน) ----------
+  // ระดับน้ำ = แท่งสูงตามความลึกจริง (เลื่อนดูน้ำขึ้นได้) · ตัวชี้วัดอื่น = แผ่นบางสีตามช่วงค่า
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    map.setPaintProperty("grid-water", "fill-extrusion-height", ["*", ["min", ["get", "d"], level], EXTRUDE_PER_M]);
-  }, [ready, level]);
+    if (severity === "off") {
+      map.setLayoutProperty("grid-water", "visibility", "none");
+      return;
+    }
+    const key = `lv_${severity}`;
+    const colors = heatColors.current;
+    const match: unknown[] = ["match", ["get", key]];
+    colors.forEach((c, i) => match.push(i + 1, c));
+    match.push("#94A3B8");
+    map.setFilter("grid-water", ["has", key]);
+    map.setPaintProperty("grid-water", "fill-extrusion-color", match as maplibregl.ExpressionSpecification);
+    map.setPaintProperty(
+      "grid-water",
+      "fill-extrusion-height",
+      severity === "depth" ? ["*", ["min", ["get", "d"], level], EXTRUDE_PER_M] : FLAT_CELL_M,
+    );
+    map.setPaintProperty("grid-water", "fill-extrusion-opacity", severity === "depth" ? 0.78 : 0.68);
+    map.setLayoutProperty("grid-water", "visibility", "visible");
+  }, [ready, severity, level]);
 
   const play = useCallback(() => {
     if (reducedMotion.current) { setLevel(maxDepth); return; }
@@ -630,43 +675,78 @@ export function SongKhlongExperience({
         ) : null}
       </div>
 
-      {/* ---- ย้อนดูน้ำท่วมจากแบบสำรวจ ---- */}
-      <section className={`${PANEL} absolute bottom-3 left-3 right-3 z-10 rounded-3xl p-4 md:bottom-5 md:left-5 md:right-auto md:w-[30rem] md:p-5`}>
-        <div className="flex items-center justify-between gap-3">
+      {/* ---- ความรุนแรงน้ำท่วมจากแบบสำรวจ (docs/39 — ชุดเดียวกับแผนที่หน้าแรก) ---- */}
+      <section className={`${PANEL} absolute bottom-3 left-3 right-3 z-10 max-h-[46%] overflow-y-auto rounded-3xl p-4 md:bottom-5 md:left-5 md:right-auto md:max-h-none md:w-[30rem] md:p-5`}>
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-bold">ระดับน้ำที่ชาวบ้านเคยเจอ</h2>
-            <p className="text-[11px] text-slate-500">จากแบบสำรวจที่ตรวจแล้ว · แสดงเป็นช่องพื้นที่ ~200 ม. ที่มีอย่างน้อย 5 หลัง</p>
+            <h2 className="text-sm font-bold">ความรุนแรงน้ำท่วม</h2>
+            <p className="text-[11px] text-slate-500">จากแบบสำรวจที่ตรวจแล้ว · ช่องละ ~200 ม. ที่มีอย่างน้อย {GRID_MIN_HOUSEHOLDS} หลัง · กดช่องเพื่อดูค่า</p>
           </div>
-          {hasGrid ? (
+          {hasGrid && severity === "depth" ? (
             <button type="button" onClick={play} disabled={playing} className="btn btn-primary btn-sm shrink-0 disabled:opacity-60">
               {playing ? "กำลังเล่น…" : "▶ เล่นน้ำขึ้น"}
             </button>
           ) : null}
         </div>
-        {hasGrid ? (<>
-        <div className="mt-3 flex items-center gap-3">
-          <input
-            type="range"
-            min={0}
-            max={maxDepth}
-            step={0.1}
-            value={level}
-            onChange={(e) => setLevel(Number(e.target.value))}
-            className="w-full accent-brand-600"
-            aria-label="ระดับน้ำ (เมตร)"
-          />
-          <span className="w-16 text-right text-lg font-black tabular-nums text-brand-700">{fmt(level, 1)} ม.</span>
+        <div role="radiogroup" aria-label="ตัวชี้วัดความรุนแรงน้ำท่วม" className="mt-3 flex flex-wrap gap-1 rounded-2xl bg-mist p-1">
+          {SEVERITY_CHOICES.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              role="radio"
+              aria-checked={severity === c.value}
+              onClick={() => setSeverity(c.value)}
+              disabled={!hasGrid && c.value !== "off"}
+              className={`flex-1 whitespace-nowrap rounded-xl px-2.5 py-1.5 text-xs font-bold transition disabled:opacity-40 ${
+                severity === c.value ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
-        <p className="mt-1 text-xs text-slate-600">
-          {level > 0 ? (
-            <>พื้นที่ที่น้ำเฉลี่ยเคยลึกอย่างน้อยระดับนี้ <b>{reached.cells.toLocaleString("th-TH")}</b> ช่อง · <b>{reached.households.toLocaleString("th-TH")}</b> หลัง</>
-          ) : "ลากแถบหรือกด “เล่นน้ำขึ้น” เพื่อดูน้ำค่อย ๆ สูงขึ้น"}
-        </p>
-        </>) : (
+        {!hasGrid ? (
           // ไม่มีข้อมูล = บอกตามจริง ห้ามวาดแถบ/ตัวเลขสมมติ
           <p className="mt-3 rounded-2xl bg-mist px-3 py-2 text-xs text-slate-600">
-            ยังไม่มีพื้นที่ที่มีข้อมูลระดับน้ำท่วมจากแบบสำรวจที่ตรวจแล้วพอจะแสดง (ต้องมีอย่างน้อย 5 หลังต่อช่อง)
+            ยังไม่มีพื้นที่ที่มีข้อมูลจากแบบสำรวจที่ตรวจแล้วพอจะแสดง (ต้องมีอย่างน้อย {GRID_MIN_HOUSEHOLDS} หลังต่อช่อง)
           </p>
+        ) : severity === "off" ? null : (
+          <>
+            <p className="mt-3 text-xs font-bold text-slate-700">
+              {GRID_METRIC_LABELS[severity]} <span className="font-normal text-slate-500">· {severityCells.toLocaleString("th-TH")} ช่องที่มีคำตอบ</span>
+            </p>
+            <ul className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] text-slate-600">
+              {severityLegend.map((step) => (
+                <li key={`${step.level}-${step.label}`} className="flex items-center gap-1">
+                  <i className="h-3 w-4 shrink-0 rounded-sm" style={{ backgroundColor: `var(${heatVar(step.level)})`, opacity: 0.8 }} aria-hidden="true" />
+                  {step.label}
+                </li>
+              ))}
+            </ul>
+            {severity === "depth" ? (
+              <>
+                <div className="mt-3 flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={maxDepth}
+                    step={0.1}
+                    value={level}
+                    onChange={(e) => setLevel(Number(e.target.value))}
+                    className="w-full accent-brand-600"
+                    aria-label="ระดับน้ำ (เมตร)"
+                  />
+                  <span className="w-16 text-right text-lg font-black tabular-nums text-brand-700">{fmt(level, 1)} ม.</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  {level > 0 ? (
+                    <>พื้นที่ที่น้ำเฉลี่ยเคยลึกอย่างน้อยระดับนี้ <b>{reached.cells.toLocaleString("th-TH")}</b> ช่อง · <b>{reached.households.toLocaleString("th-TH")}</b> หลัง</>
+                  ) : "ลากแถบหรือกด “เล่นน้ำขึ้น” เพื่อดูน้ำค่อย ๆ สูงขึ้น"}
+                </p>
+              </>
+            ) : null}
+            <p className="mt-1.5 text-[10px] text-slate-400">ค่าเฉลี่ยจากคำบอกเล่าของครัวเรือน ไม่ใช่แบบจำลองน้ำท่วมทางวิศวกรรม</p>
+          </>
         )}
       </section>
 
