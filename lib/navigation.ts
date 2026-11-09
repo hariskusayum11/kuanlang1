@@ -161,6 +161,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconHref: "/admin/links",
   },
   {
+    // เกณฑ์ธงเตือนภัยชุมชนบนหน้าแรก — ADMIN แก้เป็นเวอร์ชันใหม่ (docs/44)
+    group: "system",
+    label: "เกณฑ์ธงเตือนภัย",
+    href: "/flag-criteria",
+    permission: PERMISSIONS.FLAG_CRITERIA_MANAGE,
+    implemented: true,
+  },
+  {
     group: "system",
     label: "ตั้งค่าระบบ",
     href: "/settings",

@@ -348,10 +348,12 @@ function PowerLines({ poles }: { poles: number[] }) {
 export interface SceneLine {
   levelMsl: number;
   label: string;
-  tone: "yellow" | "red";
+  tone: "green" | "yellow" | "orange" | "red";
 }
 const LINE_TONE: Record<SceneLine["tone"], { stroke: string; text: string }> = {
+  green: { stroke: "stroke-emerald-500", text: "fill-emerald-700" },
   yellow: { stroke: "stroke-sun-500", text: "fill-sun-800" },
+  orange: { stroke: "stroke-alert-500", text: "fill-alert-700" },
   red: { stroke: "stroke-red-600", text: "fill-red-700" },
 };
 

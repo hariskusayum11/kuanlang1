@@ -7,13 +7,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { HadYaiScene, SCENE_CROP, type SceneLine, type SceneMark } from "@/components/lab/hadyai-scene";
-import { ESTIMATED_FLAG_LABEL, Flag } from "@/components/water/community-flag";
-import { COMMUNITY_FLAG_SOURCE, type BridgeFlagEstimate, type EstimatedFlag } from "@/domain/water/community-flags";
+import { FLAG_TEXT, Flag, flagLabel } from "@/components/water/community-flag";
+import type { BridgeFlagEstimate } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
 import type { DailyForecast, HourlyWeather, WeatherNow } from "@/lib/water/weather";
 import { WeatherWidget } from "@/components/lab/weather-widget";
 import { dayPhase, rainLevel, type DayPhase, type RainLevel } from "@/domain/water/sky";
+import { CallLink } from "@/components/ui/call-link";
 
 type Mode = "live" | "recent" | "flood" | "forecast";
 export interface StationHistory {
@@ -21,19 +22,8 @@ export interface StationHistory {
   flood: HistoryPoint[];
 }
 
-// สีธงตามความหมายของระบบ: ปกติ = มิ้นต์ · เฝ้าระวัง = sun · อุทกภัย = red · ไม่ทราบ = slate
-const FLAG_TEXT: Record<EstimatedFlag, string> = {
-  GREEN: "text-emerald-600",
-  YELLOW: "text-sun-700",
-  RED: "text-red-600",
-  UNKNOWN: "text-slate-500",
-};
-const FLAG_ACTION: Record<EstimatedFlag, string> = {
-  GREEN: "สถานการณ์ปกติ · ยังไม่ต้องอพยพ",
-  YELLOW: "เฝ้าระวัง · อพยพผู้ป่วยติดเตียงและผู้ฟอกไตก่อน",
-  RED: "เกิดอุทกภัย · อพยพกลุ่มเปราะบางและกลุ่มเสี่ยง",
-  UNKNOWN: "ไม่มีข้อมูลระดับน้ำจากสะพานตอนนี้",
-};
+// ข้อความใต้ชื่อธงมาจากเกณฑ์ (headline) · ไม่ทราบ = บอกตามจริง
+const UNKNOWN_HEADLINE = "ไม่มีข้อมูลระดับน้ำจากสะพานตอนนี้";
 const TREND_PHRASE: Record<WaterTrend, string> = {
   RISING: "น้ำกำลังขึ้น",
   FALLING: "น้ำกำลังลด",
@@ -67,11 +57,11 @@ function thaiStamp(at: string | null) {
   return { time: t ?? "", date: `${day} ${MONTHS[(m ?? 1) - 1] ?? ""} ${String(((y ?? 0) + 543) % 100).padStart(2, "0")}` };
 }
 
-/** เส้นถัดไปที่น้ำยังไม่ถึง (สะพานที่มีเกณฑ์ธง) — เกินแดงแล้วชี้เส้นแดง · ไม่มีเกณฑ์ = null (วัดถึงตลิ่ง) */
+/** เส้นถัดไปที่น้ำยังไม่ถึง (สะพานที่มีเกณฑ์ธง) — เกินเส้นสูงสุดแล้วชี้เส้นสูงสุด · ไม่มีเกณฑ์ = null (วัดถึงตลิ่ง) */
 function nextTarget(b: BridgeFlagEstimate | undefined, level: number | null) {
-  if (!b || b.yellowMsl === null || b.redMsl === null) return null;
-  if (level !== null && level >= b.yellowMsl) return { levelMsl: b.redMsl, label: "เกณฑ์ธงแดง" };
-  return { levelMsl: b.yellowMsl, label: "เกณฑ์ธงเหลือง" };
+  if (!b || b.lines.length === 0) return null;
+  const line = (level === null ? b.lines[0] : b.lines.find((l) => level < l.msl)) ?? b.lines.at(-1)!;
+  return { levelMsl: line.msl, label: `เกณฑ์${line.level.label}` };
 }
 
 export function SongKhlongHero({
@@ -116,13 +106,13 @@ export function SongKhlongHero({
 
   // ตัวเลือกภาพ: สะพานที่ใช้ตัดสินธง + จุดวัดหาดใหญ่ใน · เริ่มที่สะพานใกล้เกณฑ์ที่สุด
   const options = useMemo(() => {
-    const codes = [...flagStatus.bridges.map((b) => b.criterion.stationCode), ...(main ? [main.code] : [])];
+    const codes = [...flagStatus.bridges.map((b) => b.bridge.stationCode), ...(main ? [main.code] : [])];
     return codes.flatMap((code) => {
       const r = readings.find((x) => x.code === code);
-      return r && r.bankMsl !== null ? [{ reading: r, bridge: flagStatus.bridges.find((b) => b.criterion.stationCode === code) }] : [];
+      return r && r.bankMsl !== null ? [{ reading: r, bridge: flagStatus.bridges.find((b) => b.bridge.stationCode === code) }] : [];
     });
   }, [flagStatus.bridges, readings, main]);
-  const closestCode = flagStatus.bridges.find((b) => b.criterion.bridge === closest?.bridge)?.criterion.stationCode;
+  const closestCode = closest?.stationCode;
   const [selected, setSelected] = useState(closestCode ?? options[0]?.reading.code ?? "");
   const current = options.find((o) => o.reading.code === selected) ?? options[0] ?? null;
   const reading = current?.reading ?? null;
@@ -192,11 +182,11 @@ export function SongKhlongHero({
     const at = (i: number) => `${thaiStamp(hist.flood[i]!.at).date} ${thaiStamp(hist.flood[i]!.at).time}`;
     const first = (v: number) => hist.flood.findIndex((p) => p.levelMsl >= v);
     const marks: Array<{ index: number; label: string }> = [];
-    if (bridge?.yellowMsl != null && bridge.redMsl != null) {
-      const y = first(bridge.yellowMsl);
-      const r = first(bridge.redMsl);
-      if (y >= 0) marks.push({ index: y, label: `ถึงธงเหลือง ${at(y)}` });
-      if (r >= 0) marks.push({ index: r, label: `ถึงธงแดง ${at(r)}` });
+    if (bridge && bridge.lines.length) {
+      for (const line of bridge.lines) {
+        const i = first(line.msl);
+        if (i >= 0) marks.push({ index: i, label: `ถึง${line.level.label} ${at(i)}` });
+      }
     } else {
       const over = hist.flood.findIndex((p) => p.levelMsl > reading.bankMsl!);
       if (over >= 0) marks.push({ index: over, label: `เริ่มล้นตลิ่ง ${at(over)}` });
@@ -249,14 +239,13 @@ export function SongKhlongHero({
     setFinished(false);
   };
 
-  const placeLabel = bridge ? bridge.criterion.bridge : reading ? `จุดวัดน้ำ${placeName(reading.name)}` : "";
-  const lines: SceneLine[] =
-    bridge?.yellowMsl != null && bridge.redMsl != null
-      ? [
-          { levelMsl: bridge.yellowMsl, label: "ธงเหลือง", tone: "yellow" },
-          { levelMsl: bridge.redMsl, label: "deck" in bridge.criterion.red ? "ธงแดง (จมสะพาน)" : "ธงแดง", tone: "red" },
-        ]
-      : [];
+  const placeLabel = bridge ? bridge.bridge.bridge : reading ? `จุดวัดน้ำ${placeName(reading.name)}` : "";
+  // เส้นเกณฑ์ทุกระดับของสะพานนี้ (ตามที่ตั้งในระบบ — เพิ่มธงส้มก็มีเส้นส้ม)
+  const lines: SceneLine[] = (bridge?.lines ?? []).map((l) => ({
+    levelMsl: l.msl,
+    label: l.viaDeck ? `${l.level.label} (จมสะพาน)` : l.level.label,
+    tone: l.level.color,
+  }));
   const target = nextTarget(bridge, viewedLevel);
   const historyMark: SceneMark | null =
     floodPeak && reading?.bankMsl != null
@@ -340,7 +329,6 @@ export function SongKhlongHero({
           <span className="whitespace-nowrap text-sm font-bold">
             SKL-FRIS<span className="hidden sm:inline"> · สองคลองควนลัง</span>
           </span>
-          <span className="badge badge-neutral ml-1 hidden sm:inline-flex">ต้นแบบ</span>
           <nav className="ml-auto flex items-center gap-2 md:gap-4">
             <a href="#emergency-title" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">เบอร์ฉุกเฉิน</a>
             <a href="#flags" className="hidden text-sm font-semibold text-brand-700 hover:underline lg:inline">เกณฑ์ธง</a>
@@ -361,9 +349,9 @@ export function SongKhlongHero({
           <p className={`eyebrow text-sm ${tone("text-brand-700", "text-sky-300")}`}>ควนลังตอนนี้ · ธงเตือนภัยชุมชน</p>
           <h1 className="mt-3 flex items-center gap-3 text-6xl font-black leading-[1.2] md:gap-5 md:text-8xl">
             <Flag level={flag} className="h-16 w-16 md:h-24 md:w-24" />
-            <span className={FLAG_TEXT[flag]}>{ESTIMATED_FLAG_LABEL[flag]}</span>
+            <span className={flag ? FLAG_TEXT[flag.color] : "text-slate-500"}>{flagLabel(flag)}</span>
           </h1>
-          <p className={`mt-2 text-xl font-bold md:text-2xl ${tone("text-ink-900", "text-white")}`}>{FLAG_ACTION[flag]}</p>
+          <p className={`mt-2 text-xl font-bold md:text-2xl ${tone("text-ink-900", "text-white")}`}>{flag ? flag.headline || flag.title : UNKNOWN_HEADLINE}</p>
 
           {/* เลือกจุดวัดที่ภาพแสดง — ธงประเมินจาก 3 สะพาน · หาดใหญ่ในใกล้ควนลังที่สุด */}
           {options.length ? (
@@ -394,7 +382,7 @@ export function SongKhlongHero({
               {reading ? (
                 <p className={`mt-2 text-sm leading-6 ${tone("text-slate-700", "text-slate-200")}`}>
                   <b className={tone("text-ink-900", "text-white")}>{placeLabel}</b>
-                  {bridge ? <> · {bridge.criterion.canal}</> : <> · ใกล้ควนลังที่สุด</>}
+                  {bridge ? <> · {bridge.bridge.canal}</> : <> · ใกล้ควนลังที่สุด</>}
                   {" — "}
                   {fb === null ? "ไม่ทราบระดับตลิ่ง" : fb > 0 ? <>ต่ำกว่าตลิ่ง {fmt(fb)} ม.</> : <b className="text-red-600">ล้นตลิ่ง {fmt(-fb)} ม.</b>}
                   {trend ? <> · {trend}</> : null}
@@ -424,13 +412,13 @@ export function SongKhlongHero({
               </span>
             ) : null}
             {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
-            <a href={COMMUNITY_FLAG_SOURCE.url} target="_blank" rel="noopener noreferrer" className={`font-semibold underline ${tone("text-brand-700", "text-sky-300")}`}>
+            <a href={flagStatus.source.url} target="_blank" rel="noopener noreferrer" className={`font-semibold underline ${tone("text-brand-700", "text-sky-300")}`}>
               ดูธงที่ประกาศจริง ↗
             </a>
           </p>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <a href="tel:1784" className="btn btn-primary btn-lg">โทรสายด่วน ปภ. 1784</a>
+            <CallLink phone="1784" name="สายด่วน ปภ. (กรมป้องกันและบรรเทาสาธารณภัย)" className="btn btn-primary btn-lg">โทรสายด่วน ปภ. 1784</CallLink>
             <a href="#map" className="btn btn-secondary btn-lg">ดูแผนที่ชุมชน ↓</a>
           </div>
 

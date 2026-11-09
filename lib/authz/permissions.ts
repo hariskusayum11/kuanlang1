@@ -48,6 +48,9 @@ export const PERMISSIONS = {
   // แก้กฎการจัดลำดับ (ความเร่งด่วน/ความเสี่ยง) เป็นเวอร์ชันใหม่ — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS
   // การ "ดู" กฎใช้ dashboard.view (docs/40) เพื่อให้ทุกฝ่ายเห็นกฎก่อนมีคนแก้
   PRIORITY_RULES_MANAGE: "priority-rules.manage",
+  // แก้เกณฑ์ธงเตือนภัยชุมชน (ระดับธง · เกณฑ์รายสะพาน · ระดับท้องสะพาน) เป็นเวอร์ชันใหม่ — ADMIN เท่านั้นผ่าน ALL_PERMISSIONS
+  // การ "ดู" เกณฑ์เปิดสาธารณะอยู่แล้วบนหน้าแรก (docs/44)
+  FLAG_CRITERIA_MANAGE: "flag-criteria.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

@@ -312,6 +312,7 @@ model User {
   reportedVulnerablePersons    VulnerablePerson[]    @relation("vulnerableReportedBy")
   verifiedShelters             EvacuationSite[]      @relation("shelterVerifiedBy")
   priorityRuleVersions         PriorityRuleVersion[] @relation("priorityRuleCreatedBy")
+  flagCriteriaVersions         FlagCriteriaVersion[] @relation("flagCriteriaCreatedBy")
 
   // Relations — Batch
   receivedBatches PaperBatch[] @relation("receivedBy")
@@ -1424,6 +1425,23 @@ model PriorityRuleVersion {
   createdBy User? @relation("priorityRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("priority_rule_version")
+}
+
+/// เกณฑ์ธงเตือนภัยชุมชนแบบมีเวอร์ชัน (Owner Decision 2026-11-09 · docs/44)
+/// ระดับธง (เพิ่มได้ เช่น ธงส้ม) · เกณฑ์รายสะพาน · ระดับท้องสะพาน/พื้นสะพาน — แก้โดย ADMIN
+/// Append-only: แก้ = เพิ่มแถว versionNo ถัดไป · เวอร์ชันที่ใช้ = สูงสุด · ไม่มีแถว = ค่าตั้งต้นในโค้ด
+model FlagCriteriaVersion {
+  id          String   @id @default(cuid())
+  versionNo   Int      @unique /// 1, 2, 3 … (unique กันสองคนบันทึกชนกัน)
+  /// FlagCriteriaConfig ทั้งชุด (domain/water/community-flags.ts) — ตรวจด้วย Zod + validateFlagCriteria ตอนอ่าน
+  config      Json
+  reason      String /// เหตุผลการแก้ (บังคับ)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  createdBy User? @relation("flagCriteriaCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("flag_criteria_version")
 }
 
 // =============================================================================

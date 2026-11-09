@@ -1,193 +1,142 @@
-import Link from "next/link";
-import { APP_NAME, APP_DESCRIPTION_TH } from "@/lib/app-config";
-import { Mascot } from "@/components/brand/mascot";
-import { LogoMark } from "@/components/brand/logo-mark";
-import {
-  getPublicStats,
-  getPublicEmergencyContacts,
-  getPublicMapData,
-} from "@/lib/public/stats";
-import { PublicMap } from "@/components/public/public-map";
-import {
-  EmergencyContactsSection,
-  ExternalLinksSection,
-  JoinNetworkSection,
-  PrepareTipsSection,
-  PublicFooter,
-  PublicSectionTitle,
-  PublicStatsSection,
-} from "@/components/public/home-sections";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import type { Metadata } from "next";
+import { getPublicEmergencyContacts, getPublicMapData, getPublicStats } from "@/lib/public/stats";
 import { listPublicExternalLinks } from "@/lib/external-links/core";
+import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
+import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
+import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
+import { peakLagHours } from "@/domain/water/peak-lag";
+import { getHatYaiWeather, getRainForecast, getRainHistory } from "@/lib/water/weather";
+import { getRainStations } from "@/lib/water/rain-stations";
+import type { DayPhase, RainLevel } from "@/domain/water/sky";
 
-// Public Home — เปิดได้โดยไม่ login (CLAUDE.md: Public Portal mobile-first)
-// แสดงเฉพาะ aggregate + ข้อมูลราชการ — ไม่มี PII / พิกัดรายบ้าน / Sheet ID
-// Render ตอน request (force-dynamic): ไม่ prerender ตอน build จึง build เป็น Docker image
-// ได้โดยไม่ต้องต่อ DB · และตัวเลขสาธารณะสดเสมอ (query เป็น aggregate เล็ก ๆ เร็วพออยู่แล้ว)
-// หมายเหตุ: ถ้าต้องการแคชเพื่อลดภาระ DB ตอน scale ค่อยเปลี่ยนกลับเป็น ISR (revalidate)
+import { FlagCriteria } from "@/components/lab/flag-criteria";
+import { flagStatusFromReadings } from "@/lib/water/community-flag";
+import { getActiveFlagCriteria } from "@/lib/water/flag-criteria";
+import { PublicFooter } from "@/components/public/home-sections";
+import {
+  CommunityNumbers,
+  DataCredits,
+  EmergencyStrip,
+  JoinAndFollow,
+  PrepareSteps,
+  TrialSectionHeader,
+} from "@/components/lab/home-trial-sections";
+
+const PHASES: readonly DayPhase[] = ["dawn", "day", "dusk", "night"];
+const RAINS: readonly RainLevel[] = ["none", "light", "moderate", "heavy"];
+
+export const metadata: Metadata = {
+  title: "สองคลองควนลัง — ระดับน้ำและธงเตือนภัยชุมชน",
+  description: "ระดับน้ำคลองอู่ตะเภาและคลองหวะ ธงเตือนภัยโดยประมาณของ 5 ชุมชนตำบลควนลัง อากาศ และเบอร์ฉุกเฉิน",
+};
+// Render ตอน request — หน้านี้อ่านฐานข้อมูล จึงต้องไม่ prerender ตอน build (Docker build ไม่มี DB)
+// ระดับน้ำยังแคช 10 นาทีที่ระดับ fetch (lib/water/thaiwater.ts) ไม่ยิงต้นทางทุกครั้ง
 export const dynamic = "force-dynamic";
 
-export default async function PublicHomePage() {
-  const [stats, contacts, mapData, externalLinks] = await Promise.all([
+/** ช่วงน้ำท่วมใหญ่ปลายปี 2568 (เวลาไทย) — ข้อมูลในอดีตไม่เปลี่ยน จึงแคชได้ 1 วัน */
+const FLOOD_2568 = { start: "2025-11-18", end: "2025-12-02", cacheSeconds: 86_400 } as const;
+
+/**
+ * หน้าแรกสาธารณะ "สองคลอง" (Owner Decision 2026-11-09 · docs/44) — แทนหน้าแรกเดิม เปิดได้โดยไม่ login
+ * ธงเตือนภัยโดยประมาณ (เกณฑ์แก้ได้ที่ /flag-criteria) · ระดับน้ำ ThaiWater · อากาศ · เบอร์ฉุกเฉิน · แผนที่ความรุนแรงน้ำท่วม
+ * ข้อมูลทั้งหมดเป็นระดับสาธารณะ: ชื่อ/เขตชุมชน · ช่องตารางน้ำท่วม ≥ 5 หลัง (ไม่มีพิกัดรายบ้าน) ·
+ * จุดอพยพสาธารณะ · ระดับน้ำจากสถานีของรัฐ
+ */
+export default async function PublicHomePage({ searchParams }: { searchParams: Promise<{ sky?: string; rain?: string }> }) {
+  // ?sky=night / ?rain=heavy — พรีวิวภาพตามเวลา/อากาศ (รับเฉพาะค่าที่รู้จัก)
+  const sp = await searchParams;
+  const forcePhase = PHASES.find((p) => p === sp.sky);
+  const forceRain = RAINS.find((r) => r === sp.rain);
+  // เกณฑ์ธงก่อน — สะพานที่ ADMIN เพิ่มเข้ามาต้องดึงระดับน้ำของสถานีนั้นด้วย
+  const criteria = await getActiveFlagCriteria();
+  const [mapData, feed, canalsText, stats, contacts, externalLinks] = await Promise.all([
+    getPublicMapData(),
+    getSongKhlongStations(criteria.config.bridges.map((b) => b.stationCode)),
+    readFile(path.join(process.cwd(), "database/geo/song-khlong-canals.geojson"), "utf8"),
     getPublicStats(),
     getPublicEmergencyContacts(),
-    getPublicMapData(),
     listPublicExternalLinks(),
   ]);
-  const hasMapPoints = mapData.communities.length + mapData.sites.length > 0;
-  const boundaryCount = mapData.communities.filter((c) => c.boundary).length;
-  const boundaryDraft = mapData.communities.some((c) => c.boundary && !c.boundaryApproved);
-
-  const updatedAt = stats.generatedAt.toLocaleString("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  // อากาศตอนนี้ + ฝนรายชั่วโมงย้อนหลัง (3 วัน และช่วงน้ำท่วม พ.ย. 68) — ใช้แต่งท้องฟ้าของภาพตอนย้อนดู
+  const [weather, recentRain, floodRain, forecast, rainStations] = await Promise.all([
+    getHatYaiWeather(),
+    getRainHistory({ recentDays: 3 }),
+    getRainHistory({ start: FLOOD_2568.start, end: FLOOD_2568.end }),
+    getRainForecast(),
+    getRainStations(),
+  ]);
+  // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
+  const flagStatus = flagStatusFromReadings(criteria.config, feed.readings, criteria.versionNo);
+  // ระดับน้ำย้อนหลังของทุกจุดวัด (ภาพส่วนหัวเลือกดูได้ทีละจุด) — 3 วันล่าสุดแคช 10 นาที · พ.ย. 68 แคช 1 วัน
+  const now = new Date();
+  const histories: Record<string, StationHistory> = Object.fromEntries(
+    await Promise.all(
+      feed.readings.map(async (r) => {
+        if (!r.stationId) return [r.code, { recent: [], flood: [] }] as const;
+        const [recent, flood] = await Promise.all([
+          getStationHistory(r.stationId, bangkokDate(new Date(now.getTime() - 3 * 86_400_000)), bangkokDate(now)),
+          getStationHistory(r.stationId, FLOOD_2568.start, FLOOD_2568.end, FLOOD_2568.cacheSeconds),
+        ]);
+        return [r.code, { recent, flood }] as const;
+      }),
+    ),
+  );
+  // เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (เหตุการณ์ พ.ย. 68) — คู่ที่ข้อมูลผิดปกติได้ null และไม่แสดง
+  const lagHours = Object.fromEntries(
+    feed.stations.slice(1).map((s, i) => {
+      const up = feed.stations[i]!;
+      return [`${up.code}>${s.code}`, peakLagHours(histories[up.code]?.flood ?? [], histories[s.code]?.flood ?? [])];
+    }),
+  );
 
   return (
-    <div className="min-h-screen bg-canvas">
-      {/* Header สาธารณะ — เรียบ เข้าถึงง่าย */}
-      <header className="sticky top-0 z-20 border-b-2 border-slate-200/70 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-2.5">
-            <LogoMark size={34} className="text-brand-600" />
-            <div>
-              <p className="text-[15px] font-bold leading-tight text-slate-900">
-                {APP_NAME}
-              </p>
-              <p className="hidden text-[11px] font-medium text-brand-600 sm:block">
-                เครือข่ายสองคลอง–ควนลัง
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/register" className="btn btn-primary btn-sm">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-                <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              สมัครใช้งาน
-            </Link>
-            <Link href="/login" className="btn btn-secondary btn-sm">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
-                <path d="M15 3h4a1 1 0 011 1v16a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="hidden sm:inline">เข้าสู่ระบบ</span>
-            </Link>
+    <main className="bg-canvas">
+      <SongKhlongHero
+        stations={feed.stations}
+        readings={feed.readings}
+        histories={histories}
+        communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
+        feedError={feed.error}
+        flagStatus={flagStatus}
+        lagHours={lagHours}
+        weather={weather}
+        rainHistory={{ recent: recentRain, flood: floodRain }}
+        forecast={forecast}
+        forcePhase={forcePhase}
+        forceRain={forceRain}
+      />
+      {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่ถัดจากส่วนหัวทันที */}
+      <EmergencyStrip contacts={contacts} />
+      <FlagCriteria status={flagStatus} />
+      <section id="map" aria-labelledby="map-title" className="bg-canvas px-4 py-10 md:px-10 md:py-14">
+        <div className="mx-auto max-w-[1200px]">
+          <TrialSectionHeader
+            id="map-title"
+            eyebrow="5 ชุมชนริมสองคลอง"
+            title="น้ำไหลผ่านชุมชนอย่างไร"
+            lead="คลองอู่ตะเภาไหลจากใต้ขึ้นเหนือผ่านหาดใหญ่ใน เมื่อน้ำมาก น้ำก้อนใหญ่ถูกผันเข้าคลอง ร.1 ไปทางควนลัง — แผนที่แสดงเขตชุมชนและพื้นที่ที่ชาวบ้านเคยเจอน้ำท่วม เป็นภาพรวมระดับพื้นที่ ไม่มีตำแหน่งรายบ้าน"
+          />
+          <CommunityNumbers stats={stats} />
+          <div className="mt-6">
+            <SongKhlongExperience
+              canals={JSON.parse(canalsText)}
+              communities={mapData.communities.map((c) => ({ id: c.id, nameTh: c.nameTh, lat: c.lat, lng: c.lng, boundary: c.boundary }))}
+              floodGrid={mapData.floodGrid}
+              sites={mapData.sites}
+              stations={feed.stations}
+              markerStations={feed.readings}
+              bridges={flagStatus.bridges}
+              rainStations={rainStations}
+            />
           </div>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-4 pb-16 md:px-6">
-        {/* Hero — แถบแบรนด์สีเข้ม + มาสคอตหยดน้ำ */}
-        <section className="animate-slide-up relative mt-5 overflow-hidden rounded-3xl band-brand px-6 pb-16 pt-8 md:px-10 md:pb-20 md:pt-12">
-          <div className="relative z-10 flex flex-col items-center gap-6 text-center md:flex-row md:items-center md:gap-10 md:text-left">
-            <div className="min-w-0 flex-1">
-              <span className="badge animate-pop bg-white/20 text-white">
-                <span className="live-dot" />
-                อยู่ระหว่างการสำรวจข้อมูลครัวเรือน
-              </span>
-              <h1 className="mt-4 text-3xl font-bold leading-snug text-white md:text-[40px]">
-                ข้อมูลชุมชน
-                <br className="hidden md:block" /> พร้อมรับมืออุทกภัย
-              </h1>
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-brand-50 md:text-base">
-                {APP_DESCRIPTION_TH} — รวบรวมข้อมูลครัวเรือน กลุ่มเปราะบาง
-                และทรัพยากรชุมชน เพื่อวางแผนช่วยเหลือเมื่อเกิดน้ำท่วม
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-3 md:justify-start">
-                <a href="#emergency-title" className="btn btn-accent btn-lg">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-5 w-5">
-                    <path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" strokeLinejoin="round" />
-                  </svg>
-                  เบอร์ฉุกเฉิน
-                </a>
-                <a
-                  href="#prepare-title"
-                  className="btn btn-lg border-2 border-white/40 bg-white/10 text-white hover:bg-white/20"
-                >
-                  วิธีเตรียมตัว
-                </a>
-              </div>
-            </div>
-            <div className="animate-drop-in shrink-0">
-              <Mascot role="notify" mood="wink" motion="float" size={152} decorative className="drop-shadow-lg" />
-            </div>
-          </div>
-
-          {/* คลื่นน้ำเชื่อมเข้ากับพื้นหน้า */}
-          <svg
-            viewBox="0 0 1200 90"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            className="absolute inset-x-0 bottom-0 h-12 w-full md:h-16"
-          >
-            <path
-              d="M0 52c120-30 220 22 340 22s200-46 320-46 220 40 330 40 130-18 210-30v52H0z"
-              fill="#f3f6fc"
-            />
-            <path
-              d="M0 62c120-30 220 22 340 22s200-46 320-46 220 40 330 40 130-18 210-30v42H0z"
-              fill="#f3f6fc"
-              opacity="0.55"
-            />
-          </svg>
-        </section>
-
-        {/* เบอร์ฉุกเฉิน — สำคัญสุดสำหรับประชาชน จึงอยู่บนสุด (แดง = วิกฤตจริง) */}
-        <EmergencyContactsSection contacts={contacts} className="mt-8" />
-
-        {/* ลิงก์ระบบภายนอก (docs/37) — ต่อจากเบอร์ฉุกเฉิน เพราะเป็นสิ่งที่ประชาชนใช้ตามสถานการณ์ */}
-        <ExternalLinksSection links={externalLinks} className="mt-10" />
-
-        {/* สถิติภาพรวม — aggregate เท่านั้น */}
-        <PublicStatsSection stats={stats} className="mt-10" />
-
-        {/* การเตรียมพร้อม — เนื้อหาความรู้ */}
-        <PrepareTipsSection className="mt-10" />
-
-        {/* ร่วมเป็นเครือข่าย — ทางเข้าสมัครใช้งานระบบ (มาสคอตอยู่ได้: หน้า Public) */}
-        <JoinNetworkSection className="mt-10" />
-
-        {/* แผนที่สาธารณะ — เส้นขอบ/หมุดชุมชน + จุดพักพิง (aggregate เท่านั้น ไม่มีรายบ้าน) */}
-        <section aria-labelledby="map-title" className="mt-10">
-          <PublicSectionTitle id="map-title" tone="mint" title="แผนที่ชุมชนและจุดพักพิง" />
-          {hasMapPoints ? (
-            <div className="card mt-4 overflow-hidden p-3">
-              <PublicMap communities={mapData.communities} sites={mapData.sites} generatedAt={mapData.generatedAt} floodGrid={mapData.floodGrid} />
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-2 py-3 text-xs font-medium text-slate-600">
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 rounded-full border-2 border-white bg-brand-600 shadow" />
-                  ชุมชน · {mapData.communities.length.toLocaleString("th-TH")} แห่ง
-                </span>
-                {boundaryCount ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-5 rounded-sm border-2 border-dashed border-brand-600 bg-brand-500/10" />
-                    เส้นขอบชุมชน{boundaryDraft ? " (ร่าง — อยู่ระหว่างตรวจสอบ)" : ""}
-                  </span>
-                ) : null}
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 rounded-full border-2 border-white bg-alert-500 shadow" />
-                  จุดพักพิง / จุดอพยพ · {mapData.sites.length.toLocaleString("th-TH")} จุด
-                </span>
-              </div>
-              <p className="px-2 pb-1 text-[11px] leading-relaxed text-slate-400">
-                แผนที่แสดงเฉพาะข้อมูลภาพรวมและจุดสาธารณะ — ไม่มีตำแหน่งบ้านหรือข้อมูลรายบุคคล
-              </p>
-            </div>
-          ) : (
-            <div className="card-mist mt-4 flex flex-col items-center gap-3 px-5 py-10 text-center">
-              <Mascot role="field" mood="sleep" tone="sun" motion="float" size={84} decorative />
-              <h3 className="text-base font-bold text-slate-800">
-                กำลังรวบรวมข้อมูลจุดพักพิงและพื้นที่เสี่ยง
-              </h3>
-              <p className="max-w-md text-xs leading-relaxed text-slate-600">
-                แผนที่สาธารณะจะแสดงขอบเขตชุมชนและจุดอพยพเมื่อข้อมูลพร้อม —
-                จะแสดงเฉพาะข้อมูลภาพรวม ไม่มีตำแหน่งรายบ้าน
-              </p>
-            </div>
-          )}
-        </section>
-      </main>
-
-      <PublicFooter updatedAt={updatedAt} />
-    </div>
+      </section>
+      <PrepareSteps />
+      <JoinAndFollow links={externalLinks} />
+      <DataCredits />
+      <PublicFooter updatedAt={stats.generatedAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} />
+    </main>
   );
 }

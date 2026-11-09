@@ -103,7 +103,6 @@ const fmt = (n: number, digits = 2) => n.toLocaleString("th-TH", { minimumFracti
 const PANEL = "bg-white/92 text-ink-900 shadow-lg ring-1 ring-slate-200 backdrop-blur-md";
 const ICON_BTN = `${PANEL} grid h-9 w-9 place-items-center rounded-full text-slate-700 hover:text-brand-700`;
 
-const FLAG_WORD = { GREEN: "ธงเขียว", YELLOW: "ธงเหลือง", RED: "ธงแดง", UNKNOWN: "ไม่ทราบ" } as const;
 
 /** เนื้อหาป๊อปอัปของหมุดจุดวัด — สร้างด้วย DOM (textContent) ไม่ใช้ innerHTML กับข้อมูลจากต้นทาง */
 function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined): HTMLElement {
@@ -115,26 +114,22 @@ function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined)
     el.textContent = text;
     root.append(el);
   };
-  add("text-[11px] text-slate-500", `${bridge?.criterion.canal ?? (s.river || "คลองอู่ตะเภา")} · สถานีวัดระดับน้ำ กรมชลประทาน`);
-  add("text-base font-black leading-tight", bridge?.criterion.bridge ?? `จุดวัดน้ำ${placeName(s.name)}`);
+  add("text-[11px] text-slate-500", `${bridge?.bridge.canal ?? (s.river || "คลองอู่ตะเภา")} · สถานีวัดระดับน้ำ กรมชลประทาน`);
+  add("text-base font-black leading-tight", bridge?.bridge.bridge ?? `จุดวัดน้ำ${placeName(s.name)}`);
   const trend = waterTrend(s);
   const diff = s.levelMsl !== null && s.previousMsl !== null ? s.levelMsl - s.previousMsl : null;
   const trendText = trend === "UNKNOWN" ? "" : ` · ${WATER_TREND_LABEL[trend]}${diff !== null ? ` (${diff >= 0 ? "+" : ""}${fmt(diff)} ม.)` : ""}`;
   add("mt-2 text-sm", `ระดับน้ำ ${s.levelMsl !== null ? fmt(s.levelMsl) : "—"} ม.รทก.${trendText}`);
   const fb = freeboard(s);
   add("text-sm", fb === null ? "ไม่ทราบระดับตลิ่ง" : fb > 0 ? `ต่ำกว่าตลิ่ง ${fmt(fb)} ม. · ${WATER_STATUS_LABEL[waterStatus(s)]}` : `ล้นตลิ่ง ${fmt(-fb)} ม.`);
-  if (bridge && bridge.levelMsl !== null && bridge.yellowMsl !== null && bridge.redMsl !== null) {
-    const next =
-      bridge.flag === "GREEN"
-        ? `อีก ${fmt(bridge.yellowMsl - bridge.levelMsl)} ม. ถึงธงเหลือง`
-        : bridge.flag === "YELLOW"
-          ? `อีก ${fmt(bridge.redMsl - bridge.levelMsl)} ม. ถึงธงแดง`
-          : "ถึงเกณฑ์ธงแดงแล้ว";
-    add("mt-2 rounded-lg bg-mist px-2 py-1 text-sm font-bold", `${FLAG_WORD[bridge.flag]} (โดยประมาณ) · ${next}`);
+  if (bridge?.flag) {
+    const top = bridge.lines.at(-1);
+    const next = bridge.next ? `อีก ${fmt(bridge.next.meters)} ม. ถึง${bridge.next.line.level.label}` : `ถึงเกณฑ์${top?.level.label ?? ""}แล้ว`;
+    add("mt-2 rounded-lg bg-mist px-2 py-1 text-sm font-bold", `${bridge.flag.label} (โดยประมาณ) · ${next}`);
   }
   if (s.measuredAt) add("mt-2 text-[11px] text-slate-500", `วัดเมื่อ ${s.measuredAt.split(" ")[1] ?? s.measuredAt} น.`);
   add("text-[11px] text-slate-500", "ที่มา: คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) · สถานีของกรมชลประทาน");
-  if (bridge) add("text-[11px] text-slate-500", "เกณฑ์ธง: กลุ่มสองคลองควนลัง (hatyaicityclimate.org) · ท้องสะพานประมาณจากรูปตัดลำน้ำ ชป.");
+  if (bridge) add("text-[11px] text-slate-500", `เกณฑ์ธง: กลุ่มสองคลองควนลัง · ท้องสะพาน: ${bridge.bridge.sourceNote || "ค่าที่บันทึกในระบบ"}`);
   return root;
 }
 
@@ -408,7 +403,7 @@ export function SongKhlongExperience({
       line.append(arrow, trendWord, bank);
       text.append(name, line);
       el.append(dot, text);
-      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "290px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.criterion.stationCode === s.code)));
+      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "290px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.bridge.stationCode === s.code)));
       return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map);
     });
     const color = STATUS_COLOR[mainStatus];

@@ -75,7 +75,8 @@ export interface StationFeed {
   error: string | null;
 }
 
-export async function getSongKhlongStations(): Promise<StationFeed> {
+/** `extraCodes` = สถานีของสะพานในเกณฑ์ธง (แก้ได้ในระบบ — สะพานที่เพิ่มใหม่ต้องดึงด้วย) */
+export async function getSongKhlongStations(extraCodes: readonly string[] = []): Promise<StationFeed> {
   try {
     const res = await fetch(ENDPOINT, {
       next: { revalidate: CACHE_SECONDS },
@@ -83,7 +84,7 @@ export async function getSongKhlongStations(): Promise<StationFeed> {
       headers: HEADERS,
     });
     if (!res.ok) return { stations: [], readings: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
-    const readings = parseThaiWater(await res.json(), [...SONG_KHLONG_STATIONS, ...FLAG_ONLY_STATIONS]);
+    const readings = parseThaiWater(await res.json(), [...new Set([...SONG_KHLONG_STATIONS, ...FLAG_ONLY_STATIONS, ...extraCodes])]);
     const stations = readings.filter((r) => (SONG_KHLONG_STATIONS as readonly string[]).includes(r.code));
     return { stations, readings, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
   } catch {
