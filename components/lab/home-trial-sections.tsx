@@ -195,6 +195,7 @@ export function JoinAndFollow({ links }: { links: ExternalLinkRow[] }) {
 // ที่มาของข้อมูล — แยกรายการพร้อมลิงก์ต้นทาง เพื่อให้อ้างอิงได้
 const SOURCES: Array<{ topic: string; source: string; href: string; note?: string }> = [
   { topic: "ระดับน้ำ", source: "คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) — สถานีโทรมาตรของกรมชลประทาน", href: "https://www.thaiwater.net/" },
+  { topic: "ระดับน้ำทุก 10 นาที (บางศาลา)", source: "คลังข้อมูลน้ำแห่งชาติ — สถานีโทรมาตรคลองหอยโข่งของ สสน.", href: "https://www.thaiwater.net/", note: "ข้อมูลเสริม ไม่ใช้ตัดสินธง" },
   { topic: "ฝนรายสถานี (แผนที่)", source: "คลังข้อมูลน้ำแห่งชาติ — สถานีของกรมชลประทาน กรมทรัพยากรน้ำ สสน. และกรมอุตุนิยมวิทยา", href: "https://www.thaiwater.net/" },
   { topic: "ระดับสะพาน / รูปตัดคลอง", source: "รูปตัดขวางลำน้ำ กรมชลประทาน (สำรวจ ม.ค. 2569)", href: "https://www.rid.go.th/", note: "ท้องสะพานเป็นค่าประมาณจากคอสะพาน" },
   { topic: "เกณฑ์ธง", source: "กลุ่มสองคลองควนลัง / Hatyai City Climate (CC BY-SA 3.0)", href: "https://hatyaicityclimate.org/zone/kuanlang", note: "ธงในหน้านี้ประเมินเอง ไม่ใช่ธงที่ประกาศ" },
