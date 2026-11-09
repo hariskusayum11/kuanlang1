@@ -411,7 +411,7 @@ export function SongKhlongHero({
                 อากาศหาดใหญ่ (พรีวิว): ฝน{forceRain === "none" ? "ไม่ตก" : ""}
               </span>
             ) : null}
-            {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
+            {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. (สถานีส่งค่าทุกชั่วโมง) · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
             <a href={flagStatus.source.url} target="_blank" rel="noopener noreferrer" className={`font-semibold underline ${tone("text-brand-700", "text-sky-300")}`}>
               ดูธงที่ประกาศจริง ↗
             </a>

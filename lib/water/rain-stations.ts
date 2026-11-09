@@ -1,6 +1,6 @@
 // สถานีวัดฝนรอบควนลัง (คลังข้อมูลน้ำแห่งชาติ · ThaiWater) — หน้าต้นแบบ /lab/song-khlong
 // ข้อมูลรวมจากหลายหน่วยงาน (กรมชลประทาน · กรมทรัพยากรน้ำ · สสน. · กรมอุตุนิยมวิทยา) — ระบุหน่วยงานเจ้าของทุกจุด
-// ดึงที่ server แคช 10 นาที · ล้มเหลว = รายการว่าง
+// ดึงที่ server แคช 5 นาที · ล้มเหลว = รายการว่าง
 const ENDPOINT = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/rain_24h";
 
 export interface RainStation {
@@ -70,7 +70,7 @@ export function parseRainStations(payload: unknown, center: { lat: number; lng: 
 export async function getRainStations(center = { lat: 6.99, lng: 100.465 }, radiusKm = 12): Promise<RainStation[]> {
   try {
     const res = await fetch(ENDPOINT, {
-      next: { revalidate: 600 },
+      next: { revalidate: 300 },
       signal: AbortSignal.timeout(20_000),
       headers: { "User-Agent": "SKL-FRIS/lab (khuanlangmodel.com)", Accept: "application/json" },
     });

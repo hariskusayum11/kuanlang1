@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Metadata } from "next";
 import { getPublicEmergencyContacts, getPublicMapData, getPublicStats } from "@/lib/public/stats";
 import { listPublicExternalLinks } from "@/lib/external-links/core";
-import { bangkokDate, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
+import { bangkokDate, freshenReadings, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
+import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
 import { peakLagHours } from "@/domain/water/peak-lag";
@@ -67,9 +68,7 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
     getRainForecast(),
     getRainStations(),
   ]);
-  // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
-  const flagStatus = flagStatusFromReadings(criteria.config, feed.readings, criteria.versionNo);
-  // ระดับน้ำย้อนหลังของทุกจุดวัด (ภาพส่วนหัวเลือกดูได้ทีละจุด) — 3 วันล่าสุดแคช 10 นาที · พ.ย. 68 แคช 1 วัน
+  // ระดับน้ำย้อนหลังของทุกจุดวัด (ภาพส่วนหัวเลือกดูได้ทีละจุด) — 3 วันล่าสุดแคช 2 นาที · พ.ย. 68 แคช 1 วัน
   const now = new Date();
   const histories: Record<string, StationHistory> = Object.fromEntries(
     await Promise.all(
@@ -83,6 +82,12 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
       }),
     ),
   );
+  // ค่าชั่วโมงล่าสุดจากกราฟมักมาก่อนรายการ "ล่าสุด" ของ ThaiWater ราว 30 นาที — ใช้ค่าที่ใหม่กว่า
+  const recentByCode = Object.fromEntries(Object.entries(histories).map(([code, h]) => [code, h.recent]));
+  const readings = freshenReadings(feed.readings, recentByCode);
+  const stations = freshenReadings(feed.stations, recentByCode);
+  // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
+  const flagStatus = flagStatusFromReadings(criteria.config, readings, criteria.versionNo);
   // เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (เหตุการณ์ พ.ย. 68) — คู่ที่ข้อมูลผิดปกติได้ null และไม่แสดง
   const lagHours = Object.fromEntries(
     feed.stations.slice(1).map((s, i) => {
@@ -93,9 +98,11 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
 
   return (
     <main className="bg-canvas">
+      {/* หน้าเปิดค้างไว้ก็ได้ค่าใหม่เอง — ดึงข้อมูลจาก server ใหม่ทุก 2 นาทีขณะเปิดดูอยู่ */}
+      <AutoRefresh intervalMs={120_000} />
       <SongKhlongHero
-        stations={feed.stations}
-        readings={feed.readings}
+        stations={stations}
+        readings={readings}
         histories={histories}
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
@@ -125,8 +132,8 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
               communities={mapData.communities.map((c) => ({ id: c.id, nameTh: c.nameTh, lat: c.lat, lng: c.lng, boundary: c.boundary }))}
               floodGrid={mapData.floodGrid}
               sites={mapData.sites}
-              stations={feed.stations}
-              markerStations={feed.readings}
+              stations={stations}
+              markerStations={readings}
               bridges={flagStatus.bridges}
               rainStations={rainStations}
             />

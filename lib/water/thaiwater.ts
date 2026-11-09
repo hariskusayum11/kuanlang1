@@ -1,14 +1,16 @@
 // ระดับน้ำเรียลไทม์จากคลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน./กรมชลประทาน)
 // -----------------------------------------------------------------------------
-// ต้นแบบหน้า /lab/song-khlong — ดึงที่ server แล้วแคช 10 นาที (ต้นทางไม่เปิด CORS และ
+// หน้าแรก (docs/44) — ดึงที่ server แล้วแคช 2 นาที (ต้นทางไม่เปิด CORS และ
 // ไม่ควรให้ผู้เข้าชมทุกคนยิงไปที่ต้นทางเอง) · ล้มเหลว = คืนรายการว่าง หน้ายังแสดงได้
-// ⚠️ ยังไม่ได้ตรวจเงื่อนไขการใช้ข้อมูลของ ThaiWater — ต้องตรวจและใส่เครดิตก่อนเผยแพร่จริง
+// การใช้ข้อมูล: ผู้บริหารยื่นขออนุญาต สสน. แล้ว (Owner Decision 2026-11-09) — คงเครดิตทุกจุดที่แสดงค่า
 import type { HistoryPoint, StationReading } from "../../domain/water/station-status";
 
 const ENDPOINT = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_load";
 const GRAPH_ENDPOINT = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel_graph";
 const HEADERS = { "User-Agent": "SKL-FRIS/lab (khuanlangmodel.com)", Accept: "application/json" };
-const CACHE_SECONDS = 600;
+// ค่าสดแคชสั้น 2 นาที (เดิม 10 นาที) — สถานีกรมชลประทานส่งค่ารายชั่วโมง แคชสั้นทำให้เห็นค่าชั่วโมงใหม่เร็วขึ้น
+// โดยยังไม่ยิงต้นทางทุกครั้งที่มีคนเปิดหน้า (server ดึงอย่างมาก 1 ครั้ง/2 นาที/endpoint)
+const CACHE_SECONDS = 120;
 
 /** สถานีบนคลองอู่ตะเภา เรียงจากต้นน้ำ → ควนลัง (น้ำไหลจากใต้ขึ้นเหนือ) */
 export const SONG_KHLONG_STATIONS = ["X.173A", "X.90", "X.44"] as const;
@@ -90,6 +92,22 @@ export async function getSongKhlongStations(extraCodes: readonly string[] = []):
   } catch {
     return { stations: [], readings: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
   }
+}
+
+/**
+ * ใช้ค่ารายชั่วโมงล่าสุดจากกราฟ เมื่อใหม่กว่าค่าใน waterlevel_load
+ * (ตรวจจริง 2026-11-09: waterlevel_load ยังเป็น 13:00 ขณะที่ waterlevel_graph มีค่า 14:00 แล้ว และค่าชั่วโมงเดียวกันตรงกัน)
+ * ค่าก่อนหน้า = จุดก่อนหน้าในกราฟ (แนวโน้มขึ้น/ลงจึงเทียบกับชั่วโมงก่อนเสมอ)
+ */
+export function freshenReadings<T extends StationReading>(readings: readonly T[], recentByCode: Readonly<Record<string, readonly HistoryPoint[]>>): T[] {
+  return readings.map((r) => {
+    const pts = recentByCode[r.code] ?? [];
+    const last = pts.at(-1);
+    // เวลาไทย "YYYY-MM-DD HH:mm" — เทียบเป็นข้อความได้
+    if (!last || (r.measuredAt !== null && last.at <= r.measuredAt)) return r;
+    const prev = pts.at(-2);
+    return { ...r, levelMsl: last.levelMsl, previousMsl: prev ? prev.levelMsl : r.levelMsl, measuredAt: last.at };
+  });
 }
 
 /** ข้อมูลรายชั่วโมงจาก waterlevel_graph — ข้ามชั่วโมงที่ไม่มีค่า */
