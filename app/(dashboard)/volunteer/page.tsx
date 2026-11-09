@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getPublicEmergencyContacts, getPublicMapData } from "@/lib/public/stats";
 import { PublicMap } from "@/components/public/public-map";
 import { PageHero, SectionTitle } from "@/components/layout/page-hero";
+import { CallLink } from "@/components/ui/call-link";
 
 export const metadata = { title: "ศูนย์อาสาสมัคร" };
 export const dynamic = "force-dynamic";
@@ -91,9 +92,10 @@ export default async function VolunteerPage() {
           <ul className="mt-5 grid gap-2 sm:grid-cols-2">
             {contacts.map((c) => (
               <li key={c.id}>
-                <a
-                  href={`tel:${c.phone}`}
-                  className="card-interactive flex items-center justify-between gap-3 px-4 py-3"
+                <CallLink
+                  phone={c.phone}
+                  name={c.nameTh}
+                  className="card-interactive flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
                 >
                   <span className="min-w-0 text-sm font-semibold text-slate-700">
                     {c.nameTh}
@@ -101,7 +103,7 @@ export default async function VolunteerPage() {
                   <span className="shrink-0 text-base font-bold tabular-nums text-brand-700">
                     {c.phone}
                   </span>
-                </a>
+                </CallLink>
               </li>
             ))}
           </ul>

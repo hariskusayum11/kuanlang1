@@ -7,6 +7,7 @@ import { getMedicalCases, type MedicalCaseRow } from "@/lib/medical/cases";
 import { getRulesPageData } from "@/lib/rules/core";
 import { TriageRulesPanel } from "@/components/rules/page-rules-panels";
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
+import { CallLink } from "@/components/ui/call-link";
 
 export const metadata = { title: "ข้อมูลสุขภาพและกลุ่มเปราะบาง" };
 export const dynamic = "force-dynamic";
@@ -228,7 +229,7 @@ function MedicalRow({ row }: { row: MedicalCaseRow }) {
         {row.mapsUrl && <a href={row.mapsUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex font-bold text-brand-700 hover:underline">เปิด Google Maps ↗</a>}
       </td>
       <td className="px-5 py-4">
-        {row.phone ? <a href={`tel:${row.phone}`} className="font-bold text-brand-700 hover:underline">{row.phone}</a> : <span className="text-slate-400">ไม่ระบุ</span>}
+        {row.phone ? <CallLink phone={row.phone} name={row.fullName || "ไม่ระบุชื่อ"} className="font-bold text-brand-700 hover:underline">{row.phone}</CallLink> : <span className="text-slate-400">ไม่ระบุ</span>}
       </td>
     </tr>
   );

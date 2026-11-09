@@ -1,4 +1,4 @@
-// ส่วนเนื้อหาหน้าหลัก "แบบใหม่" สำหรับหน้าต้นแบบ /lab/song-khlong — Server Component ล้วน
+// ส่วนเนื้อหาหน้าแรก "สองคลอง" (docs/44) — Server Component ล้วน
 // -----------------------------------------------------------------------------
 // เนื้อหาเดียวกับหน้าแรกปัจจุบัน (ดึงข้อความจาก components/public/home-sections.tsx ที่เดียว)
 // แต่จัดหน้าตาให้เข้ากับส่วนหัวภาพน้ำ: หัวข้อใหญ่ eyebrow + font-black · พื้นโล่ง · ไม่ใช้การ์ดไอคอนใหญ่ซ้อนกัน
@@ -11,6 +11,7 @@ import { CATEGORY_LABEL, JOIN_ROLES, PREPARE_TIPS, type Tone } from "@/component
 import type { PublicEmergencyContact, PublicStats } from "@/lib/public/stats";
 import type { ExternalLinkRow } from "@/lib/external-links/core";
 import { linkHost } from "@/lib/external-links/validation";
+import { CallLink } from "@/components/ui/call-link";
 
 /** หัวข้อส่วนแบบเดียวกับส่วนธงเตือนภัย — ใช้ทุกส่วนในหน้าเพื่อให้เป็นระบบเดียวกัน */
 export function TrialSectionHeader({ id, eyebrow, title, lead }: { id: string; eyebrow: string; title: string; lead?: ReactNode }) {
@@ -42,14 +43,15 @@ export function EmergencyStrip({ contacts }: { contacts: PublicEmergencyContact[
           <ul className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {contacts.map((c) => (
               <li key={c.id}>
-                <a
-                  href={`tel:${c.phone.replace(/[^0-9+]/g, "")}`}
-                  className="flex h-full flex-col rounded-2xl bg-red-50 px-4 py-3 ring-1 ring-red-100 transition-colors hover:bg-red-100"
+                <CallLink
+                  phone={c.phone}
+                  name={c.nameTh}
+                  className="flex h-full w-full flex-col rounded-2xl bg-red-50 px-4 py-3 text-left ring-1 ring-red-100 transition-colors hover:bg-red-100"
                 >
                   <span className="font-mono text-2xl font-black leading-none text-red-600">{c.phone}</span>
                   <span className="mt-1.5 text-xs font-semibold leading-snug text-slate-700">{c.nameTh}</span>
                   <span className="text-[11px] text-slate-500">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-                </a>
+                </CallLink>
               </li>
             ))}
           </ul>
