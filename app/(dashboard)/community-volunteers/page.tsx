@@ -5,6 +5,7 @@ import { getKeyring } from "@/lib/crypto/keys";
 import { listCommunityVolunteers } from "@/lib/community-volunteers/core";
 import { householdSheetHref } from "@/lib/household/sheet-link";
 import { PageHero, SectionTitle, EmptyState } from "@/components/layout/page-hero";
+import { CallLink } from "@/components/ui/call-link";
 
 export const metadata = { title: "อาสาสมัครในชุมชน" };
 export const dynamic = "force-dynamic";
@@ -90,9 +91,9 @@ export default async function CommunityVolunteersPage({ searchParams }: { search
                       <td className="py-2.5 pl-6 pr-4 font-semibold text-slate-800">{row.name}</td>
                       <td className="py-2.5 pr-4">
                         {row.phone ? (
-                          <a href={`tel:${row.phone.replace(/[^\d+]/g, "")}`} className="font-semibold tabular-nums text-brand-700 hover:underline">
+                          <CallLink phone={row.phone} name={row.name} className="font-semibold tabular-nums text-brand-700 hover:underline">
                             {row.phone}
-                          </a>
+                          </CallLink>
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}

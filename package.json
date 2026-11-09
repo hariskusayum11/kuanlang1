@@ -31,6 +31,7 @@
     "better-auth": "1.6.23",
     "exceljs": "^4.4.0",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^5.24.0",
     "next": "^16.2.11",
     "nodemailer": "^9.1.0",
     "react": "^19.2.8",

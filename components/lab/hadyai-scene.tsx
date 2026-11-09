@@ -1,0 +1,599 @@
+// ฉากภาพประกอบ "สองคลอง · หาดใหญ่" — SVG ล้วน ไม่มี hook (เรนเดอร์ได้ทั้ง Server/Client)
+// -----------------------------------------------------------------------------
+// ไกล → ใกล้: เขาคอหงส์ + พระพุทธมงคลมหาราช + กระเช้า → ตึกเมืองหาดใหญ่ → ทางรถไฟ (ชุมทางหาดใหญ่)
+// → บ้าน 5 ชุมชนริมคลอง → กำแพงคลอง + ไม้วัดระดับน้ำ → ผิวน้ำ (ระดับจริงจากสถานี)
+// บ้านและน้ำใช้มาตราส่วนเดียวกัน (domain/water/scene-geometry.ts) — น้ำสูงกว่าตลิ่งเท่าไร ในภาพก็ท่วมบ้านเท่านั้น
+// สีใช้คลาส Token ทั้งหมด · ไม่มี <defs>/gradient (ตามข้อบังคับ SVG ของระบบ)
+import { mslToSceneY, SCENE, wavePath } from "@/domain/water/scene-geometry";
+import type { DayPhase, RainLevel } from "@/domain/water/sky";
+
+const GROUND = SCENE.bankY;
+const M = SCENE.pxPerM;
+const GAUGE_X = 850;
+
+export interface SceneMark {
+  levelMsl: number;
+  label: string;
+}
+
+/** ตึกฉากหลัง [x, กว้าง, สูง] — ฐานอยู่ที่ทางรถไฟ */
+const SKYLINE: Array<[number, number, number]> = [
+  [520, 60, 90], [585, 44, 130], [634, 70, 70], [700, 52, 150], [756, 80, 100], [842, 46, 175],
+  [893, 64, 120], [962, 40, 95], [1006, 72, 160], [1084, 50, 80], [1180, 58, 110], [1243, 44, 215],
+  [1292, 76, 140], [1372, 48, 100], [1424, 66, 185], [1495, 54, 125], [1553, 60, 90],
+];
+const RAIL_Y = GROUND + 35;
+/**
+ * กรอบที่แสดง: ตัดฟ้าด้านบนและท้องน้ำด้านล่างที่ว่างออก เพื่อให้บ้าน/น้ำ/เส้นธงใหญ่ขึ้น
+ * (ผิวน้ำต่ำสุดของทุกจุดวัดยังอยู่ในกรอบ · คำนวณพิกัดยังเป็นระบบ 1600×900 เดิม)
+ */
+export const SCENE_CROP = { top: 125, height: 705 } as const;
+/** ขอบล่างของกรอบที่แสดง (หน่วยฉาก) */
+const BOTTOM = SCENE_CROP.top + SCENE_CROP.height;
+
+/** ท้องฟ้าตามเวลา + เมฆ — วาดหลังสุด (หลังเขา) */
+function Sky({ phase, cloud, rain }: { phase: DayPhase; cloud: number; rain: RainLevel }) {
+  const clouds = rain !== "none" || cloud >= 60;
+  const cloudCls = rain === "none" ? (phase === "night" ? "fill-slate-500/60" : "fill-white/80") : phase === "night" ? "fill-slate-600/70" : "fill-slate-400/70";
+  return (
+    <g>
+      {phase === "night" ? (
+        <g>
+          {[[1180, 170], [1260, 210], [1340, 160], [1460, 200], [1540, 165], [980, 190], [1080, 160], [900, 215]].map(([x, y]) => (
+            <circle key={`${x}-${y}`} cx={x} cy={y} r={2} className="fill-white/80" />
+          ))}
+          {!clouds ? (
+            <g>
+              <circle cx={1500} cy={190} r={26} className="fill-sun-100" />
+              <circle cx={1512} cy={182} r={22} className="fill-ink-800" />
+            </g>
+          ) : null}
+        </g>
+      ) : !clouds ? (
+        <circle cx={1510} cy={200} r={34} className={phase === "day" ? "fill-sun-300" : "fill-sun-400/90"} />
+      ) : null}
+      {clouds
+        ? [[980, 215, 1], [1240, 200, 1.2], [1470, 222, 1.05]].map(([x, y, k]) => (
+            <g key={x} transform={`translate(${x} ${y}) scale(${k})`} className={cloudCls}>
+              <ellipse cx={0} cy={0} rx={70} ry={24} />
+              <ellipse cx={-30} cy={-14} rx={36} ry={26} />
+              <ellipse cx={22} cy={-20} rx={44} ry={32} />
+            </g>
+          ))
+        : null}
+    </g>
+  );
+}
+
+function Buddha({ x, y }: { x: number; y: number }) {
+  // พระพุทธมงคลมหาราช (ปางห้ามญาติ ประทับยืน) — ภาพย่อแบบเรียบ ไม่ใส่รายละเอียดเกินจำเป็น
+  return (
+    <g transform={`translate(${x} ${y})`} className="fill-white stroke-brand-300" strokeWidth={1}>
+      <rect x={-16} y={-7} width={32} height={7} rx={2} />
+      <path d="M-9 -7 L-12 -42 Q0 -48 12 -42 L9 -7 Z" />
+      <rect x={-12} y={-37} width={7} height={9} rx={3} />
+      <rect x={5} y={-37} width={7} height={9} rx={3} />
+      <circle cx={0} cy={-52} r={6.5} />
+      <path d="M-2.5 -57 L0 -64 L2.5 -57 Z" />
+    </g>
+  );
+}
+
+function Palm({ x, h }: { x: number; h: number }) {
+  return (
+    <g transform={`translate(${x} ${GROUND})`}>
+      <path d={`M0 0 Q${-h * 0.08} ${-h * 0.5} ${h * 0.06} ${-h}`} className="fill-none stroke-slate-500" strokeWidth={6} strokeLinecap="round" />
+      <g transform={`translate(${h * 0.06} ${-h})`} className="fill-emerald-600">
+        <path d="M0 0 Q-34 -14 -58 10 Q-30 -2 0 0Z" />
+        <path d="M0 0 Q34 -14 58 10 Q30 -2 0 0Z" />
+        <path d="M0 0 Q-20 -30 -44 -30 Q-18 -18 0 0Z" />
+        <path d="M0 0 Q20 -30 44 -30 Q18 -18 0 0Z" />
+        <path d="M0 0 Q-4 -32 6 -46 Q2 -22 0 0Z" />
+      </g>
+    </g>
+  );
+}
+
+function RubberTree({ x, h }: { x: number; h: number }) {
+  return (
+    <g transform={`translate(${x} ${GROUND})`}>
+      <rect x={-4} y={-h * 0.62} width={8} height={h * 0.62} className="fill-slate-500" />
+      <ellipse cx={0} cy={-h * 0.72} rx={h * 0.28} ry={h * 0.32} className="fill-emerald-600" />
+      <ellipse cx={-h * 0.12} cy={-h * 0.8} rx={h * 0.16} ry={h * 0.18} className="fill-emerald-500" />
+    </g>
+  );
+}
+
+// ---------- บ้าน: มุมมอง 3/4 (เห็นผนังหน้า + ผนังข้างขวา + หลังคาเอียง) ----------
+// ทุกความสูงเป็นเมตร × M — น้ำท่วมในภาพจึงเทียบกับประตู/หน้าต่างได้ตามจริง
+const DX = 28;
+const DY = -12;
+const pts = (...p: Array<[number, number]>) => p.map(([a, b]) => `${a},${b}`).join(" ");
+const back = ([a, b]: [number, number]): [number, number] => [a + DX, b + DY];
+
+/** ผนังด้านข้าง (ขวา) ของกล่องที่ขอบขวาอยู่ที่ x */
+function SideWall({ x, top, bottom, cls }: { x: number; top: number; bottom: number; cls: string }) {
+  return <polygon points={pts([x, bottom], back([x, bottom]), back([x, top]), [x, top])} className={cls} />;
+}
+
+/** หลังคาจั่ว (จั่วหันหน้า) — แผ่นซ้ายเงา · แผ่นขวารับแสง · ลอนหลังคา · ปั้นลม */
+function GableRoof({ x, w, top, rise, light, dark, trim, gable }: { x: number; w: number; top: number; rise: number; light: string; dark: string; trim: string; gable: string }) {
+  const ov = 10;
+  const apex: [number, number] = [x + w / 2, top - rise];
+  const L: [number, number] = [x - ov, top + 5];
+  const R: [number, number] = [x + w + ov, top + 5];
+  return (
+    <g>
+      <polygon points={pts(apex, back(apex), back(L), L)} className={dark} />
+      <polygon points={pts(apex, back(apex), back(R), R)} className={light} />
+      {[0.25, 0.5, 0.75].map((t) => (
+        <line key={t} x1={apex[0] + DX * t} y1={apex[1] + DY * t} x2={R[0] + DX * t} y2={R[1] + DY * t} className="stroke-white/25" strokeWidth={1.5} />
+      ))}
+      <polygon points={pts([x, top], apex, [x + w, top])} className={gable} />
+      <circle cx={apex[0]} cy={top - rise * 0.42} r={5} className="fill-ink-800/40" />
+      <polyline points={pts(L, apex, R)} className={`fill-none ${trim}`} strokeWidth={6} strokeLinejoin="round" />
+    </g>
+  );
+}
+
+function Win({ x, y, w, h, shutters }: { x: number; y: number; w: number; h: number; shutters?: string }) {
+  return (
+    <g>
+      {shutters ? (
+        <>
+          <rect x={x - w * 0.42} y={y} width={w * 0.4} height={h} className={shutters} />
+          <rect x={x + w * 1.02} y={y} width={w * 0.4} height={h} className={shutters} />
+        </>
+      ) : null}
+      <rect x={x - 3} y={y - 3} width={w + 6} height={h + 6} className="fill-white stroke-slate-400" strokeWidth={1.5} />
+      <rect x={x} y={y} width={w} height={h} className="fill-sky-200" />
+      <rect x={x} y={y} width={w} height={h * 0.35} className="fill-sky-100" />
+      <rect x={x + w / 2 - 1.5} y={y} width={3} height={h} className="fill-white" />
+      <rect x={x} y={y + h / 2 - 1.5} width={w} height={3} className="fill-white" />
+      <rect x={x - 6} y={y + h + 3} width={w + 12} height={5} className="fill-slate-400" />
+    </g>
+  );
+}
+
+function Door({ x, y, w, h, cls = "fill-ink-700" }: { x: number; y: number; w: number; h: number; cls?: string }) {
+  return (
+    <g>
+      <rect x={x - 4} y={y - 4} width={w + 8} height={h + 4} className="fill-slate-300" />
+      <rect x={x} y={y} width={w} height={h} className={cls} />
+      <rect x={x + 5} y={y + 6} width={w - 10} height={h * 0.38} className="fill-white/10" />
+      <circle cx={x + w - 7} cy={y + h * 0.55} r={2.5} className="fill-sun-300" />
+    </g>
+  );
+}
+
+/** ผนังไม้ตีซ้อน */
+function Planks({ x, y, w, h, cls }: { x: number; y: number; w: number; h: number; cls: string }) {
+  return (
+    <>
+      {Array.from({ length: Math.max(0, Math.floor(h / 10)) }, (_, i) => (
+        <rect key={i} x={x} y={y + 10 + i * 10} width={w} height={1.5} className={cls} />
+      ))}
+    </>
+  );
+}
+
+/** 1) บ้านไม้ใต้ถุนสูง — บันไดหน้าบ้าน · ตุ่มน้ำใต้ถุน (สอดคล้องกับโลโก้: บ้านอยู่เหนือน้ำ) */
+function RaisedWoodHouse({ x, w }: { x: number; w: number }) {
+  const stilt = 1.7 * M;
+  const floor = GROUND - stilt;
+  const top = floor - 2.6 * M;
+  return (
+    <g>
+      <rect x={x} y={floor} width={w} height={stilt} className="fill-ink-900/15" />
+      {[0.04, 0.5, 0.96].map((p) => (
+        <rect key={p} x={x + w * p - 5} y={floor} width={10} height={stilt} className="fill-slate-500" />
+      ))}
+      <rect x={x + w + DX - 5} y={floor + DY} width={8} height={stilt - DY} className="fill-slate-600" />
+      <ellipse cx={x + w * 0.4} cy={GROUND - 16} rx={14} ry={17} className="fill-sun-800" />
+      <ellipse cx={x + w * 0.4} cy={GROUND - 31} rx={9} ry={3} className="fill-sun-900" />
+      <SideWall x={x + w} top={top} bottom={floor} cls="fill-sun-300" />
+      <rect x={x - 4} y={floor - 6} width={w + 8} height={8} className="fill-sun-800" />
+      <rect x={x} y={top} width={w} height={floor - top - 6} className="fill-sun-100" />
+      <Planks x={x} y={top} w={w} h={floor - top - 8} cls="fill-sun-300/80" />
+      <rect x={x} y={top} width={w} height={9} className="fill-ink-900/20" />
+      <Win x={x + w * 0.14} y={top + 26} w={w * 0.26} h={34} shutters="fill-sun-700" />
+      <Door x={x + w * 0.6} y={floor - 6 - 2.05 * M} w={w * 0.26} h={2.05 * M} cls="fill-sun-800" />
+      {/* บันได */}
+      <polygon points={pts([x + w * 0.56, floor - 4], [x + w * 0.9, floor - 4], [x + w * 1.18, GROUND], [x + w * 0.84, GROUND])} className="fill-sun-700" />
+      {[1, 2, 3, 4].map((i) => (
+        <rect key={i} x={x + w * (0.56 + 0.07 * i)} y={floor - 4 + i * (stilt / 5)} width={w * 0.34} height={3} className="fill-sun-900/60" />
+      ))}
+      <GableRoof x={x} w={w} top={top} rise={58} light="fill-brand-600" dark="fill-brand-800" trim="stroke-brand-800" gable="fill-sun-200" />
+    </g>
+  );
+}
+
+/** 2) บ้านปูนชั้นเดียว หลังคาปั้นหยา — รั้วเตี้ย · แอร์ข้างบ้าน · ประตูสูง 2 ม. (ตัวเทียบความลึกน้ำ) */
+function ConcreteHouse({ x, w }: { x: number; w: number }) {
+  const top = GROUND - 3.1 * M;
+  const rise = 52;
+  const ov = 12;
+  const FL: [number, number] = [x - ov, top + 5];
+  const FR: [number, number] = [x + w + ov, top + 5];
+  const RL: [number, number] = [x + w * 0.24, top - rise];
+  const RR: [number, number] = [x + w * 0.76, top - rise];
+  return (
+    <g>
+      <SideWall x={x + w} top={top} bottom={GROUND} cls="fill-slate-200" />
+      <rect x={x + w + 6} y={GROUND - 1.4 * M + DY / 2} width={18} height={14} className="fill-slate-100 stroke-slate-400" strokeWidth={1} />
+      <rect x={x} y={top} width={w} height={GROUND - top} className="fill-white" />
+      <rect x={x} y={top} width={w} height={9} className="fill-ink-900/15" />
+      <Door x={x + w * 0.12} y={GROUND - 2 * M} w={w * 0.24} h={2 * M} />
+      <Win x={x + w * 0.5} y={top + 0.9 * M} w={w * 0.36} h={0.95 * M} />
+      <polygon points={pts(RR, back(RR), back(FR), FR)} className="fill-slate-700" />
+      <polygon points={pts(FL, RL, RR, FR)} className="fill-slate-500" />
+      {[0.33, 0.66].map((t) => (
+        <line key={t} x1={FL[0] + (RL[0] - FL[0]) * t} y1={FL[1] + (RL[1] - FL[1]) * t} x2={FR[0] + (RR[0] - FR[0]) * t} y2={FR[1] + (RR[1] - FR[1]) * t} className="stroke-white/15" strokeWidth={2} />
+      ))}
+      <line x1={RL[0]} y1={RL[1]} x2={back(RR)[0]} y2={back(RR)[1]} className="stroke-slate-700" strokeWidth={4} />
+      <polyline points={pts(FL, RL, RR, FR)} className="fill-none stroke-slate-700" strokeWidth={4} strokeLinejoin="round" />
+      {/* รั้วหน้าบ้าน 1.2 ม. */}
+      <rect x={x - 18} y={GROUND - 1.2 * M} width={w * 0.62} height={1.2 * M} className="fill-slate-200" />
+      {[0, 0.3, 0.6].map((p) => (
+        <rect key={p} x={x - 18 + w * p} y={GROUND - 1.2 * M - 6} width={12} height={1.2 * M + 6} className="fill-slate-300" />
+      ))}
+      <rect x={x - 18} y={GROUND - 1.2 * M} width={w * 0.62} height={4} className="fill-slate-300" />
+    </g>
+  );
+}
+
+/** 3) ตึกแถวสองชั้น — ประตูม้วน · กันสาด · ระเบียงชั้นสอง · แท็งก์น้ำสแตนเลสบนดาดฟ้า */
+function Shophouse({ x, w }: { x: number; w: number }) {
+  const top = GROUND - 6.6 * M;
+  const mid = GROUND - 3.3 * M;
+  const tankX = x + w * 0.62;
+  return (
+    <g>
+      <rect x={tankX - 2} y={top - 30} width={4} height={20} className="fill-slate-500" />
+      <rect x={tankX + 26} y={top - 30} width={4} height={20} className="fill-slate-500" />
+      <rect x={tankX - 6} y={top - 62} width={40} height={36} rx={8} className="fill-slate-300" />
+      <rect x={tankX - 6} y={top - 50} width={40} height={3} className="fill-slate-400" />
+      <rect x={tankX + 2} y={top - 60} width={7} height={32} rx={3} className="fill-white/60" />
+      <SideWall x={x + w} top={top - 14} bottom={GROUND} cls="fill-slate-200" />
+      <rect x={x} y={top} width={w} height={GROUND - top} className="fill-white" />
+      <rect x={x - 4} y={top - 14} width={w + 8} height={16} className="fill-slate-300" />
+      <Win x={x + w * 0.12} y={top + 22} w={w * 0.32} h={1.5 * M} />
+      <Win x={x + w * 0.56} y={top + 22} w={w * 0.32} h={1.5 * M} />
+      <rect x={x - 6} y={mid - 0.9 * M} width={w + 12} height={4} className="fill-slate-500" />
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect key={i} x={x - 4 + i * ((w + 8) / 12)} y={mid - 0.9 * M} width={2.5} height={0.9 * M} className="fill-slate-500" />
+      ))}
+      <rect x={x - 8} y={mid - 2} width={w + 16} height={8} className="fill-slate-400" />
+      <polygon points={pts([x - 8, mid + 18], [x + w + 8, mid + 18], [x + w + 18, mid + 38], [x - 18, mid + 38])} className="fill-brand-600" />
+      <rect x={x + w * 0.08} y={GROUND - 2.5 * M} width={w * 0.84} height={2.5 * M} className="fill-slate-400" />
+      {Array.from({ length: 10 }, (_, i) => (
+        <rect key={i} x={x + w * 0.08} y={GROUND - 2.5 * M + 6 + i * 8.6} width={w * 0.84} height={2} className="fill-slate-500/70" />
+      ))}
+    </g>
+  );
+}
+
+/** 4) บ้านสองชั้นครึ่งปูนครึ่งไม้ (แบบพบมากในภาคใต้) */
+function HalfWoodHouse({ x, w }: { x: number; w: number }) {
+  const mid = GROUND - 2.8 * M;
+  const top = mid - 2.6 * M;
+  return (
+    <g>
+      <SideWall x={x + w} top={mid} bottom={GROUND} cls="fill-slate-200" />
+      <SideWall x={x + w + 6} top={top} bottom={mid + 6} cls="fill-sun-300" />
+      <rect x={x} y={mid} width={w} height={GROUND - mid} className="fill-white" />
+      <Door x={x + w * 0.1} y={GROUND - 2 * M} w={w * 0.24} h={2 * M} />
+      <Win x={x + w * 0.52} y={mid + 0.75 * M} w={w * 0.34} h={0.9 * M} />
+      <rect x={x - 6} y={top} width={w + 12} height={mid - top + 6} className="fill-sun-100" />
+      <Planks x={x - 6} y={top} w={w + 12} h={mid - top} cls="fill-sun-300/80" />
+      <rect x={x - 6} y={top} width={w + 12} height={9} className="fill-ink-900/20" />
+      <rect x={x - 8} y={mid} width={w + 16} height={7} className="fill-sun-800" />
+      <Win x={x + w * 0.1} y={top + 24} w={w * 0.3} h={0.95 * M} shutters="fill-sun-700" />
+      <Win x={x + w * 0.6} y={top + 24} w={w * 0.3} h={0.95 * M} />
+      <GableRoof x={x - 6} w={w + 12} top={top} rise={56} light="fill-slate-500" dark="fill-slate-700" trim="stroke-slate-700" gable="fill-sun-200" />
+    </g>
+  );
+}
+
+/** 5) บ้านปูนยกพื้นสูง — เสาปูน · บันไดข้าง */
+function RaisedConcreteHouse({ x, w }: { x: number; w: number }) {
+  const stilt = 1.5 * M;
+  const floor = GROUND - stilt;
+  const top = floor - 2.7 * M;
+  return (
+    <g>
+      <rect x={x} y={floor} width={w} height={stilt} className="fill-ink-900/15" />
+      {[0.06, 0.94].map((p) => (
+        <rect key={p} x={x + w * p - 7} y={floor} width={14} height={stilt} className="fill-slate-300" />
+      ))}
+      <rect x={x + w + DX - 7} y={floor + DY} width={12} height={stilt - DY} className="fill-slate-400" />
+      <SideWall x={x + w} top={top} bottom={floor} cls="fill-slate-200" />
+      <rect x={x - 4} y={floor - 7} width={w + 8} height={9} className="fill-slate-400" />
+      <rect x={x} y={top} width={w} height={floor - top - 7} className="fill-mist" />
+      <rect x={x} y={top} width={w} height={9} className="fill-ink-900/15" />
+      <Door x={x + w * 0.12} y={floor - 7 - 2 * M} w={w * 0.26} h={2 * M} cls="fill-brand-800" />
+      <Win x={x + w * 0.54} y={top + 0.8 * M} w={w * 0.32} h={0.9 * M} />
+      <polygon points={pts([x - 30, GROUND], [x - 4, floor - 2], [x + 10, floor - 2], [x - 16, GROUND])} className="fill-slate-300" />
+      <GableRoof x={x} w={w} top={top} rise={52} light="fill-brand-500" dark="fill-brand-700" trim="stroke-brand-700" gable="fill-mist" />
+    </g>
+  );
+}
+
+/** เสาไฟฟ้า + สายไฟ (ภาพจำของถนนไทย) */
+function PowerLines({ poles }: { poles: number[] }) {
+  const topY = GROUND - 9 * M;
+  const xs = [600, ...poles, SCENE.width];
+  const wire = (y: number) =>
+    xs.slice(1).map((x2, i) => `M${xs[i]} ${y} Q${(xs[i]! + x2) / 2} ${y + 26} ${x2} ${y}`).join(" ");
+  return (
+    <g>
+      {[0, 14, 28].map((o) => (
+        <path key={o} d={wire(topY + 10 + o)} className="fill-none stroke-ink-800/60" strokeWidth={1.4} />
+      ))}
+      {poles.map((x, i) => (
+        <g key={x}>
+          <rect x={x - 5} y={topY} width={10} height={GROUND - topY} className="fill-slate-400" />
+          <rect x={x - 26} y={topY + 8} width={52} height={5} className="fill-slate-500" />
+          {[-20, 0, 20].map((o) => (
+            <rect key={o} x={x + o - 2.5} y={topY + 2} width={5} height={8} className="fill-white" />
+          ))}
+          {i === 0 ? <rect x={x + 5} y={topY + 70} width={22} height={34} rx={3} className="fill-slate-500" /> : null}
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/** เส้นเกณฑ์บนกำแพง (เช่น ธงเหลือง/ธงแดงของชุมชน) — ระดับ ม.รทก. ของจุดวัดที่ภาพแสดง */
+export interface SceneLine {
+  levelMsl: number;
+  label: string;
+  tone: "green" | "yellow" | "orange" | "red";
+}
+const LINE_TONE: Record<SceneLine["tone"], { stroke: string; text: string }> = {
+  green: { stroke: "stroke-emerald-500", text: "fill-emerald-700" },
+  yellow: { stroke: "stroke-sun-500", text: "fill-sun-800" },
+  orange: { stroke: "stroke-alert-500", text: "fill-alert-700" },
+  red: { stroke: "stroke-red-600", text: "fill-red-700" },
+};
+
+/**
+ * ลูกศรวัดระยะ "ผิวน้ำ ↔ เส้นเป้าหมาย" บนกำแพง (ค่าเริ่มต้น = ตลิ่ง; สะพานที่มีเกณฑ์ธง = เส้นธงถัดไป)
+ * ให้เห็นช่องว่างจริงในภาพพร้อมตัวเลข · ยังไม่ถึง = สีเข้ม · เกินแล้ว = แดง · ไม่มีข้อมูล = ไม่วาด
+ */
+function GapMeasure({ waterY, levelMsl, targetMsl, targetY, targetLabel }: { waterY: number; levelMsl: number | null; targetMsl: number; targetY: number; targetLabel: string }) {
+  if (levelMsl === null || !Number.isFinite(levelMsl)) return null;
+  const gap = targetMsl - levelMsl;
+  const over = gap < 0;
+  const x = 1060;
+  const top = Math.min(targetY, waterY);
+  const bottom = Math.max(targetY, waterY);
+  const tall = bottom - top > 36;
+  const mid = (top + bottom) / 2;
+  const tone = over ? "fill-red-600" : "fill-ink-900";
+  const stroke = over ? "stroke-red-600" : "stroke-ink-900";
+  return (
+    <g>
+      {tall ? (
+        <g className={stroke} strokeWidth={3}>
+          <line x1={x} x2={x} y1={top + 10} y2={bottom - 10} />
+          <path d={`M${x - 9} ${top + 14} L${x} ${top + 2} L${x + 9} ${top + 14}`} className="fill-none" strokeLinejoin="round" />
+          <path d={`M${x - 9} ${bottom - 14} L${x} ${bottom - 2} L${x + 9} ${bottom - 14}`} className="fill-none" strokeLinejoin="round" />
+          <line x1={x - 18} x2={x + 18} y1={top} y2={top} />
+          <line x1={x - 18} x2={x + 18} y1={bottom} y2={bottom} />
+        </g>
+      ) : null}
+      <g style={{ paintOrder: "stroke" }} className="stroke-white/90" strokeWidth={9} strokeLinejoin="round">
+        <text x={x + 32} y={mid + 12} fontSize={78} fontWeight={900} className={tone}>
+          {over ? "เกิน " : "อีก "}
+          {Math.abs(gap).toFixed(2)} ม.
+        </text>
+        <text x={x + 36} y={mid + 50} fontSize={27} fontWeight={700} className={over ? "fill-red-600" : "fill-ink-800"}>
+          {over ? `ผิวน้ำสูงกว่า${targetLabel}` : `จากผิวน้ำถึง${targetLabel}`}
+        </text>
+      </g>
+    </g>
+  );
+}
+
+const HOUSES = [
+  { x: 926, w: 104, kind: RaisedWoodHouse, labelY: GROUND - 4.3 * M - 102 },
+  { x: 1064, w: 116, kind: ConcreteHouse, labelY: GROUND - 3.1 * M - 92 },
+  { x: 1212, w: 96, kind: Shophouse, labelY: GROUND - 6.6 * M - 44 }, // ตึกสูงสุด — ป้ายชิดหลังคา ไม่ให้ลอยขึ้นไปใต้แถบเมนู
+  { x: 1342, w: 104, kind: HalfWoodHouse, labelY: GROUND - 5.4 * M - 100 },
+  { x: 1480, w: 92, kind: RaisedConcreteHouse, labelY: GROUND - 4.2 * M - 96 },
+] as const;
+
+// สระบน/ล่างและวรรณยุกต์ไม่กินความกว้าง — นับเฉพาะตัวที่วางบนบรรทัด
+const labelWidth = (text: string) => text.replace(/[ัิ-ฺ็-๎]/g, "").length * 13.8 + 36;
+
+function Label({ x, y, text, tone = "ink" }: { x: number; y: number; text: string; tone?: "ink" | "red" | "white" }) {
+  const w = labelWidth(text);
+  const bg = tone === "red" ? "fill-red-600" : tone === "white" ? "fill-white/90" : "fill-ink-900/85";
+  const fg = tone === "white" ? "fill-ink-900" : "fill-white";
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x={-w / 2} y={-20} width={w} height={38} rx={19} className={bg} />
+      <text x={0} y={7} textAnchor="middle" fontSize={23} fontWeight={700} className={fg}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+export function HadYaiScene({
+  levelMsl,
+  bankMsl,
+  groundMsl,
+  historyMark,
+  communityNames,
+  animate,
+  placeLabel,
+  lines = [],
+  target = null,
+  viewX = 0,
+  phase = "day",
+  rain = "none",
+  cloud = 0,
+  extendBottom = 0,
+}: {
+  /** ระดับน้ำที่กำลังแสดง (ม.รทก.) · null = ไม่มีข้อมูล */
+  levelMsl: number | null;
+  bankMsl: number;
+  groundMsl: number | null;
+  historyMark: SceneMark | null;
+  communityNames: string[];
+  animate: boolean;
+  /** บอกว่าภาพนี้คือจุดวัดไหน (เช่น "สะพานบ้านคลองหวะ") */
+  placeLabel: string;
+  /** เส้นเกณฑ์เพิ่มจากตลิ่ง (เช่น ธงเหลือง/ธงแดง) */
+  lines?: SceneLine[];
+  /** เส้นที่ลูกศรวัดระยะชี้ไป — null = ตลิ่ง */
+  target?: { levelMsl: number; label: string } | null;
+  /** ขอบซ้ายของกรอบที่แสดง (มือถือเลื่อนไปฝั่งไม้วัด/บ้านเพื่อให้ภาพใหญ่ขึ้น) */
+  viewX?: number;
+  /** ช่วงเวลาของวัน — ท้องฟ้า/ความสว่างของภาพ */
+  phase?: DayPhase;
+  /** ฝนตอนนี้ (จากข้อมูลอากาศ) — ใช้เลือกเมฆ (เม็ดฝนวาดเป็นชั้นของส่วนหัว) */
+  rain?: RainLevel;
+  /** เมฆปกคลุม (%) */
+  cloud?: number;
+  /** ต่อภาพลงด้านล่าง (หน่วยฉาก) — ให้น้ำ/กำแพงไหลลงใต้แถบย้อนดูโดยเส้นผิวน้ำยังอยู่เหนือแถบ */
+  extendBottom?: number;
+}) {
+  const waterY = mslToSceneY(levelMsl, bankMsl);
+  const gaugeTop = mslToSceneY(Math.max(bankMsl + 3.6, ...lines.map((l) => l.levelMsl + 1)), bankMsl);
+  const bedMsl = groundMsl !== null && groundMsl < bankMsl ? groundMsl : bankMsl - 10;
+  const ticks: number[] = [];
+  for (let m = Math.ceil(bedMsl * 2) / 2; m <= bankMsl + 3.6; m += 0.5) ticks.push(m);
+  const histY = historyMark ? mslToSceneY(historyMark.levelMsl, bankMsl) : null;
+
+  return (
+    <svg
+      viewBox={`${viewX} ${SCENE_CROP.top} ${SCENE.width - viewX} ${SCENE_CROP.height + extendBottom}`}
+      preserveAspectRatio="xMaxYMax slice"
+      className="h-full w-full"
+      role="img"
+      aria-label="ภาพประกอบระดับน้ำที่จุดวัด เทียบตลิ่ง เส้นเกณฑ์ธง และบ้านริมคลอง"
+    >
+      <Sky phase={phase} cloud={cloud} rain={rain} />
+      {/* เขาคอหงส์ + เขาชุมสัก */}
+      <path d="M560 600 C760 520 940 290 1120 196 C1200 214 1262 300 1318 330 C1360 284 1396 236 1420 232 C1480 246 1546 340 1600 380 L1600 600 Z" className="fill-brand-200/70" />
+      <path d="M1128 178 Q1270 210 1414 216" className="fill-none stroke-slate-500/70" strokeWidth={1.5} />
+      <g transform="translate(1262 198)">
+        <rect x={-1} y={0} width={2} height={8} className="fill-slate-500" />
+        <rect x={-9} y={8} width={18} height={13} rx={3} className="fill-brand-500" />
+      </g>
+      <Buddha x={1120} y={198} />
+
+      {/* ตึกเมืองหาดใหญ่ */}
+      {SKYLINE.map(([x, w, h]) => (
+        <g key={x}>
+          <rect x={x} y={RAIL_Y - h} width={w} height={h} className="fill-brand-300/60" />
+          {Array.from({ length: Math.floor((h - 16) / 20) }, (_, i) => (
+            <rect key={i} x={x + 8} y={RAIL_Y - h + 12 + i * 20} width={w - 16} height={5} className="fill-white/45" />
+          ))}
+        </g>
+      ))}
+
+      {/* ทางรถไฟ + ขบวนรถ (ชุมทางหาดใหญ่) */}
+      <rect x={0} y={RAIL_Y - 4} width={SCENE.width} height={8} className="fill-slate-400" />
+      <g className={animate ? "animate-train-run" : undefined} style={{ transformBox: "view-box" }}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <g key={i} transform={`translate(${i * 76} ${RAIL_Y - 26})`}>
+            <rect width={72} height={22} rx={i === 0 ? 9 : 3} className={i === 0 ? "fill-brand-700" : "fill-brand-500"} />
+            <rect y={9} width={72} height={4} className="fill-white/80" />
+            <rect x={8} y={3} width={56} height={5} rx={1} className="fill-sky-100" />
+          </g>
+        ))}
+      </g>
+
+      {/* พื้นดินริมคลอง */}
+      <rect x={0} y={GROUND - 14} width={SCENE.width} height={20} className="fill-emerald-200" />
+      {[120, 330, 560].map((x, i) => <RubberTree key={x} x={x} h={150 + (i % 2) * 40} />)}
+      {[240, 470].map((x, i) => <Palm key={x} x={x} h={200 + i * 18} />)}
+      {[1056, 1206, 1336, 1472, 1594].map((x, i) => (i % 2 ? <Palm key={x} x={x} h={230} /> : <RubberTree key={x} x={x} h={190} />))}
+
+      {HOUSES.map(({ x, w, kind: House }) => (
+        <g key={x}>
+          <ellipse cx={x + w / 2 + DX / 2} cy={GROUND + 2} rx={w * 0.7} ry={7} className="fill-ink-900/15" />
+          <House x={x} w={w} />
+        </g>
+      ))}
+      <PowerLines poles={[1196, 1462]} />
+      {HOUSES.slice(0, communityNames.length).map(({ x, w, labelY }, i) => (
+        <Label key={x} x={x + w / 2} y={labelY} text={communityNames[i]!} tone="white" />
+      ))}
+
+      {/* กำแพงคลอง */}
+      <rect x={0} y={GROUND} width={SCENE.width} height={BOTTOM - GROUND + extendBottom} className="fill-slate-300" />
+      <rect x={0} y={GROUND} width={SCENE.width} height={12} className="fill-slate-400" />
+      {Array.from({ length: 8 + Math.ceil(extendBottom / 56) }, (_, r) => (
+        <g key={r}>
+          <rect x={0} y={GROUND + 12 + (r + 1) * 56} width={SCENE.width} height={2} className="fill-slate-400/50" />
+          {Array.from({ length: 11 }, (_, c) => (
+            <rect key={c} x={c * 160 + (r % 2) * 80} y={GROUND + 12 + r * 56} width={2} height={56} className="fill-slate-400/50" />
+          ))}
+        </g>
+      ))}
+
+      {/* โทนตามเวลา — กลางคืนมืดลง · รุ่งเช้า/โพล้เพล้อุ่นขึ้นเล็กน้อย (ไม้วัด น้ำ และป้ายวาดทับจึงยังอ่านชัด) */}
+      {phase === "night" ? <rect x={0} y={0} width={SCENE.width} height={BOTTOM + extendBottom} className="fill-ink-950/45" /> : null}
+      {phase === "dawn" || phase === "dusk" ? <rect x={0} y={0} width={SCENE.width} height={BOTTOM + extendBottom} className="fill-sun-700/10" /> : null}
+
+      {/* ไม้วัดระดับน้ำ */}
+      <rect x={GAUGE_X} y={gaugeTop} width={34} height={BOTTOM - gaugeTop + extendBottom} rx={4} className="fill-white stroke-slate-300" strokeWidth={2} />
+      {ticks.map((m) => {
+        const y = mslToSceneY(m, bankMsl);
+        const whole = Math.abs(m - Math.round(m)) < 0.01;
+        return <rect key={m} x={GAUGE_X + 4} y={y - 2.5} width={whole ? 24 : 13} height={5} className="fill-ink-800" />;
+      })}
+
+      {/* ระดับตลิ่ง + เส้นเกณฑ์ธงของชุมชน (ถ้าจุดวัดนี้มีเกณฑ์) */}
+      <line x1={GAUGE_X + 34} x2={SCENE.width} y1={GROUND} y2={GROUND} className="stroke-ink-800" strokeWidth={3} strokeDasharray="16 12" />
+      {lines.map((l) => {
+        const y = mslToSceneY(l.levelMsl, bankMsl);
+        return (
+          <g key={l.label}>
+            <line x1={GAUGE_X + 34} x2={SCENE.width} y1={y} y2={y} className={LINE_TONE[l.tone].stroke} strokeWidth={4} strokeDasharray="18 10" />
+            <text x={GAUGE_X + 46} y={y - 12} fontSize={30} fontWeight={800} className={`${LINE_TONE[l.tone].text} stroke-white/90`} strokeWidth={7} style={{ paintOrder: "stroke" }}>
+              {l.label}
+            </text>
+          </g>
+        );
+      })}
+      <text x={GAUGE_X + 46} y={GROUND - 12} fontSize={30} fontWeight={800} className="fill-ink-900 stroke-white/90" strokeWidth={7} style={{ paintOrder: "stroke" }}>
+        ตลิ่ง
+      </text>
+
+      {/* ผิวน้ำ — ระดับจริงจากสถานี */}
+      <g style={{ transform: `translateY(${waterY}px)`, transition: "transform 700ms cubic-bezier(.2,.8,.2,1)" }}>
+        <g className={animate ? "animate-wave-drift-slow" : undefined} style={{ transformBox: "fill-box" }}>
+          <path d={wavePath(10, 200, SCENE.height + extendBottom)} className="fill-sky-400/55" transform="translate(0 -6)" />
+        </g>
+        <g className={animate ? "animate-wave-drift" : undefined} style={{ transformBox: "fill-box" }}>
+          <path d={wavePath(7, 160, SCENE.height + extendBottom)} className="fill-brand-500/75" />
+        </g>
+      </g>
+
+      {/* เส้นน้ำท่วมในอดีต (วาดเหนือผิวน้ำให้อ่านได้เสมอ) */}
+      <Label x={GAUGE_X + 34 + labelWidth(placeLabel) / 2} y={gaugeTop - 34} text={placeLabel} tone="ink" />
+
+      <GapMeasure
+        waterY={waterY}
+        levelMsl={levelMsl}
+        targetMsl={target?.levelMsl ?? bankMsl}
+        targetY={target ? mslToSceneY(target.levelMsl, bankMsl) : GROUND}
+        targetLabel={target?.label ?? "ตลิ่ง"}
+      />
+
+      {histY !== null && historyMark ? (
+        <g>
+          <line x1={GAUGE_X + 34} x2={SCENE.width} y1={histY} y2={histY} className="stroke-red-600" strokeWidth={3} strokeDasharray="6 8" />
+          <Label x={GAUGE_X + 34 + labelWidth(historyMark.label) / 2 + 12} y={histY - 28} text={historyMark.label} tone="red" />
+        </g>
+      ) : null}
+
+    </svg>
+  );
+}
