@@ -40,3 +40,7 @@
 ## ไฟล์
 `domain/geo/flood-grid.ts` (Pure) · `lib/public/stats.ts#getPublicMapData` (`floodGrid`) · `components/public/public-map.tsx`
 · `app/(dashboard)/volunteer/page.tsx` · เทสต์ `tests/unit/flood-grid.test.ts`, `tests/integration/community-boundaries.test.ts`
+
+## ปรับคำบนแผนที่ (Owner Decision 2026-11-09)
+- เจ้าของระบบขอให้ใช้คำที่เข้าใจง่าย: แผง "ชั้นข้อมูล" → **"กรองข้อมูล"** · ปุ่ม "พับ" → **"ซ่อน"** (ใช้กับแผนที่หน้า `/map` และแผนที่สาธารณะเดิมบนหน้าศูนย์อาสาสมัครด้วย)
+- หน้าแรกใหม่ (docs/44) แสดงความรุนแรงน้ำท่วมในแผงมุมซ้ายล่างของแผนที่ — **ซ่อนแผงได้** (มือถือเริ่มแบบซ่อน) และปิดสีบนแผนที่ได้ด้วยตัวเลือก "ไม่แสดง"

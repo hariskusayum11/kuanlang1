@@ -308,19 +308,19 @@ export function PublicMap({
         {panelOpen ? (
           <aside
             id={panelId}
-            aria-label="ชั้นข้อมูลแผนที่"
+            aria-label="กรองข้อมูลบนแผนที่"
             className="absolute right-3 top-3 z-[1000] flex max-h-[calc(100%-1.5rem)] w-[min(300px,calc(100%-4.5rem))] flex-col overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-lg"
           >
             <div className="flex shrink-0 items-center justify-between gap-2 border-b-2 border-slate-100 bg-mist px-4 py-3">
               <div className="min-w-0">
-                <p className="flex items-center gap-2 font-bold text-slate-900"><LayersGlyph /> ชั้นข้อมูล</p>
+                <p className="flex items-center gap-2 font-bold text-slate-900"><LayersGlyph /> กรองข้อมูล</p>
                 <p className="mt-0.5 truncate text-xs text-slate-500">
                   {focused ? focused.nameTh : "ทุกชุมชน"} · {metric === "off" ? "ไม่แสดงความรุนแรง" : GRID_METRIC_LABELS[metric]}
                 </p>
               </div>
-              <button type="button" onClick={() => setPanelOpen(false)} className="btn btn-ghost btn-sm shrink-0" aria-label="พับแผงชั้นข้อมูล" title="พับแผง">
+              <button type="button" onClick={() => setPanelOpen(false)} className="btn btn-ghost btn-sm shrink-0" aria-label="ซ่อนแผงกรองข้อมูล" title="ซ่อนแผง">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true"><path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                พับ
+                ซ่อน
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
@@ -365,7 +365,7 @@ export function PublicMap({
             aria-expanded={false}
             aria-controls={panelId}
           >
-            <LayersGlyph /> ชั้นข้อมูล
+            <LayersGlyph /> กรองข้อมูล
           </button>
         )}
 

@@ -39,7 +39,7 @@ type Totals = { vulnerable: number; volunteer: number; hostHouse: number; floodD
 type Missing = Totals & { uniqueHouseholds: number };
 
 // ไอคอนฮีตแมปใช้สีระดับกลางของสเกลเดียวกับที่วาดบนแผนที่
-const HEAT_LAYER = { key: "heat" as const, label: "ฮีตแมประดับน้ำสูงสุด", color: "var(--heat-6)", iconPath: HEATMAP_ICON_PATH };
+const HEAT_LAYER = { key: "heat" as const, label: "สีตามระดับน้ำท่วมสูงสุด", color: "var(--heat-6)", iconPath: HEATMAP_ICON_PATH };
 
 const nf = (value: number) => value.toLocaleString("th-TH");
 
@@ -120,7 +120,7 @@ export function MapWorkspace({
   const [legendOpen, setLegendOpen] = useState(true);
   const [managerOpen, setManagerOpen] = useState(false);
   const [toast, setToast] = useState<SiteManagerResult | null>(
-    filterError ? { tone: "error", text: `ช่วงวันที่ไม่ถูกต้อง: ${filterError} — แก้ได้ที่ “ตัวกรองขั้นสูง” ในแผงชั้นข้อมูล` } : null,
+    filterError ? { tone: "error", text: `ช่วงวันที่ไม่ถูกต้อง: ${filterError} — แก้ได้ที่ “กรองตามช่วงวันที่” ในแผงกรองข้อมูล` } : null,
   );
   const mapCenterRef = useRef<{ lat: number; lng: number } | null>(null);
   const [managerCenter, setManagerCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -319,13 +319,13 @@ export function MapWorkspace({
           aria-controls="map-layer-panel"
         >
           <LayersGlyph />
-          ชั้นข้อมูล <span className="badge badge-brand tabular-nums">{activeCount}/{totalCount}</span>
+          กรองข้อมูล <span className="badge badge-brand tabular-nums">{activeCount}/{totalCount}</span>
         </button>
       ) : null}
 
       <aside
         id="map-layer-panel"
-        aria-label="ชั้นข้อมูลแผนที่"
+        aria-label="กรองข้อมูลบนแผนที่"
         className={[
           "absolute z-[1100] flex flex-col overflow-hidden border-slate-200 bg-white shadow-lg",
           // มือถือ: แผ่นดึงขึ้นจากด้านล่าง (ยุบเหลือแถบหัว 3.5rem)
@@ -346,25 +346,25 @@ export function MapWorkspace({
         >
           <span className="h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
           <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
-            <LayersGlyph /> ชั้นข้อมูล
-            <span className="badge badge-brand tabular-nums">เปิด {activeCount} จาก {totalCount} ชั้น</span>
+            <LayersGlyph /> กรองข้อมูล
+            <span className="badge badge-brand tabular-nums">แสดง {activeCount} จาก {totalCount} รายการ</span>
             <span className="text-slate-400" aria-hidden="true">{sheetOpen ? "▾" : "▴"}</span>
           </span>
         </button>
         <div className="hidden shrink-0 items-center justify-between gap-2 border-b-2 border-slate-100 bg-mist px-4 py-3 md:flex">
           <div>
-            <p className="flex items-center gap-2 font-bold text-slate-900"><LayersGlyph /> ชั้นข้อมูล</p>
-            <p className="mt-0.5 text-xs text-slate-500">เปิด <b className="tabular-nums text-brand-700">{activeCount}</b> จาก <span className="tabular-nums">{totalCount}</span> ชั้น</p>
+            <p className="flex items-center gap-2 font-bold text-slate-900"><LayersGlyph /> กรองข้อมูล</p>
+            <p className="mt-0.5 text-xs text-slate-500">แสดง <b className="tabular-nums text-brand-700">{activeCount}</b> จาก <span className="tabular-nums">{totalCount}</span> รายการ</p>
           </div>
-          <button type="button" onClick={() => setPanelOpen(false)} className="btn btn-ghost btn-sm" aria-label="พับแผงชั้นข้อมูล" title="พับแผง">
+          <button type="button" onClick={() => setPanelOpen(false)} className="btn btn-ghost btn-sm" aria-label="ซ่อนแผงกรองข้อมูล" title="ซ่อนแผง">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true"><path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            พับ
+            ซ่อน
           </button>
         </div>
 
         {helpAvailable ? (
           <div className="grid shrink-0 grid-cols-2 gap-1 border-b-2 border-slate-100 bg-white p-2" role="tablist" aria-label="เลือกแผง" inert={!isDesktop && !sheetOpen}>
-            {([["layers", "ชั้นข้อมูล"], ["help", "ลำดับการช่วยเหลือ"]] as const).map(([key, label]) => (
+            {([["layers", "กรองข้อมูล"], ["help", "ลำดับการช่วยเหลือ"]] as const).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -401,8 +401,8 @@ export function MapWorkspace({
           // แผ่นที่ยุบอยู่บนมือถือไม่ควรรับ Tab ไปยังช่องที่มองไม่เห็น
           inert={!isDesktop && !sheetOpen}
         >
-          <Group title="แผนที่พื้นฐาน">
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="เลือกแผนที่พื้นฐาน">
+          <Group title="รูปแบบแผนที่">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="เลือกรูปแบบแผนที่">
               {([["street", "ถนน"], ["satellite", "ดาวเทียม"]] as const).map(([key, label]) => (
                 <button
                   key={key}
@@ -461,7 +461,7 @@ export function MapWorkspace({
               </label>
               <details className="group rounded-xl border-2 border-slate-100" open={Boolean(filterError || view.dateFrom || view.dateTo)}>
                 <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-bold text-slate-600">
-                  ตัวกรองขั้นสูง
+                  กรองตามช่วงวันที่
                   <span className="flex items-center gap-1.5">
                     {view.dateFrom || view.dateTo ? <span className="badge badge-brand">ช่วงวันที่</span> : null}
                     <span className="text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true">▾</span>
@@ -537,7 +537,7 @@ export function MapWorkspace({
                 label="ลำดับการช่วยเหลือ"
                 count={helpPriority.cases.length}
               />
-              {help ? <p className="ml-9 text-[11px] leading-snug text-slate-500">หมุดชั้นครัวเรือนซ่อนชั่วคราวระหว่างเปิดชั้นนี้</p> : null}
+              {help ? <p className="ml-9 text-[11px] leading-snug text-slate-500">ระหว่างดูลำดับการช่วยเหลือ หมุดบ้านจะถูกซ่อนไว้ชั่วคราว</p> : null}
             </Group>
           ) : null}
 
@@ -565,7 +565,7 @@ export function MapWorkspace({
 
           <p className="px-1 pt-2 text-[11px] leading-relaxed text-slate-500">
             จำนวนคือหลัง/จุดที่มีพิกัดบนแผนที่ · ใช้เฉพาะแบบสอบถามที่ตรวจแล้ว ไม่แสดงชื่อหรือเบอร์โทรศัพท์ ·
-            ฮีตแมปใช้ระดับน้ำสูงสุดที่ครัวเรือนรายงาน ดูแนวโน้มพื้นที่ได้ แต่ไม่ใช่แบบจำลองน้ำท่วมทางวิศวกรรม
+            สีระดับน้ำมาจากระดับน้ำสูงสุดที่ครัวเรือนบอก ใช้ดูภาพรวมพื้นที่ได้ แต่ไม่ใช่แบบจำลองน้ำท่วมทางวิศวกรรม
           </p>
         </div>
       </aside>
@@ -677,7 +677,7 @@ function Legend({
           <span className="text-xs font-bold text-slate-800">คำอธิบายสัญลักษณ์</span>
           <span className="flex items-center gap-2">
             {missing.uniqueHouseholds ? <span className="badge badge-warning tabular-nums">ไม่มีพิกัด {nf(missing.uniqueHouseholds)} หลัง</span> : null}
-            <span className="text-slate-400" aria-hidden="true">{open ? "▾" : "▴"}</span>
+            <span className="text-[11px] font-semibold text-slate-400">{open ? "▾ ซ่อน" : "▴ แสดง"}</span>
           </span>
         </button>
         {open ? (
@@ -753,12 +753,12 @@ function Legend({
                 ) : null}
               </ul>
             ) : help ? null : (
-              <p className="text-slate-400">ยังไม่ได้เปิดชั้นข้อมูล — เลือกได้ที่แผง “ชั้นข้อมูล”</p>
+              <p className="text-slate-400">ยังไม่ได้เลือกข้อมูลที่จะแสดง — เลือกได้ที่แผง “กรองข้อมูล”</p>
             )}
 
             {heatOn ? (
               <div>
-                <p className="mb-1 font-bold text-slate-700">ระดับน้ำสูงสุดที่ครัวเรือนเคยเจอ (ฮีตแมป)</p>
+                <p className="mb-1 font-bold text-slate-700">ระดับน้ำสูงสุดที่ครัวเรือนเคยเจอ</p>
                 <div className="grid grid-cols-2 gap-1">
                   {[...FLOOD_DEPTH_BINS].reverse().map((bin) => (
                     <span key={bin.level} className="flex items-center gap-1.5">

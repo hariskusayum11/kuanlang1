@@ -213,6 +213,8 @@ export function SongKhlongExperience({
   const [showRain, setShowRain] = useState(true);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
+  // แผงความรุนแรงน้ำท่วม — ซ่อนได้ (มือถือเริ่มแบบซ่อน เพราะแผงกินพื้นที่แผนที่มาก)
+  const [severityOpen, setSeverityOpen] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   // เต็มจอ: ใช้ Fullscreen API ถ้ามี · ไม่มี (เช่น iPhone) = ขยายทับหน้าด้วย CSS แทน
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -248,7 +250,10 @@ export function SongKhlongExperience({
   useEffect(() => {
     if (!containerRef.current) return;
     reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (window.innerWidth < 768) setLegendOpen(false);
+    if (window.innerWidth < 768) {
+      setLegendOpen(false);
+      setSeverityOpen(false);
+    }
     // เยื้องไปทางตะวันออกให้เห็นหมุดสะพานบ้านคลองหวะ (สะพานที่ใช้ตัดสินธง) ในมุมมองแรก
     const center: LngLat = [100.4665, 6.9885];
     const zoom = window.innerWidth < 768 ? 13 : 14;
@@ -671,17 +676,34 @@ export function SongKhlongExperience({
       </div>
 
       {/* ---- ความรุนแรงน้ำท่วมจากแบบสำรวจ (docs/39 — ชุดเดียวกับแผนที่หน้าแรก) ---- */}
+      {!severityOpen ? (
+        // ซ่อนแผงแล้ว: เหลือปุ่มเล็กมุมซ้ายล่าง (สีบนแผนที่ยังแสดงตามที่เลือกไว้ — ปิดได้ด้วย "ไม่แสดง")
+        <div className="absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-2 md:bottom-5 md:left-5">
+          <button type="button" onClick={() => setSeverityOpen(true)} aria-expanded={false} className={`${PANEL} rounded-full px-3.5 py-2 text-xs font-bold`}>
+            ความรุนแรงน้ำท่วม · {SEVERITY_CHOICES.find((c) => c.value === severity)?.label}
+            <span className="ml-1.5 font-semibold text-slate-400">▴ แสดง</span>
+          </button>
+          <button type="button" onClick={togglePitch} className={`${PANEL} hidden rounded-full px-3 py-2 text-xs font-bold text-brand-700 md:block`}>
+            {pitched ? "มองจากด้านบน" : "มองแบบ 3 มิติ"}
+          </button>
+        </div>
+      ) : (
       <section className={`${PANEL} absolute bottom-3 left-3 right-3 z-10 max-h-[46%] overflow-y-auto rounded-3xl p-4 md:bottom-5 md:left-5 md:right-auto md:max-h-none md:w-[30rem] md:p-5`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold">ความรุนแรงน้ำท่วม</h2>
             <p className="text-[11px] text-slate-500">จากแบบสำรวจที่ตรวจแล้ว · ช่องละ ~200 ม. ที่มีอย่างน้อย {GRID_MIN_HOUSEHOLDS} หลัง · กดช่องเพื่อดูค่า</p>
           </div>
-          {hasGrid && severity === "depth" ? (
-            <button type="button" onClick={play} disabled={playing} className="btn btn-primary btn-sm shrink-0 disabled:opacity-60">
-              {playing ? "กำลังเล่น…" : "▶ เล่นน้ำขึ้น"}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {hasGrid && severity === "depth" ? (
+              <button type="button" onClick={play} disabled={playing} className="btn btn-primary btn-sm disabled:opacity-60">
+                {playing ? "กำลังเล่น…" : "▶ เล่นน้ำขึ้น"}
+              </button>
+            ) : null}
+            <button type="button" onClick={() => setSeverityOpen(false)} aria-expanded={true} aria-label="ซ่อนแผงความรุนแรงน้ำท่วม" className="btn btn-ghost btn-sm">
+              ▾ ซ่อน
             </button>
-          ) : null}
+          </div>
         </div>
         <div role="radiogroup" aria-label="ตัวชี้วัดความรุนแรงน้ำท่วม" className="mt-3 flex flex-wrap gap-1 rounded-2xl bg-mist p-1">
           {SEVERITY_CHOICES.map((c) => (
@@ -708,7 +730,7 @@ export function SongKhlongExperience({
         ) : severity === "off" ? null : (
           <>
             <p className="mt-3 text-xs font-bold text-slate-700">
-              {GRID_METRIC_LABELS[severity]} <span className="font-normal text-slate-500">· {severityCells.toLocaleString("th-TH")} ช่องที่มีคำตอบ</span>
+              {GRID_METRIC_LABELS[severity]} <span className="font-normal text-slate-500">· {severityCells.toLocaleString("th-TH")} ช่องที่มีข้อมูล</span>
             </p>
             <ul className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] text-slate-600">
               {severityLegend.map((step) => (
@@ -744,11 +766,14 @@ export function SongKhlongExperience({
           </>
         )}
       </section>
+      )}
 
-      {/* ---- ปุ่มมุมมอง ---- */}
-      <button type="button" onClick={togglePitch} className={`${PANEL} absolute bottom-5 left-[33rem] z-10 hidden rounded-full px-3 py-2 text-xs font-bold text-brand-700 md:block`}>
-        {pitched ? "มุมบน 2D" : "มุมเอียง 3D"}
-      </button>
+      {/* ---- ปุ่มมุมมอง (ข้างแผงเมื่อแผงเปิด · ซ่อนแผงแล้วย้ายไปอยู่ข้างปุ่มแสดงแผง) ---- */}
+      {severityOpen ? (
+        <button type="button" onClick={togglePitch} className={`${PANEL} absolute bottom-5 left-[33rem] z-10 hidden rounded-full px-3 py-2 text-xs font-bold text-brand-700 md:block`}>
+          {pitched ? "มองจากด้านบน" : "มองแบบ 3 มิติ"}
+        </button>
+      ) : null}
     </div>
   );
 }

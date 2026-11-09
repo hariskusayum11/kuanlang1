@@ -77,7 +77,7 @@ export function DepthHistogram({ bins }: { bins: DepthBinCount[] }) {
           <span key={b.level} className="min-w-0 flex-1 text-center text-[9px] leading-tight text-slate-500">{b.label.replace(" ม.", "")}</span>
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-slate-400">หน่วย: เมตร · รวม {nf(total)} หลังที่เคยท่วมและตอบระดับน้ำ · แท่งตามสีเดียวกับฮีตแมปบนแผนที่</p>
+      <p className="mt-2 text-[11px] text-slate-400">หน่วย: เมตร · รวม {nf(total)} หลังที่เคยท่วมและตอบระดับน้ำ · สีแท่งเดียวกับสีระดับน้ำบนแผนที่</p>
     </div>
   );
 }
