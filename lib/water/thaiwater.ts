@@ -16,6 +16,13 @@ const CACHE_SECONDS = 120;
 export const SONG_KHLONG_STATIONS = ["X.173A", "X.90", "X.44"] as const;
 /** สถานีที่ใช้เฉพาะธงโดยประมาณ (สะพานบ้านคลองหวะ — คลองหวะไหลลงคลองอู่ตะเภา) */
 export const FLAG_ONLY_STATIONS = ["X.174"] as const;
+/**
+ * สถานีของ สสน. ที่ส่งค่าทุก 10 นาที ตั้งอยู่จุดเดียวกับสถานีกรมชลประทาน (docs/44 §5) — ข้อมูลเสริม
+ * ใช้ดูน้ำขึ้น/ลงระหว่างชั่วโมงเท่านั้น **ไม่ใช้ตัดสินธง** และไม่ปักหมุดแยก (ซ้อนกับหมุดสะพาน)
+ * ตรวจจริง 2026-11-09: SLA002 คลองหอยโข่ง อยู่พิกัดเดียวกับ X.90 บางศาลา · ค่าต่ำกว่า X.90 คงที่ ~0.15 ม.
+ * (35 ชม. ส่วนเบี่ยงเบน 0.01 ม.) · SLA001 หาดใหญ่ ไม่มีในข้อมูลสาธารณะของ ThaiWater ขณะตรวจ
+ */
+export const TEN_MINUTE_STATIONS = [{ code: "SLA002", pairedWith: "X.90" }] as const;
 
 interface RawRecord {
   waterlevel_datetime?: string | null;
@@ -72,6 +79,8 @@ export interface StationFeed {
   stations: StationReading[];
   /** ทุกสถานีที่ดึงมา (รวมคลองหวะ) — ใช้คำนวณธงโดยประมาณ */
   readings: StationReading[];
+  /** สถานี สสน. ส่งค่าทุก 10 นาที (TEN_MINUTE_STATIONS) — แยกจาก readings เพื่อไม่ให้เข้าการคำนวณธง */
+  tenMinute: StationReading[];
   /** เวลาที่ server ดึงข้อมูล (ISO) · null = ดึงไม่สำเร็จ */
   fetchedAt: string | null;
   error: string | null;
@@ -85,12 +94,14 @@ export async function getSongKhlongStations(extraCodes: readonly string[] = []):
       signal: AbortSignal.timeout(15_000),
       headers: HEADERS,
     });
-    if (!res.ok) return { stations: [], readings: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
-    const readings = parseThaiWater(await res.json(), [...new Set([...SONG_KHLONG_STATIONS, ...FLAG_ONLY_STATIONS, ...extraCodes])]);
+    if (!res.ok) return { stations: [], readings: [], tenMinute: [], fetchedAt: null, error: `ThaiWater ตอบกลับ ${res.status}` };
+    const payload: unknown = await res.json();
+    const readings = parseThaiWater(payload, [...new Set([...SONG_KHLONG_STATIONS, ...FLAG_ONLY_STATIONS, ...extraCodes])]);
     const stations = readings.filter((r) => (SONG_KHLONG_STATIONS as readonly string[]).includes(r.code));
-    return { stations, readings, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
+    const tenMinute = parseThaiWater(payload, TEN_MINUTE_STATIONS.map((s) => s.code));
+    return { stations, readings, tenMinute, fetchedAt: new Date().toISOString(), error: stations.length ? null : "ไม่พบสถานีที่ต้องการในข้อมูล" };
   } catch {
-    return { stations: [], readings: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
+    return { stations: [], readings: [], tenMinute: [], fetchedAt: null, error: "เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่ได้" };
   }
 }
 
@@ -110,7 +121,7 @@ export function freshenReadings<T extends StationReading>(readings: readonly T[]
   });
 }
 
-/** ข้อมูลรายชั่วโมงจาก waterlevel_graph — ข้ามชั่วโมงที่ไม่มีค่า */
+/** ข้อมูลจาก waterlevel_graph (รายชั่วโมง · สถานี สสน. ทุก 10 นาที) — ข้ามจุดที่ไม่มีค่า */
 export function parseGraph(payload: unknown): HistoryPoint[] {
   const data = (payload as { data?: { graph_data?: Array<{ datetime?: string; value?: unknown }> } })?.data?.graph_data;
   if (!Array.isArray(data)) return [];
@@ -123,6 +134,16 @@ export function parseGraph(payload: unknown): HistoryPoint[] {
 /** วันที่ตามเวลาไทย "YYYY-MM-DD" (ต้นทางใช้เวลาไทย) */
 export function bangkokDate(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+/** เวลาไทย "YYYY-MM-DD HH:mm" — รูปแบบเดียวกับเวลาของต้นทาง */
+export function bangkokStamp(d: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
 /**

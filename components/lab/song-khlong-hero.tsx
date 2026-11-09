@@ -11,6 +11,7 @@ import { FLAG_TEXT, Flag, flagLabel } from "@/components/water/community-flag";
 import type { BridgeFlagEstimate } from "@/domain/water/community-flags";
 import { freeboard, peakOf, waterTrend, type HistoryPoint, type StationReading, type WaterTrend } from "@/domain/water/station-status";
 import type { CommunityFlagStatus } from "@/lib/water/community-flag";
+import { tenMinuteChangeText, type TenMinuteSummary } from "@/domain/water/ten-minute";
 import type { DailyForecast, HourlyWeather, WeatherNow } from "@/lib/water/weather";
 import { WeatherWidget } from "@/components/lab/weather-widget";
 import { dayPhase, rainLevel, type DayPhase, type RainLevel } from "@/domain/water/sky";
@@ -71,6 +72,7 @@ export function SongKhlongHero({
   communityNames,
   feedError,
   flagStatus,
+  tenMinute = [],
   lagHours,
   weather,
   rainHistory,
@@ -88,6 +90,8 @@ export function SongKhlongHero({
   feedError: string | null;
   /** ธงโดยประมาณจากเกณฑ์ของกลุ่มสองคลองควนลัง (ไม่ใช่ธงที่ประกาศ) */
   flagStatus: CommunityFlagStatus;
+  /** ค่าทุก 10 นาทีของสถานี สสน. ที่สะพานเดียวกัน — ข้อมูลเสริม ไม่ใช้ตัดสินธง */
+  tenMinute?: TenMinuteSummary[];
   /** เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (ชม.) ตามคู่ "ต้นน้ำ>ปลายน้ำ" — null = ข้อมูลไม่พอ */
   lagHours: Record<string, number | null>;
   /** อากาศปัจจุบันที่หาดใหญ่ (Open-Meteo) — null = ไม่วาดฝน/เมฆ */
@@ -262,6 +266,8 @@ export function SongKhlongHero({
   // บรรทัดสรุปของจุดที่เลือก
   const fb = reading ? freeboard(reading) : null;
   const trend = reading ? TREND_PHRASE[waterTrend(reading)] : "";
+  // จุดที่เลือกมีสถานี สสน. ส่งค่าทุก 10 นาทีอยู่ด้วย → บอกการขึ้นลงล่าสุดระหว่างชั่วโมง
+  const quick = reading ? tenMinute.find((t) => t.pairedWith === reading.code) : undefined;
   const nextIdx = reading ? stations.findIndex((s) => s.code === reading.code) : -1;
   const next = nextIdx >= 0 ? stations[nextIdx + 1] : undefined;
   const lag = next && reading ? lagHours[`${reading.code}>${next.code}`] : null;
@@ -387,6 +393,13 @@ export function SongKhlongHero({
                   {fb === null ? "ไม่ทราบระดับตลิ่ง" : fb > 0 ? <>ต่ำกว่าตลิ่ง {fmt(fb)} ม.</> : <b className="text-red-600">ล้นตลิ่ง {fmt(-fb)} ม.</b>}
                   {trend ? <> · {trend}</> : null}
                   {closestCode === reading.code ? <span className="ml-1 rounded-full bg-sun-100 px-2 py-0.5 text-xs font-bold text-sun-800">ใกล้เกณฑ์ธงที่สุด</span> : null}
+                  {quick ? (
+                    <span className={`mt-1 block text-xs ${tone("text-slate-600", "text-slate-300")}`}>
+                      <b className={tone("text-ink-900", "text-white")}>ค่าทุก 10 นาที</b> ล่าสุด {thaiStamp(quick.latestAt).time} น.
+                      {quick.stale ? <b className="text-sun-700"> (ค่าเก่า — สถานีอาจขัดข้อง)</b> : null} · {tenMinuteChangeText(quick)}
+                      <span className={tone("text-slate-500", "text-slate-400")}> — สถานี สสน.{quick.name}ที่สะพานเดียวกัน ใช้ดูการขึ้นลง ไม่ใช้ตัดสินธง</span>
+                    </span>
+                  ) : null}
                   {lag && next ? <span className={`block text-xs ${tone("text-slate-500", "text-slate-400")}`}>ปี 68 ยอดน้ำจากจุดนี้ถึง{placeName(next.name)} ~{Math.round(lag)} ชม.</span> : null}
                 </p>
               ) : null}
@@ -411,7 +424,7 @@ export function SongKhlongHero({
                 อากาศหาดใหญ่ (พรีวิว): ฝน{forceRain === "none" ? "ไม่ตก" : ""}
               </span>
             ) : null}
-            {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. (สถานีส่งค่าทุกชั่วโมง) · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
+            {latest ? `วัดล่าสุด ${thaiStamp(latest).time} น. (สถานีที่สะพานส่งค่าทุกชั่วโมง) · ` : ""}ธงประเมินจากเกณฑ์ของกลุ่มสองคลองควนลัง ไม่ใช่ธงที่ประกาศ ·{" "}
             <a href={flagStatus.source.url} target="_blank" rel="noopener noreferrer" className={`font-semibold underline ${tone("text-brand-700", "text-sky-300")}`}>
               ดูธงที่ประกาศจริง ↗
             </a>

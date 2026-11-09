@@ -21,6 +21,7 @@ import type { RainStation } from "@/lib/water/rain-stations";
 import { FLOOD_DEPTH_BINS, heatVar } from "@/domain/flood/depth-scale";
 import { GRID_METRIC_LABELS, GRID_MIN_HOUSEHOLDS, gridLegend, gridLevel, type FloodGridCell, type GridMetric } from "@/domain/geo/flood-grid";
 import { gridPopup } from "@/components/public/flood-grid-popup";
+import { tenMinuteChangeText, type TenMinuteSummary } from "@/domain/water/ten-minute";
 
 type LngLat = [number, number];
 interface CanalCollection {
@@ -105,7 +106,7 @@ const ICON_BTN = `${PANEL} grid h-9 w-9 place-items-center rounded-full text-sla
 
 
 /** เนื้อหาป๊อปอัปของหมุดจุดวัด — สร้างด้วย DOM (textContent) ไม่ใช้ innerHTML กับข้อมูลจากต้นทาง */
-function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined): HTMLElement {
+function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined, quick?: TenMinuteSummary): HTMLElement {
   const root = document.createElement("div");
   root.className = "min-w-[220px] text-ink-900";
   const add = (cls: string, text: string) => {
@@ -129,6 +130,13 @@ function stationPopup(s: StationReading, bridge: BridgeFlagEstimate | undefined)
   }
   if (s.measuredAt) add("mt-2 text-[11px] text-slate-500", `วัดเมื่อ ${s.measuredAt.split(" ")[1] ?? s.measuredAt} น.`);
   add("text-[11px] text-slate-500", "ที่มา: คลังข้อมูลน้ำแห่งชาติ (ThaiWater · สสน.) · สถานีของกรมชลประทาน");
+  if (quick) {
+    // สถานี สสน. ที่จุดเดียวกัน ส่งค่าทุก 10 นาที — ข้อมูลเสริม ไม่ใช้ตัดสินธง
+    add("mt-2 text-xs font-bold", `ค่าทุก 10 นาที · ล่าสุด ${quick.latestAt.split(" ")[1] ?? quick.latestAt} น.${quick.stale ? " (ค่าเก่า)" : ""}`);
+    add("text-sm", `${fmt(quick.levelMsl)} ม.รทก. · ${tenMinuteChangeText(quick)}`);
+    if (quick.offsetM !== null) add("text-[11px] text-slate-500", `อ่านค่า${quick.offsetM < 0 ? "ต่ำ" : "สูง"}กว่าสถานีกรมชลฯ ราว ${Math.round(Math.abs(quick.offsetM) * 100)} ซม. (คนละหมุดอ้างอิง) — ใช้ดูการขึ้นลง ไม่ใช้ตัดสินธง`);
+    add("text-[11px] text-slate-500", `ที่มา: คลังข้อมูลน้ำแห่งชาติ · สถานี${quick.name}ของ สสน.`);
+  }
   if (bridge) add("text-[11px] text-slate-500", `เกณฑ์ธง: กลุ่มสองคลองควนลัง · ท้องสะพาน: ${bridge.bridge.sourceNote || "ค่าที่บันทึกในระบบ"}`);
   return root;
 }
@@ -191,6 +199,7 @@ export function SongKhlongExperience({
   stations,
   markerStations = stations,
   bridges = [],
+  tenMinute = [],
   rainStations = [],
 }: {
   canals: CanalCollection;
@@ -203,6 +212,8 @@ export function SongKhlongExperience({
   markerStations?: StationReading[];
   /** ธงโดยประมาณรายสะพาน — ใส่ในป๊อปอัปของหมุดสะพาน */
   bridges?: BridgeFlagEstimate[];
+  /** ค่าทุก 10 นาทีของสถานี สสน. ที่จุดเดียวกับสะพาน — ใส่ในป๊อปอัปของหมุดสะพานนั้น */
+  tenMinute?: TenMinuteSummary[];
   /** สถานีวัดฝนรอบควนลัง (ThaiWater rain_24h) */
   rainStations?: RainStation[];
 }) {
@@ -408,7 +419,7 @@ export function SongKhlongExperience({
       line.append(arrow, trendWord, bank);
       text.append(name, line);
       el.append(dot, text);
-      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "290px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.bridge.stationCode === s.code)));
+      const popup = new maplibregl.Popup({ offset: 14, maxWidth: "290px" }).setDOMContent(stationPopup(s, bridges.find((b) => b.bridge.stationCode === s.code), tenMinute.find((t) => t.pairedWith === s.code)));
       return new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map);
     });
     const color = STATUS_COLOR[mainStatus];
@@ -420,7 +431,7 @@ export function SongKhlongExperience({
     map.setPaintProperty("r1-glow", "line-opacity", 0.2 + 0.45 * r1);
     map.setPaintProperty("r1-flow", "line-opacity", 0.35 + 0.6 * r1);
     return () => markers.forEach((m) => m.remove());
-  }, [ready, markerStations, bridges, mainStatus, whaStatus]);
+  }, [ready, markerStations, bridges, tenMinute, mainStatus, whaStatus]);
 
   // ---------- หมุดจุดวัดฝน (ฝนสะสม 24 ชม.) ----------
   useEffect(() => {

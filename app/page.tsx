@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Metadata } from "next";
 import { getPublicEmergencyContacts, getPublicMapData, getPublicStats } from "@/lib/public/stats";
 import { listPublicExternalLinks } from "@/lib/external-links/core";
-import { bangkokDate, freshenReadings, getSongKhlongStations, getStationHistory } from "@/lib/water/thaiwater";
+import { bangkokDate, bangkokStamp, freshenReadings, getSongKhlongStations, getStationHistory, TEN_MINUTE_STATIONS } from "@/lib/water/thaiwater";
+import { summarizeTenMinute, type TenMinuteSummary } from "@/domain/water/ten-minute";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { SongKhlongExperience } from "@/components/lab/song-khlong-experience";
 import { SongKhlongHero, type StationHistory } from "@/components/lab/song-khlong-hero";
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
   description: "ระดับน้ำคลองอู่ตะเภาและคลองหวะ ธงเตือนภัยโดยประมาณของ 5 ชุมชนตำบลควนลัง อากาศ และเบอร์ฉุกเฉิน",
 };
 // Render ตอน request — หน้านี้อ่านฐานข้อมูล จึงต้องไม่ prerender ตอน build (Docker build ไม่มี DB)
-// ระดับน้ำยังแคช 10 นาทีที่ระดับ fetch (lib/water/thaiwater.ts) ไม่ยิงต้นทางทุกครั้ง
+// ระดับน้ำยังแคช 2 นาทีที่ระดับ fetch (lib/water/thaiwater.ts) ไม่ยิงต้นทางทุกครั้ง
 export const dynamic = "force-dynamic";
 
 /** ช่วงน้ำท่วมใหญ่ปลายปี 2568 (เวลาไทย) — ข้อมูลในอดีตไม่เปลี่ยน จึงแคชได้ 1 วัน */
@@ -86,6 +87,17 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
   const recentByCode = Object.fromEntries(Object.entries(histories).map(([code, h]) => [code, h.recent]));
   const readings = freshenReadings(feed.readings, recentByCode);
   const stations = freshenReadings(feed.stations, recentByCode);
+  // ค่าทุก 10 นาทีของสถานี สสน. ที่สะพานเดียวกัน (ข้อมูลเสริม ไม่ใช้ตัดสินธง) — ดึงแค่เมื่อวาน–วันนี้ แคช 2 นาที
+  const tenMinute: TenMinuteSummary[] = (
+    await Promise.all(
+      feed.tenMinute.map(async (r) => {
+        const pair = TEN_MINUTE_STATIONS.find((t) => t.code === r.code);
+        if (!r.stationId || !pair) return null;
+        const points = await getStationHistory(r.stationId, bangkokDate(new Date(now.getTime() - 86_400_000)), bangkokDate(now));
+        return summarizeTenMinute({ code: r.code, name: r.name, pairedWith: pair.pairedWith, points, pairedPoints: recentByCode[pair.pairedWith] ?? [], now: bangkokStamp(now) });
+      }),
+    )
+  ).filter((s): s is TenMinuteSummary => s !== null);
   // ธงโดยประมาณ — เกณฑ์ของกลุ่มสองคลองควนลัง × ระดับน้ำสถานีที่สะพาน (ไม่ใช่ธงที่ประกาศ)
   const flagStatus = flagStatusFromReadings(criteria.config, readings, criteria.versionNo);
   // เวลาที่ยอดน้ำเดินทางระหว่างสถานีติดกัน (เหตุการณ์ พ.ย. 68) — คู่ที่ข้อมูลผิดปกติได้ null และไม่แสดง
@@ -107,6 +119,7 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
         communityNames={mapData.communities.slice(0, 5).map((c) => c.nameTh.replace(/^ชุมชน/, ""))}
         feedError={feed.error}
         flagStatus={flagStatus}
+        tenMinute={tenMinute}
         lagHours={lagHours}
         weather={weather}
         rainHistory={{ recent: recentRain, flood: floodRain }}
@@ -135,6 +148,7 @@ export default async function PublicHomePage({ searchParams }: { searchParams: P
               stations={stations}
               markerStations={readings}
               bridges={flagStatus.bridges}
+              tenMinute={tenMinute}
               rainStations={rainStations}
             />
           </div>
